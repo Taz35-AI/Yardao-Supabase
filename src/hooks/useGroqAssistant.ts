@@ -6,11 +6,8 @@
 
 import { useState, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import {
-  collection, query, where, getDocs,
-  doc, updateDoc, addDoc, serverTimestamp,
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
+import { toCamel, toCamelList } from '@/lib/dbMap'
 import { userProfileService } from '@/lib/firestore'
 
 // Sub-modules — each has one job
@@ -29,6 +26,9 @@ import { getApiKey, callGroq, buildSystemPrompt, fetchWeather, type GroqMessage 
 import type { GroqResponse, UseGroqAssistantReturn, ConfirmBookingParams } from '@/types/zao.types'
 export type { ConfirmBookingParams, GroqMessage }
 export { INTERNAL_WORK_TYPES, TIME_SLOTS } from '@/lib/zao/bookingHelpers'
+
+// serverTimestamp() / new Date() → ISO string for Postgres timestamptz columns.
+const nowIso = () => new Date().toISOString()
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PURE CODE QUERY RESOLVER
@@ -371,13 +371,17 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
     setLoading(true)
     try {
       const { displayName } = await getProfile(user)
-      await updateDoc(doc(db, 'checkedInVehicles', vehicleId), {
-        transferStatus: 'at_external_garage', externalGarageId: garageId,
-        externalGarageName: garageName, checkedOutToGarageAt: serverTimestamp(),
-        checkedOutToGarageBy: user.uid, checkedOutToGarageByName: displayName,
-        updatedAt: serverTimestamp(),
-        lastEditLog: makeAudit(`Checked out to ${garageName} via Zao`, displayName),
-      })
+      const { error } = await supabase
+        .from('checked_in_vehicles')
+        .update({
+          transfer_status: 'at_external_garage', external_garage_id: garageId,
+          external_garage_name: garageName, checked_out_to_garage_at: nowIso(),
+          checked_out_to_garage_by: user.uid, checked_out_to_garage_by_name: displayName,
+          updated_at: nowIso(),
+          last_edit_log: makeAudit(`Checked out to ${garageName} via Zao`, displayName),
+        })
+        .eq('id', vehicleId)
+      if (error) throw error
       dispatch('zao:vehicle-updated', { vehicleId })
       return ok(`✅ Done! The vehicle has been checked out to **${garageName}**.`, 'checkout_to_garage')
     } catch (err: any) {
@@ -393,12 +397,16 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
     setLoading(true)
     try {
       const { displayName } = await getProfile(user)
-      await updateDoc(doc(db, 'checkedInVehicles', vehicleId), {
-        transferStatus: null, externalGarageId: null, externalGarageName: null,
-        checkedOutToGarageAt: null, checkedOutToGarageBy: null, checkedOutToGarageByName: null,
-        updatedAt: serverTimestamp(),
-        lastEditLog: makeAudit(`Returned from ${garageName} via Zao`, displayName),
-      })
+      const { error } = await supabase
+        .from('checked_in_vehicles')
+        .update({
+          transfer_status: null, external_garage_id: null, external_garage_name: null,
+          checked_out_to_garage_at: null, checked_out_to_garage_by: null, checked_out_to_garage_by_name: null,
+          updated_at: nowIso(),
+          last_edit_log: makeAudit(`Returned from ${garageName} via Zao`, displayName),
+        })
+        .eq('id', vehicleId)
+      if (error) throw error
       dispatch('zao:vehicle-updated', { vehicleId })
       return ok(`✅ **${vehicleReg}** is back in the yard! Cleared from **${garageName}**. 🏠`, 'return_from_garage')
     } catch (err: any) {
@@ -418,17 +426,22 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
       const workList   = params.workRequired.length > 0 ? params.workRequired.join(', ') : 'General service'
       const dateFmt    = new Date(params.date + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
 
+      // service_bookings columns are snake_case; work_required / external_provider
+      // are jsonb (pass through verbatim). created_at defaults to now() server-side.
+      // (Firestore stored a vehicleId on the booking too, but service_bookings has
+      // no such column — vehicles are resolved by registration, so it's dropped.)
       const bookingData: any = {
-        organizationId, vehicleId: params.vehicleId, registration: params.vehicleReg,
+        organization_id: organizationId, registration: params.vehicleReg,
         make: params.vehicleMake, model: params.vehicleModel, date: params.date,
-        workRequired: params.workRequired, status: 'scheduled',
-        createdAt: serverTimestamp(), createdBy: user.uid, createdByName: displayName,
-        notes: '', isExternalProvider: params.isExternal,
+        work_required: params.workRequired, status: 'scheduled',
+        created_by: user.uid, created_by_name: displayName,
+        notes: '', is_external_provider: params.isExternal,
       }
-      if (!params.isExternal) bookingData.timeSlot = timeSlot
-      else bookingData.externalProvider = { name: garageName, address: garageAddr, customTime: params.externalCustomTime || '' }
+      if (!params.isExternal) bookingData.time_slot = timeSlot
+      else bookingData.external_provider = { name: garageName, address: garageAddr, customTime: params.externalCustomTime || '' }
 
-      await addDoc(collection(db, 'serviceBookings'), bookingData)
+      const { error } = await supabase.from('service_bookings').insert(bookingData)
+      if (error) throw error
       return ok(
         `✅ **Booking confirmed!**\n\n**${params.vehicleReg}** (${params.vehicleMake} ${params.vehicleModel})\n📅 ${dateFmt}\n🔧 ${workList}\n📍 ${params.isExternal ? garageName : 'Internal garage'}${!params.isExternal ? `\n⏰ ${timeSlot}` : ''}\n\nYou'll see it in the Service Bookings page. 🎉`,
         'service_booking_created'
@@ -453,20 +466,31 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
       const vehicleData = await fetchVehicleDoc(vehicleId, organizationId)
       if (!vehicleData) throw new Error('Vehicle not found')
 
-      const hireRef = await addDoc(collection(db, 'hireHistory'), {
-        vehicleId, registration: vehicleData.registration, make: vehicleData.make || '',
-        model: vehicleData.model || '', hireStartDate: serverTimestamp(), hireEndDate: null,
-        hiredBy: user.uid, hiredByName: displayName, hireNotes: '',
-        organizationId: vehicleData.organizationId, branchId: vehicleData.branchId || 'main',
-        createdAt: serverTimestamp(),
-      })
-      await updateDoc(doc(db, 'checkedInVehicles', vehicleId), {
-        hireStatus: 'Out on Hire', originalStatus: vehicleData.status,
-        hiredAt: serverTimestamp(), hiredBy: user.uid, hiredByName: displayName,
-        hireNotes: '', currentHireHistoryId: hireRef.id,
-        updatedAt: serverTimestamp(),
-        lastEditLog: makeAudit(`Set out on hire via Zao`, displayName),
-      })
+      const startIso = nowIso()
+      const { data: hireRow, error: hireErr } = await supabase
+        .from('hire_history')
+        .insert({
+          vehicle_id: vehicleId, registration: vehicleData.registration, make: vehicleData.make || '',
+          model: vehicleData.model || '', hire_start_date: startIso, hire_end_date: null,
+          hired_by: user.uid, hired_by_name: displayName, hire_notes: '',
+          organization_id: vehicleData.organizationId, branch_id: vehicleData.branchId || 'main',
+          created_at: startIso,
+        })
+        .select('id')
+        .single()
+      if (hireErr) throw hireErr
+
+      const { error: updErr } = await supabase
+        .from('checked_in_vehicles')
+        .update({
+          hire_status: 'Out on Hire', original_status: vehicleData.status,
+          hired_at: startIso, hired_by: user.uid, hired_by_name: displayName,
+          hire_notes: '', current_hire_history_id: hireRow.id,
+          updated_at: startIso,
+          last_edit_log: makeAudit(`Set out on hire via Zao`, displayName),
+        })
+        .eq('id', vehicleId)
+      if (updErr) throw updErr
       dispatch('zao:vehicle-updated', { vehicleId })
       return ok(`✅ **${vehicleReg}** is now out on hire. 🚗`, 'hire_out')
     } catch (err: any) {
@@ -483,22 +507,32 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
       const vehicleData = await fetchVehicleDoc(vehicleId, organizationId)
       if (!vehicleData) throw new Error('Vehicle not found')
 
+      const returnIso = nowIso()
       if (vehicleData.currentHireHistoryId) {
         try {
-          await updateDoc(doc(db, 'hireHistory', vehicleData.currentHireHistoryId), {
-            hireEndDate: serverTimestamp(), returnedBy: user.uid,
-            returnedByName: displayName, updatedAt: serverTimestamp(),
-          })
+          const { error } = await supabase
+            .from('hire_history')
+            .update({
+              hire_end_date: returnIso, returned_by: user.uid,
+              returned_by_name: displayName, updated_at: returnIso,
+            })
+            .eq('id', vehicleData.currentHireHistoryId)
+          if (error) throw error
         } catch { /* non-fatal */ }
       }
-      await updateDoc(doc(db, 'checkedInVehicles', vehicleId), {
-        hireStatus: 'In Yard', status: vehicleData.originalStatus || vehicleData.status,
-        originalStatus: null, hiredAt: null, hiredBy: null, hiredByName: null,
-        hireNotes: null, currentHireHistoryId: null,
-        createdAt: serverTimestamp(), checkInTime: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        lastEditLog: makeAudit(`Returned from hire via Zao`, displayName),
-      })
+      const { error: updErr } = await supabase
+        .from('checked_in_vehicles')
+        .update({
+          hire_status: 'In Yard', status: vehicleData.originalStatus || vehicleData.status,
+          original_status: null, hired_at: null, hired_by: null, hired_by_name: null,
+          hire_notes: null, current_hire_history_id: null,
+          // Reset the yard clock so "Days in Yard" restarts from the return.
+          created_at: returnIso, check_in_time: returnIso,
+          updated_at: returnIso,
+          last_edit_log: makeAudit(`Returned from hire via Zao`, displayName),
+        })
+        .eq('id', vehicleId)
+      if (updErr) throw updErr
       dispatch('zao:vehicle-updated', { vehicleId })
       return ok(`✅ **${vehicleReg}** is back in the yard! Hire period closed. Days counter reset. 🏠`, 'hire_return')
     } catch (err: any) {
@@ -514,12 +548,16 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
     setLoading(true)
     try {
       const { displayName } = await getProfile(user)
-      await updateDoc(doc(db, 'checkedInVehicles', vehicleId), {
-        transferStatus: 'in_transit', targetBranchId: toBranchId, targetBranchName: toBranchName,
-        transferInitiatedAt: serverTimestamp(), transferInitiatedBy: user.uid,
-        transferInitiatedByName: displayName, updatedAt: serverTimestamp(),
-        lastEditLog: makeAudit(`Transfer to ${toBranchName} initiated via Zao`, displayName),
-      })
+      const { error } = await supabase
+        .from('checked_in_vehicles')
+        .update({
+          transfer_status: 'in_transit', target_branch_id: toBranchId, target_branch_name: toBranchName,
+          transfer_initiated_at: nowIso(), transfer_initiated_by: user.uid,
+          transfer_initiated_by_name: displayName, updated_at: nowIso(),
+          last_edit_log: makeAudit(`Transfer to ${toBranchName} initiated via Zao`, displayName),
+        })
+        .eq('id', vehicleId)
+      if (error) throw error
       dispatch('zao:vehicle-updated', { vehicleId })
       return ok(`✅ Transfer initiated! **${vehicleReg}** is now in transit to **${toBranchName}**.`, 'branch_transfer')
     } catch (err: any) {
@@ -550,8 +588,14 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
         const todayLocal = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
         const localDateStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
         try {
-          const notesSnap = await getDocs(collection(db, 'userNotes', user.uid, 'notes'))
-          const allNotes = notesSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter((n: any) => !n.done) as any[]
+          // user_notes rows carry user_id + organization_id (no subcollection).
+          // RLS scopes to the org; also filter to this user's own notes.
+          const { data: notesRows, error: notesErr } = await supabase
+            .from('user_notes')
+            .select('*')
+            .eq('user_id', user.uid)
+          if (notesErr) throw notesErr
+          const allNotes = toCamelList<any>(notesRows).filter((n: any) => !n.done) as any[]
           let fromDate = todayLocal, toDate = todayLocal, label = 'today'
           if (/tomorrow/.test(msgLower)) {
             const d = new Date(); d.setDate(d.getDate() + 1); fromDate = toDate = localDateStr(d); label = 'tomorrow'
@@ -611,9 +655,13 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
 
         let targetVehicle: any = null
         if (regHint) {
-          const fleetSnap = await getDocs(query(collection(db, 'vehicles'), where('organizationId', '==', organizationId)))
+          const { data: fleetRows, error: fleetErr } = await supabase
+            .from('vehicles')
+            .select('*')
+            .eq('organization_id', organizationId)
+          if (fleetErr) throw fleetErr
           targetVehicle =
-            fleetSnap.docs.map(d => ({ id: d.id, ...d.data() })).find((v: any) => (v.registration || '').toUpperCase().replace(/\s/g, '').includes(regHint)) ||
+            toCamelList<any>(fleetRows).find((v: any) => (v.registration || '').toUpperCase().replace(/\s/g, '').includes(regHint)) ||
             (fleetData.yard.vehicles as any[]).find((v: any) => (v.registration || '').toUpperCase().replace(/\s/g, '').includes(regHint))
         }
 
@@ -646,8 +694,12 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
         return pending("Which vehicle had its MOT done?", { type: 'reg_needed', intent: 'mot_done', prompt: 'Enter the registration, then tell me when — e.g. "AB12 done today" or "AB12 done yesterday"' })
       }
       if (isMOTDone && motReg) {
-        const fleetSnap = await getDocs(query(collection(db, 'vehicles'), where('organizationId', '==', organizationId)))
-        const fleetAll  = fleetSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[]
+        const { data: motFleetRows, error: motFleetErr } = await supabase
+          .from('vehicles')
+          .select('*')
+          .eq('organization_id', organizationId)
+        if (motFleetErr) throw motFleetErr
+        const fleetAll  = toCamelList<any>(motFleetRows) as any[]
         const fleetMatch = fleetAll.find((v: any) => (v.registration || '').toUpperCase().replace(/\s/g, '').includes(motReg))
         const yardMatch  = (fleetData.yard.vehicles as any[]).find((v: any) => (v.registration || '').toUpperCase().replace(/\s/g, '').includes(motReg))
         const target     = fleetMatch || yardMatch
@@ -657,8 +709,20 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
         const newExpiry = calculateNewMOTExpiry(motDate, target.motExpiry)
         const auditNote = `MOT updated via Zao — done ${daysAgo === 0 ? 'today' : `${daysAgo} day${daysAgo > 1 ? 's' : ''} ago`}, new expiry: ${newExpiry}`
 
-        if (fleetMatch) await updateDoc(doc(db, 'vehicles', fleetMatch.id), { motExpiry: newExpiry, updatedAt: new Date().toISOString(), lastEditLog: makeAudit(auditNote, displayName) })
-        if (yardMatch)  await updateDoc(doc(db, 'checkedInVehicles', yardMatch.id), { motExpiry: newExpiry, updatedAt: serverTimestamp(), lastEditLog: makeAudit(auditNote, displayName) })
+        if (fleetMatch) {
+          const { error } = await supabase
+            .from('vehicles')
+            .update({ mot_expiry: newExpiry, updated_at: nowIso(), last_edit_log: makeAudit(auditNote, displayName) })
+            .eq('id', fleetMatch.id)
+          if (error) throw error
+        }
+        if (yardMatch) {
+          const { error } = await supabase
+            .from('checked_in_vehicles')
+            .update({ mot_expiry: newExpiry, updated_at: nowIso(), last_edit_log: makeAudit(auditNote, displayName) })
+            .eq('id', yardMatch.id)
+          if (error) throw error
+        }
 
         const whenText = daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : `${daysAgo} days ago`
         return ok(`✅ MOT updated for **${target.registration}**!\n\nMOT done: ${motDate.toLocaleDateString('en-GB')} (${whenText})\nPrevious expiry: ${target.motExpiry ? new Date(target.motExpiry).toLocaleDateString('en-GB') : 'not set'}\n**New expiry: ${new Date(newExpiry).toLocaleDateString('en-GB')}**`, 'mot_update')
@@ -684,13 +748,17 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
         })
 
         if (matchedGarage) {
-          await updateDoc(doc(db, 'checkedInVehicles', vehicle.id), {
-            transferStatus: 'at_external_garage', externalGarageId: matchedGarage.id,
-            externalGarageName: matchedGarage.name, checkedOutToGarageAt: serverTimestamp(),
-            checkedOutToGarageBy: user.uid, checkedOutToGarageByName: displayName,
-            updatedAt: serverTimestamp(),
-            lastEditLog: makeAudit(`Checked out to ${matchedGarage.name} via Zao`, displayName),
-          })
+          const { error } = await supabase
+            .from('checked_in_vehicles')
+            .update({
+              transfer_status: 'at_external_garage', external_garage_id: matchedGarage.id,
+              external_garage_name: matchedGarage.name, checked_out_to_garage_at: nowIso(),
+              checked_out_to_garage_by: user.uid, checked_out_to_garage_by_name: displayName,
+              updated_at: nowIso(),
+              last_edit_log: makeAudit(`Checked out to ${matchedGarage.name} via Zao`, displayName),
+            })
+            .eq('id', vehicle.id)
+          if (error) throw error
           dispatch('zao:vehicle-updated', { vehicleId: vehicle.id })
           return ok(`✅ **${vehicle.registration}** checked out to **${matchedGarage.name}**.`, 'checkout_to_garage')
         }
@@ -709,12 +777,16 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
 
         const matchedV = returnReg ? atGarage.find((v: any) => (v.registration || '').toUpperCase().replace(/\s/g, '').includes(returnReg.toUpperCase())) : null
         if (matchedV) {
-          await updateDoc(doc(db, 'checkedInVehicles', matchedV.id), {
-            transferStatus: null, externalGarageId: null, externalGarageName: null,
-            checkedOutToGarageAt: null, checkedOutToGarageBy: null, checkedOutToGarageByName: null,
-            updatedAt: serverTimestamp(),
-            lastEditLog: makeAudit(`Returned from ${matchedV.externalGarageName || 'garage'} via Zao`, displayName),
-          })
+          const { error } = await supabase
+            .from('checked_in_vehicles')
+            .update({
+              transfer_status: null, external_garage_id: null, external_garage_name: null,
+              checked_out_to_garage_at: null, checked_out_to_garage_by: null, checked_out_to_garage_by_name: null,
+              updated_at: nowIso(),
+              last_edit_log: makeAudit(`Returned from ${matchedV.externalGarageName || 'garage'} via Zao`, displayName),
+            })
+            .eq('id', matchedV.id)
+          if (error) throw error
           dispatch('zao:vehicle-updated', { vehicleId: matchedV.id })
           return ok(`✅ **${matchedV.registration}** is back! Cleared from **${matchedV.externalGarageName || 'garage'}**. 🏠`, 'return_from_garage')
         }
@@ -758,10 +830,14 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
         if (matches.length === 0) return ok(`I couldn't find "${mileageReg}" in the yard.`)
 
         const vehicle = matches[0]
-        await updateDoc(doc(db, 'checkedInVehicles', vehicle.id), {
-          mileage, updatedAt: serverTimestamp(),
-          lastEditLog: makeAudit(`Mileage updated to ${mileage} via Zao`, displayName),
-        })
+        const { error } = await supabase
+          .from('checked_in_vehicles')
+          .update({
+            mileage, updated_at: nowIso(),
+            last_edit_log: makeAudit(`Mileage updated to ${mileage} via Zao`, displayName),
+          })
+          .eq('id', vehicle.id)
+        if (error) throw error
         dispatch('zao:vehicle-updated', { vehicleId: vehicle.id })
         return ok(`✅ Mileage updated! **${vehicle.registration}** is now on **${parseInt(mileage, 10).toLocaleString('en-GB')} miles**.`, 'mileage_update')
       }
@@ -970,10 +1046,14 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
       const vehicle = matches[0]
 
       if (intent.intent === 'status_update' && intent.newStatus) {
-        await updateDoc(doc(db, 'checkedInVehicles', vehicle.id), {
-          status: intent.newStatus, updatedAt: serverTimestamp(),
-          lastEditLog: makeAudit(`Status → "${intent.newStatus}" via Zao`, displayName),
-        })
+        const { error } = await supabase
+          .from('checked_in_vehicles')
+          .update({
+            status: intent.newStatus, updated_at: nowIso(),
+            last_edit_log: makeAudit(`Status → "${intent.newStatus}" via Zao`, displayName),
+          })
+          .eq('id', vehicle.id)
+        if (error) throw error
         dispatch('zao:vehicle-updated', { vehicleId: vehicle.id })
         return ok(`✅ **${vehicle.registration}** is now **"${intent.newStatus}"**.`, 'status_update')
       }
@@ -981,11 +1061,15 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
       if (intent.intent === 'comment_update' && intent.comment) {
         const ts       = new Date().toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })
         const existing = (vehicle.comments || '').trim()
-        await updateDoc(doc(db, 'checkedInVehicles', vehicle.id), {
-          comments: existing ? `${existing}\n[${ts}] ${intent.comment}` : `[${ts}] ${intent.comment}`,
-          updatedAt: serverTimestamp(),
-          lastEditLog: makeAudit(`Comment added via Zao: "${intent.comment}"`, displayName),
-        })
+        const { error } = await supabase
+          .from('checked_in_vehicles')
+          .update({
+            comments: existing ? `${existing}\n[${ts}] ${intent.comment}` : `[${ts}] ${intent.comment}`,
+            updated_at: nowIso(),
+            last_edit_log: makeAudit(`Comment added via Zao: "${intent.comment}"`, displayName),
+          })
+          .eq('id', vehicle.id)
+        if (error) throw error
         return ok(`✅ Comment saved on **${vehicle.registration}**:\n\n"${intent.comment}"`, 'comment_update')
       }
 
@@ -1024,10 +1108,16 @@ async function getProfile(user: any) {
   return { userProfile, organizationId, displayName }
 }
 
-/** Fetch a single checkedInVehicle document by its ID. */
+/** Fetch a single checked_in_vehicles row by its ID (mapped to camelCase). */
 async function fetchVehicleDoc(vehicleId: string, organizationId: string): Promise<any | null> {
-  const snap = await getDocs(query(collection(db, 'checkedInVehicles'), where('organizationId', '==', organizationId)))
-  return snap.docs.find(d => d.id === vehicleId)?.data() ?? null
+  const { data, error } = await supabase
+    .from('checked_in_vehicles')
+    .select('*')
+    .eq('id', vehicleId)
+    .eq('organization_id', organizationId)
+    .maybeSingle()
+  if (error) throw error
+  return data ? toCamel<any>(data) : null
 }
 
 /** Thin wrapper around CustomEvent dispatch to keep call sites clean. */

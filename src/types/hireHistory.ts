@@ -1,5 +1,7 @@
 // src/types/hireHistory.ts
-import { Timestamp } from 'firebase/firestore'
+// Firebase removed — Supabase returns ISO strings; alias kept so existing
+// `Timestamp` type references still resolve.
+type Timestamp = any
 
 /**
  * Hire History Record

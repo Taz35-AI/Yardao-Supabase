@@ -10,8 +10,7 @@ import { PushNotifications } from '@capacitor/push-notifications'
 import { LocalNotifications } from '@capacitor/local-notifications'
 import { Capacitor } from '@capacitor/core'
 import { useAuth } from '@/contexts/AuthContext'
-import { doc, updateDoc } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
 import { logger } from '@/lib/logger'
 
 export function usePushNotifications() {
@@ -157,11 +156,11 @@ export function usePushNotifications() {
       
       // Save token immediately if user is available, otherwise store for later
       if (user) {
-        logger.log('👤 [TOKEN] User available, saving to Firestore immediately')
+        logger.log('👤 [TOKEN] User available, saving to Supabase immediately')
         await saveFCMToken(token.value)
       } else {
         logger.log('⏳ [TOKEN] User not available yet, storing in pendingTokenRef')
-        logger.log('⏳ [TOKEN] Will save to Firestore when user logs in')
+        logger.log('⏳ [TOKEN] Will save to Supabase when user logs in')
         pendingTokenRef.current = token.value
       }
     })
@@ -254,12 +253,12 @@ export function usePushNotifications() {
     }
   }
 
-  // Save FCM token to user's Firestore profile
+  // Save FCM token to user's Supabase profile
   async function saveFCMToken(token: string) {
     logger.log('='.repeat(60))
-    logger.log('💾 [SAVE] Saving FCM token to Firestore')
+    logger.log('💾 [SAVE] Saving FCM token to Supabase')
     logger.log(`💾 [SAVE] Token (first 30 chars): ${token.substring(0, 30)}...`)
-    
+
     if (!user) {
       logger.log('⚠️ [SAVE] Cannot save: No user authenticated')
       logger.log('⚠️ [SAVE] Token stored in pendingTokenRef for later')
@@ -272,18 +271,18 @@ export function usePushNotifications() {
     logger.log(`💾 [SAVE] User Email: ${user.email}`)
 
     try {
-      const userRef = doc(db, 'userProfiles', userId)
-      await updateDoc(userRef, {
-        fcmToken: token,
-        updatedAt: new Date().toISOString()
-      })
-      logger.log('✅ [SAVE] FCM token saved to Firestore successfully!')
-      logger.log(`✅ [SAVE] Document path: userProfiles/${userId}`)
-      logger.log('✅ [SAVE] Cloud Functions can now send notifications to this device')
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ fcm_token: token })
+        .eq('id', userId)
+      if (updateError) throw updateError
+      logger.log('✅ [SAVE] FCM token saved to Supabase successfully!')
+      logger.log(`✅ [SAVE] Table/row: profiles/${userId}`)
+      logger.log('✅ [SAVE] Edge Functions can now send notifications to this device')
       logger.log('='.repeat(60))
     } catch (err) {
       logger.error('='.repeat(60))
-      logger.error('❌ [SAVE] Error saving FCM token to Firestore:')
+      logger.error('❌ [SAVE] Error saving FCM token to Supabase:')
       logger.error(err)
       logger.log('='.repeat(60))
       setError('Failed to save notification token')

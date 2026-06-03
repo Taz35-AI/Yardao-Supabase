@@ -1,7 +1,7 @@
 // src/lib/services/geocodingService.ts
 // Geocoding via Firebase Cloud Function — API key is server-side only
 
-import { getFunctions, httpsCallable } from 'firebase/functions'
+import { supabase } from '@/lib/supabaseClient'
 import { logger } from '@/lib/logger'
 
 export interface GeocodingResult {
@@ -30,19 +30,16 @@ class GeocodingService {
     }
 
     try {
-      const functions = getFunctions()
-      const callable = httpsCallable<{ address: string }, GeocodingFunctionResponse>(
-        functions,
-        'geocodeAddress'
-      )
-
-      const result = await callable({ address: address.trim() })
-
+      // TODO(phase5): 'geocodeAddress' Edge Function (free geocoder) not deployed yet.
+      const { data, error } = await supabase.functions.invoke<GeocodingFunctionResponse>('geocodeAddress', {
+        body: { address: address.trim() },
+      })
+      if (error) throw error
       return {
-        latitude: result.data.latitude,
-        longitude: result.data.longitude,
-        formattedAddress: result.data.formattedAddress,
-        postcode: result.data.postcode ?? undefined,
+        latitude: data!.latitude,
+        longitude: data!.longitude,
+        formattedAddress: data!.formattedAddress,
+        postcode: data!.postcode ?? undefined,
       }
     } catch (error: any) {
       // Surface the friendly message from the Cloud Function if available

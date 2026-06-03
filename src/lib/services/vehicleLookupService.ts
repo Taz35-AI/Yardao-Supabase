@@ -1,7 +1,7 @@
 // src/lib/services/vehicleLookupService.ts
 // DVLA vehicle lookup via Firebase Cloud Function — the DVLA API key is server-side only.
 
-import { getFunctions, httpsCallable } from 'firebase/functions'
+import { supabase } from '@/lib/supabaseClient'
 
 export interface VehicleLookupResult {
   registration: string
@@ -41,14 +41,12 @@ class VehicleLookupService {
     }
 
     try {
-      const functions = getFunctions(undefined, 'europe-west1')
-      const callable = httpsCallable<{ registrationNumber: string }, VehicleLookupResult>(
-        functions,
-        'vehicleLookup'
-      )
-
-      const result = await callable({ registrationNumber: registration.trim() })
-      return result.data
+      // TODO(phase5): 'vehicleLookup' Edge Function (DVLA VES + DVSA MOT) not deployed yet.
+      const { data, error } = await supabase.functions.invoke<VehicleLookupResult>('vehicleLookup', {
+        body: { registrationNumber: registration.trim() },
+      })
+      if (error) throw error
+      return data as VehicleLookupResult
     } catch (error: any) {
       // Surface the friendly message from the Cloud Function if available.
       const message = error?.message || 'Vehicle lookup failed. Please try again.'

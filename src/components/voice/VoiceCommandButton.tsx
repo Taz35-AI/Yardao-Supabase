@@ -20,8 +20,7 @@ import React, { useState, useCallback, useEffect } from 'react'
 import { Mic, MicOff, X, Check, RotateCcw, AlertTriangle, Volume2, ChevronUp, ChevronDown } from 'lucide-react'
 import { useVoiceCommand, VoiceCommandResult } from '@/hooks/useVoiceCommand'
 import { CheckedInVehicle } from '@/types'
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
 import { useAuth } from '@/contexts/AuthContext'
 import { createAuditLog } from '@/lib/auditUtils'
 import { toast } from 'sonner'
@@ -57,15 +56,13 @@ export function VoiceCommandButton({
     }
 
     try {
-      const vehicleRef = doc(db, 'checkedInVehicles', vehicleId)
-      
       // Append to existing comments (don't overwrite)
       const existingComments = result.matchedVehicle.comments || ''
       const timestamp = new Date().toLocaleString('en-GB', {
         day: '2-digit', month: '2-digit', year: '2-digit',
         hour: '2-digit', minute: '2-digit'
       })
-      
+
       const newComment = existingComments
         ? `${existingComments}\n🎤 [${timestamp}] ${result.comment}`
         : `🎤 [${timestamp}] ${result.comment}`
@@ -77,11 +74,15 @@ export function VoiceCommandButton({
         userDisplayName
       )
 
-      await updateDoc(vehicleRef, {
-        comments: newComment,
-        lastEditLog: auditLog,
-        updatedAt: serverTimestamp(),
-      })
+      const { error } = await supabase
+        .from('checked_in_vehicles')
+        .update({
+          comments: newComment,
+          last_edit_log: auditLog,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', vehicleId)
+      if (error) throw error
 
     } catch (error) {
       logger.error('❌ Failed to save voice command:', error)

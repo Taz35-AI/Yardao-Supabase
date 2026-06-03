@@ -1,7 +1,9 @@
 // src/types/transfer.ts
 // Vehicle transfer and external garage checkout types
 
-import { Timestamp } from 'firebase/firestore'
+// Firebase removed — Supabase returns ISO strings; alias kept so existing
+// `Timestamp` type references still resolve.
+type Timestamp = any
 
 export type TransferStatus = 'in_transit' | 'at_external_garage' | null
 

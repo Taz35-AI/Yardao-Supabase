@@ -13,7 +13,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { getFunctions, httpsCallable } from 'firebase/functions'
+import { supabase } from '@/lib/supabaseClient'
 import { CheckedInVehicle } from '@/types'
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics'
 import { toast } from 'sonner'
@@ -730,20 +730,15 @@ export function useVoiceCommand({ checkedInVehicles, onCommandConfirmed }: UseVo
       new Uint8Array(arrayBuffer).reduce((acc, b) => acc + String.fromCharCode(b), '')
     )
 
-    const functions = getFunctions()
-    const callable = httpsCallable(functions, 'transcribeAudio')
-    
     // Pass vehicle registrations for Deepgram keyterm boosting
     const registrations = checkedInVehicles.map(v => v.registration)
-    
-    const result = await callable({
-      audioBase64: base64,
-      mimeType: blob.type || 'audio/webm',
-      registrations,
-    })
 
-    const data = result.data as { transcript?: string }
-    return data?.transcript || ''
+    // TODO(phase5): 'transcribeAudio' Edge Function not deployed yet.
+    const { data: invokeData, error } = await supabase.functions.invoke<{ transcript?: string }>('transcribeAudio', {
+      body: { audioBase64: base64, mimeType: blob.type || 'audio/webm', registrations },
+    })
+    if (error) throw error
+    return invokeData?.transcript || ''
   }, [checkedInVehicles])
 
   /**

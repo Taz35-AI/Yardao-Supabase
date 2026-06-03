@@ -2,7 +2,9 @@
 // Type definitions for the yard layout feature
 // One layout document per branch; contains parking spaces and building blocks
 
-import { Timestamp } from 'firebase/firestore'
+// Firebase removed — Supabase returns ISO strings; alias kept so existing
+// `Timestamp` type references still resolve.
+type Timestamp = any
 
 // ─── Parking Space ──────────────────────────────────────────────────────────
 // Each space has a stable `id` (vehicles link to this, never to the label)

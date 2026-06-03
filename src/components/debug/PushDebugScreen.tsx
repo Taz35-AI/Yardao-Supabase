@@ -7,8 +7,7 @@
 import { useState, useEffect } from 'react'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
 import { useAuth } from '@/contexts/AuthContext'
-import { doc, getDoc } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
 import { logger } from '@/lib/logger'
 
 export function PushDebugScreen() {
@@ -18,25 +17,26 @@ export function PushDebugScreen() {
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  // Fetch token from Firestore to verify it was saved
+  // Fetch token from Supabase to verify it was saved
   useEffect(() => {
     if (!user) return
 
-    const fetchFirestoreToken = async () => {
+    const fetchSavedToken = async () => {
       try {
-        const userRef = doc(db, 'userProfiles', user.uid)
-        const userDoc = await getDoc(userRef)
-        
-        if (userDoc.exists()) {
-          const data = userDoc.data()
-          setFirestoreToken(data.fcmToken || null)
-        }
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('fcm_token')
+          .eq('id', user.uid)
+          .maybeSingle()
+
+        if (error) throw error
+        setFirestoreToken(data?.fcm_token || null)
       } catch (error) {
-        logger.error('Error fetching Firestore token:', error)
+        logger.error('Error fetching saved token:', error)
       }
     }
 
-    fetchFirestoreToken()
+    fetchSavedToken()
   }, [user, fcmToken]) // Re-fetch when fcmToken changes
 
   const handleCopyToken = () => {

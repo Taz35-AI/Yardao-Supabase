@@ -7,7 +7,7 @@
 // 🔒 Groq API key is now server-side only — calls Cloud Function instead.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { getFunctions, httpsCallable } from 'firebase/functions'
+import { supabase } from '@/lib/supabaseClient'
 import { logger } from '@/lib/logger'
 
 export interface ParsedNote {
@@ -341,17 +341,17 @@ MESSAGE TO PARSE
 Return ONLY the JSON array. No markdown. No explanation:`
 
   // ── Step 4: Call Groq via Cloud Function ─────────────────────────────────────
-const functions = getFunctions(undefined, 'europe-west1')
-  const callable = httpsCallable<object, CallGroqFunctionResponse>(functions, 'callGroq')
-
-  const result = await callable({
-    model: 'llama-3.3-70b-versatile',
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.1,
-    max_tokens: 1000,
+  // TODO(phase5): 'callGroq' Edge Function (Groq LLM) not deployed yet.
+  const { data, error } = await supabase.functions.invoke<CallGroqFunctionResponse>('callGroq', {
+    body: {
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.1,
+      max_tokens: 1000,
+    },
   })
-
-  const content = result.data.content
+  if (error) throw error
+  const content = data?.content
   if (!content) throw new Error('Empty response from Groq')
 
   const cleaned = content.replace(/```json|```/g, '').trim()

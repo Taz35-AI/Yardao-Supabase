@@ -6,8 +6,8 @@ import { createPortal } from 'react-dom'
 import { useSearchParams } from 'next/navigation'
 import { useGroqAssistant, ConfirmBookingParams } from '@/hooks/useGroqAssistant'
 import { useAuth } from '@/contexts/AuthContext'
-import { collection, addDoc, doc } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
+import { userProfileService } from '@/lib/firestore'
 import { Send, X, Loader2, Sparkles, RotateCcw } from 'lucide-react'
 
 // ── Yardao brand colours ──────────────────────────────────────────────────────
@@ -1365,21 +1365,29 @@ useEffect(() => {
                       try {
                         const uid = user?.uid
                         if (!uid) { alert('Not logged in'); return }
-                        await Promise.all(edits.map((n: any) =>
-                          addDoc(collection(doc(db, 'userNotes', uid), 'notes'), {
-                            text:                    n.summary,
-                            date:                    n.date,
-                            scheduledTime:           n.scheduledTime || null,
-                            priority:                n.priority,
-                            category:                n.category,
-                            vehicleReg:              n.vehicleReg || null,
-                            recurrence:              n.recurrence || 'none',
-                            done:                    false,
-                            createdAt:               new Date().toISOString(),
-                            scheduledNotificationAt: buildScheduledNotificationAt(n.date, n.scheduledTime || null),
-                            notificationSent:        false,
-                          })
-                        ))
+                        // Supabase has no subcollections — user_notes rows carry
+                        // user_id + organization_id. RLS scopes to the caller's org,
+                        // so we resolve the org id from the profile before inserting.
+                        const profile = await userProfileService.getProfile(uid)
+                        const organizationId = profile?.organizationId || uid
+                        const { error } = await supabase.from('user_notes').insert(
+                          edits.map((n: any) => ({
+                            user_id:                   uid,
+                            organization_id:           organizationId,
+                            text:                      n.summary,
+                            date:                      n.date,
+                            scheduled_time:            n.scheduledTime || null,
+                            priority:                  n.priority,
+                            category:                  n.category,
+                            vehicle_reg:               n.vehicleReg || null,
+                            recurrence:                n.recurrence || 'none',
+                            done:                      false,
+                            created_at:                new Date().toISOString(),
+                            scheduled_notification_at: buildScheduledNotificationAt(n.date, n.scheduledTime || null),
+                            notification_sent:         false,
+                          }))
+                        )
+                        if (error) throw error
                         setConversation(prev => [...prev, {
                           id: (Date.now() + 1).toString(), type: 'assistant',
                           message: edits.length === 1

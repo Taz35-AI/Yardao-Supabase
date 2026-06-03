@@ -3,7 +3,7 @@
 // Nothing Firestore. Nothing React. Just fetch calls.
 // 🔒 Groq API key is now server-side only — never touches the browser.
 
-import { getFunctions, httpsCallable } from 'firebase/functions'
+import { supabase } from '@/lib/supabaseClient'
 import type { FleetData } from './fleetQueries'
 import { logger } from '@/lib/logger'
 
@@ -40,21 +40,21 @@ export async function callGroq(
 ): Promise<string> {
   const trimmedHistory = history.slice(-10)
 
-  const functions = getFunctions(undefined, 'europe-west1')
-  const callable = httpsCallable<object, CallGroqFunctionResponse>(functions, 'callGroq')
-
-  const result = await callable({
-    model: 'llama-3.1-8b-instant',
-    messages: [
-      { role: 'system', content: system },
-      ...trimmedHistory,
-      { role: 'user', content: userMsg },
-    ],
-    temperature: 0.1,
-    max_tokens: 300,
+  // TODO(phase5): 'callGroq' Edge Function (Groq LLM) not deployed yet.
+  const { data, error } = await supabase.functions.invoke<CallGroqFunctionResponse>('callGroq', {
+    body: {
+      model: 'llama-3.1-8b-instant',
+      messages: [
+        { role: 'system', content: system },
+        ...trimmedHistory,
+        { role: 'user', content: userMsg },
+      ],
+      temperature: 0.1,
+      max_tokens: 300,
+    },
   })
-
-  return result.data.content || ''
+  if (error) throw error
+  return data?.content || ''
 }
 
 /**

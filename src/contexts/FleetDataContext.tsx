@@ -202,17 +202,12 @@ export function FleetDataProvider({ children }: { children: ReactNode }) {
 
       if (toFix.length > 0) {
         logger.log(`🔧 [Migration] Fixing ${toFix.length} old defleeted vehicles...`)
-        const { doc: firestoreDoc, updateDoc } = await import('firebase/firestore')
-        const { db } = await import('@/lib/firebase')
-
-        await Promise.all(
-          toFix.map(v =>
-            updateDoc(firestoreDoc(db, 'vehicles', v.id!), {
-              isDefleeted: true,
-              currentStatus: 'defleeted',
-            }),
-          ),
-        )
+        const ids = toFix.map(v => v.id!).filter(Boolean)
+        const { error: migErr } = await supabase
+          .from('vehicles')
+          .update({ is_defleeted: true, current_status: 'defleeted' })
+          .in('id', ids)
+        if (migErr) throw migErr
         logger.log(`✅ [Migration] Done - fixed ${toFix.length} vehicles`)
       } else {
         logger.log(`✅ [Migration] Nothing to fix`)

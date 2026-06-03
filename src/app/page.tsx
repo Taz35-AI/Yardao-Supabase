@@ -15,6 +15,8 @@ import {
 import { Card, CardContent } from '@/components/ui/Card'
 import { useState, useEffect } from 'react'
 import { logger } from '@/lib/logger'
+import { supabase } from '@/lib/supabaseClient'
+import { toCamelList } from '@/lib/dbMap'
 
 const carImages = [
   '/cars/car (1).png', '/cars/car (2).png', '/cars/car (3).png',
@@ -1175,8 +1177,6 @@ function AuthenticatedHome({ user }: { user: any }) {
       if (!user) return
       try {
         const { userProfileService } = await import('@/lib/firestore')
-        const { collection, query, where, onSnapshot } = await import('firebase/firestore')
-        const { db } = await import('@/lib/firebase')
 
         const userProfile = await userProfileService.getProfile(user.uid)
         if (!userProfile?.organizationId) return
@@ -1205,17 +1205,50 @@ function AuthenticatedHome({ user }: { user: any }) {
           setSnapshotLoading(false)
         }
 
-        const yardQ = query(collection(db, 'checkedInVehicles'), where('organizationId', '==', orgId))
-        unsubYard = onSnapshot(yardQ, (snap: any) => {
-          yardVehicles = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }))
+        // Initial fetch + re-fetch on any change to this org's yard vehicles.
+        const refreshYard = async () => {
+          const { data, error } = await supabase
+            .from('checked_in_vehicles')
+            .select('*')
+            .eq('organization_id', orgId)
+          if (error) throw error
+          yardVehicles = toCamelList<any>(data)
           updateSnapshot()
-        })
-        const fleetQ = query(collection(db, 'vehicles'), where('organizationId', '==', orgId))
-        unsubFleet = onSnapshot(fleetQ, (snap: any) => {
-          fleetVehicles = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }))
+        }
+
+        // Initial fetch + re-fetch on any change to this org's fleet vehicles.
+        const refreshFleet = async () => {
+          const { data, error } = await supabase
+            .from('vehicles')
+            .select('*')
+            .eq('organization_id', orgId)
+          if (error) throw error
+          fleetVehicles = toCamelList<any>(data)
             .filter((v: any) => v.currentStatus !== 'defleeted' && !v.isDefleeted)
           updateSnapshot()
-        })
+        }
+
+        await Promise.all([refreshYard(), refreshFleet()])
+
+        const yardChannel = supabase
+          .channel(`checked_in_vehicles:${orgId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'checked_in_vehicles', filter: `organization_id=eq.${orgId}` },
+            () => { refreshYard() },
+          )
+          .subscribe()
+        unsubYard = () => { supabase.removeChannel(yardChannel) }
+
+        const fleetChannel = supabase
+          .channel(`vehicles:${orgId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'vehicles', filter: `organization_id=eq.${orgId}` },
+            () => { refreshFleet() },
+          )
+          .subscribe()
+        unsubFleet = () => { supabase.removeChannel(fleetChannel) }
       } catch (e) {
         logger.error('Snapshot load error:', e)
         setSnapshotLoading(false)
