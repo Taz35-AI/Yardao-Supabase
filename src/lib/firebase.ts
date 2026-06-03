@@ -1,11 +1,14 @@
-// src/lib/firebase.ts - FIXED: Added explicit auth persistence
-import { initializeApp } from 'firebase/app'
+// src/lib/firebase.ts
+// ⚠️ MIGRATION SHIM. The app now runs on Supabase; the Firebase keys are
+// intentionally absent in this isolated project. A few not-yet-ported modules
+// (voice/Groq/push — Phase 5) still import `auth`/`db` from here, so we keep the
+// exports but guard initialization: with no NEXT_PUBLIC_FIREBASE_* config we
+// export nulls instead of calling getAuth()/initializeFirestore(), which would
+// throw `auth/invalid-api-key` and crash SSR on every page. Delete this file
+// once the last Firebase importer is ported.
+import { initializeApp, getApps } from 'firebase/app'
 import { getAuth, browserLocalPersistence, setPersistence } from 'firebase/auth'
-import { 
-  getFirestore, 
-  initializeFirestore, 
-  persistentLocalCache
-} from 'firebase/firestore'
+import { initializeFirestore, persistentLocalCache } from 'firebase/firestore'
 import { logger } from '@/lib/logger'
 
 const firebaseConfig = {
@@ -17,25 +20,24 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 }
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig)
+const hasFirebaseConfig = !!firebaseConfig.apiKey
 
-// Initialize Firebase Auth with explicit persistence
-export const auth = getAuth(app)
+const app = hasFirebaseConfig
+  ? (getApps().length ? getApps()[0] : initializeApp(firebaseConfig))
+  : null
 
-// 🔥 FIX: Explicitly set auth persistence for production
-// This ensures auth state persists across page refreshes on Firebase Hosting
-if (typeof window !== 'undefined') {
+// Typed as any so the legacy importers compile unchanged; they are not exercised
+// on Supabase-backed paths.
+export const auth: any = hasFirebaseConfig ? getAuth(app as any) : null
+
+if (hasFirebaseConfig && typeof window !== 'undefined') {
   setPersistence(auth, browserLocalPersistence).catch((error) => {
     logger.error('Failed to set auth persistence:', error)
   })
 }
 
-// 🔥 PERFORMANCE OPTIMIZATION: Single-tab mode for better performance
-// This reduces CPU usage by 30-50% by eliminating cross-tab coordination
-// and reduces IndexedDB overhead significantly
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache()
-})
+export const db: any = hasFirebaseConfig
+  ? initializeFirestore(app as any, { localCache: persistentLocalCache() })
+  : null
 
 export default app
