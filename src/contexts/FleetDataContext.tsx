@@ -225,7 +225,7 @@ export function FleetDataProvider({ children }: { children: ReactNode }) {
 
   // Load data function - extracted for reuse
   const loadData = useCallback(
-    async (forceRefresh = false) => {
+    async (forceRefresh = false, silent = false) => {
       if (!user || !organizationId) {
         setVehicles([])
         setConditions([])
@@ -246,7 +246,9 @@ export function FleetDataProvider({ children }: { children: ReactNode }) {
         }
 
         logger.log('🔥 [useFleetData] Loading fleet data...')
-        setLoading(true)
+        // silent = Realtime-triggered refresh: update data WITHOUT flipping the
+        // loading flag, so the list doesn't flash its skeleton on every change.
+        if (!silent) setLoading(true)
         setError(null)
 
         // ✅ FIXED: Fetch ALL vehicles including defleeted
@@ -328,7 +330,7 @@ export function FleetDataProvider({ children }: { children: ReactNode }) {
         logger.error('❌ [useFleetData] Error loading fleet data:', err)
         setError(err instanceof Error ? err.message : 'Failed to load fleet data')
       } finally {
-        setLoading(false)
+        if (!silent) setLoading(false)
       }
     },
     [user, organizationId, isAppActive, deduplicateConditions, runDefleetMigration],
@@ -404,7 +406,7 @@ export function FleetDataProvider({ children }: { children: ReactNode }) {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'vehicles', filter: `organization_id=eq.${organizationId}` },
         () => {
-          loadDataRef.current(true)
+          loadDataRef.current(true, true) // silent: no loading flash on live updates
         },
       )
       .subscribe()
