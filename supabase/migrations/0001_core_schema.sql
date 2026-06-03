@@ -201,6 +201,10 @@ create table public.vehicles (
   defleet_reason_details  text,
   defleeted_by            uuid,
   defleeted_by_name       text,
+  -- restore-to-fleet attribution (reverses defleet)
+  restored_at             timestamptz,
+  restored_by             uuid,
+  restored_by_name        text,
   created_by              uuid,
   created_at              timestamptz not null default now(),
   updated_at              timestamptz,
@@ -220,7 +224,10 @@ create table public.checked_in_vehicles (
   organization_id             uuid not null references public.organizations(id) on delete cascade,
   vehicle_id                  uuid references public.vehicles(id) on delete set null,
   user_id                     uuid,
-  branch_id                   uuid references public.branches(id) on delete set null,
+  -- branch_id is TEXT, not a uuid FK: the app keys branches by a stable string
+  -- (branch uuid as string, or the 'main'/slug literal) and passes it through
+  -- unchanged. Modelling it as text preserves that behaviour with no churn.
+  branch_id                   text,
   registration                text not null,
   make                        text,
   model                       text,
@@ -248,9 +255,9 @@ create table public.checked_in_vehicles (
   contract_color              text,
   -- transfer / in-transit
   transfer_status             text check (transfer_status in ('in_transit','at_external_garage')),
-  source_branch_id            uuid,
+  source_branch_id            text,
   source_branch_name          text,
-  target_branch_id            uuid,
+  target_branch_id            text,
   target_branch_name          text,
   transfer_initiated_at       timestamptz,
   transfer_initiated_by       uuid,
@@ -328,7 +335,7 @@ create trigger yard_vehicles_set_updated_at before update on public.yard_vehicle
 create table public.yard_layouts (
   id              uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
-  branch_id       uuid not null references public.branches(id) on delete cascade,
+  branch_id       text not null,                          -- stable branch key (see checked_in_vehicles.branch_id)
   spaces          jsonb not null default '{}'::jsonb,   -- Record<coord, ParkingSpace>
   blocks          jsonb not null default '[]'::jsonb,    -- BuildingBlock[]
   updated_at      timestamptz,
@@ -390,9 +397,16 @@ create table public.service_bookings (
   customer_phone           text,
   customer_email           text,
   -- branch tracking
-  original_branch_id       uuid,
+  original_branch_id       text,
   original_branch_name     text,
   vehicle_removed_from_branch boolean,
+  -- vehicle lifecycle flags stamped when the booking's vehicle is defleeted/deleted
+  vehicle_defleeted        boolean,
+  vehicle_defleeted_at     timestamptz,
+  vehicle_defleeted_by     uuid,
+  vehicle_deleted          boolean,
+  vehicle_deleted_at       timestamptz,
+  vehicle_deleted_by       uuid,
   -- garage check-in / completion attribution
   checked_in_to_garage_at  timestamptz,
   checked_in_to_garage_by  uuid,
@@ -546,23 +560,49 @@ create table public.invoices (
 create index invoices_org_idx on public.invoices(organization_id);
 
 -- ============================================================================
--- checkout_history
+-- checkout_history  (matches checkoutHistoryService.CheckoutHistoryRecord — the
+-- branch-aware shape actually written by the app. Person/branch refs are TEXT
+-- because records legitimately carry non-uuid actors like 'system'/'Unknown'.)
 -- ============================================================================
 create table public.checkout_history (
-  id                  uuid primary key default gen_random_uuid(),
-  organization_id     uuid not null references public.organizations(id) on delete cascade,
-  vehicle_id          text,
-  registration        text not null,
-  make                text,
-  model               text,
-  condition           text,
-  status              text,
-  check_in_time       timestamptz,
-  check_out_time      timestamptz,
-  duration            numeric,                   -- hours
-  checked_out_by      uuid,
-  checked_out_by_name text,
-  notes               text,
-  audit_log           jsonb
+  id                          uuid primary key default gen_random_uuid(),
+  organization_id             uuid not null references public.organizations(id) on delete cascade,
+  -- vehicle snapshot
+  registration                text not null,
+  make                        text,
+  model                       text,
+  colour                      text,
+  size                        text,
+  condition                   text,
+  status                      text,
+  mileage                     text,
+  contract                    text,
+  contract_color              text,
+  insurance_status            text,
+  mot_expiry                  text,
+  tax_expiry                  text,
+  notes                       text,
+  comments                    text,
+  vehicle_id                  text,
+  -- branch tracking
+  original_branch_id          text,
+  original_branch_name        text,
+  -- checkout attribution
+  checked_out_date            timestamptz,
+  checked_out_by              text,
+  checked_out_by_name         text,
+  -- original check-in context
+  original_check_in_date      timestamptz,
+  original_checked_in_by      text,
+  original_checked_in_by_name text,
+  -- external garage context
+  is_external_garage_checkout boolean,
+  external_garage_name        text,
+  service_booking_id          text,
+  -- deletion/defleet context (spread in by enhancedVehicleService)
+  deletion_reason             text,
+  created_at                  timestamptz not null default now()
 );
-create index checkout_history_org_idx on public.checkout_history(organization_id);
+create index checkout_history_org_idx        on public.checkout_history(organization_id);
+create index checkout_history_org_reg_idx     on public.checkout_history(organization_id, registration);
+create index checkout_history_org_date_idx    on public.checkout_history(organization_id, checked_out_date desc);

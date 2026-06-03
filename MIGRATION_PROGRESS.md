@@ -78,15 +78,22 @@ keeping every function signature identical. Online-only. Fresh-start data.
   (auto-creates profile on signup) + `create_organization` SECURITY DEFINER RPC
   (atomic org create + admin join + seed conditions, RLS-safe before claim).
 
-### Phase 3b — remaining for the runnable slice (needs live project)
-- Re-implement `enhancedVehicleService`, `vehicleParkingService`,
-  `yardLayoutService` against Supabase (yard map data + occupancy).
+### Phase 3b — in progress
+Ported to Supabase (signatures identical, whole project `tsc --noEmit` → 0):
+- `vehicleParkingService` — park/unpark/force-move + self-healing occupancy
+  (SQL lookup by branch + space, replacing the client-side scan).
+- `yardLayoutService` — one row per branch, upsert on (org, branch).
+- `enhancedVehicleService` — defleet / restore / hard-delete + pre-flight checks.
+- `checkoutHistoryService` — branch-aware history (rich record shape).
+- Schema additions for these: `vehicles.restored_*`, `service_bookings`
+  vehicle_defleeted/deleted flags, `checkout_history` rebuilt to the rich shape,
+  and **branch refs modelled as `text`** (app keys branches by a stable string).
+
+Still to do for a runnable slice (needs live project):
 - Replace Firestore `onSnapshot` in `FleetDataContext` / `YardDataContext` with
   Supabase Realtime channels.
-- Add `vercel.json`, deploy, and verify in a Capacitor build.
-- ⚠️ Until the remaining services are ported, the app is split-brain (some paths
-  Supabase, some still Firestore) — don't run end-to-end until Phase 4 lands or
-  the slice's services are all swapped.
+- Add `vercel.json`, deploy, verify in a Capacitor build.
+- ⚠️ Still split-brain until the rest of Phase 4 lands — don't run end-to-end yet.
 
 ### Core tables drafted (Firestore collection → Postgres table)
 organizations, userProfiles→`profiles`, organizationSettings→`organization_settings`,
