@@ -35,6 +35,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext'
 import { useAppState } from '@/hooks/common/useAppState'
 import { Vehicle, vehicleService, userProfileService } from '@/lib/firestore'
+import { supabase } from '@/lib/supabaseClient'
 import { ConditionCategory, conditionService } from '@/lib/conditionService'
 import { contractService } from '@/lib/contractService'
 import { buildContractColorIndex, resolveVehicleContractColor } from '@/lib/contractUtils'
@@ -384,6 +385,33 @@ export function FleetDataProvider({ children }: { children: ReactNode }) {
       lastLoadTimeRef.current = 0
     }
   }, [organizationId])
+
+  // ── Realtime: keep Fleet live (Supabase Realtime, org-scoped) ──────────────
+  // Supabase isn't billed per read like Firestore, so the fleet can safely stay
+  // live. Any change to this org's `vehicles` re-runs the loader, so edits made
+  // elsewhere (e.g. an insurance change synced from the yard) show up without a
+  // manual refresh. One channel over the shared Realtime connection.
+  const loadDataRef = useRef(loadData)
+  useEffect(() => {
+    loadDataRef.current = loadData
+  }, [loadData])
+
+  useEffect(() => {
+    if (!user?.uid || !organizationId) return
+    const channel = supabase
+      .channel(`vehicles:${organizationId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'vehicles', filter: `organization_id=eq.${organizationId}` },
+        () => {
+          loadDataRef.current(true)
+        },
+      )
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user?.uid, organizationId])
 
   // Manual refresh function
   const refreshData = useCallback(async () => {
