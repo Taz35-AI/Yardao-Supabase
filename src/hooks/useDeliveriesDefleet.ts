@@ -177,7 +177,7 @@ export function useDeliveriesDefleetInternal(): UseDeliveriesDefleetReturn {
 
       // refetch on any change to this org's deliveries_defleet rows
       const channel = supabase
-        .channel(`deliveries_defleet:${orgId}`)
+        .channel(`deliveries_defleet:${orgId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
         .on(
           'postgres_changes',
           {

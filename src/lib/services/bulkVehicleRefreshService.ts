@@ -56,7 +56,7 @@ class BulkVehicleRefreshService {
   ): () => void {
     // Realtime subscription on this org's job row.
     const channel = supabase
-      .channel(`bulk_refresh_jobs:${organizationId}`)
+      .channel(`bulk_refresh_jobs:${organizationId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
       .on(
         'postgres_changes',
         {

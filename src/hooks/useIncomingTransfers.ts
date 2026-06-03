@@ -187,7 +187,7 @@ export function useIncomingTransfers({ branchId }: UseIncomingTransfersProps) {
 
       // refetch on any change to this org's checked_in_vehicles
       const channel = supabase
-        .channel(`incoming_transfers:${organizationId}:${branchId}`)
+        .channel(`incoming_transfers:${organizationId}:${branchId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
         .on(
           'postgres_changes',
           {

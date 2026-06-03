@@ -194,7 +194,7 @@ export function useYardLayout(branchId: string | null): UseYardLayoutResult {
     refresh()
 
     const channel = supabase
-      .channel(`yard_layouts:${org}:${branch}`)
+      .channel(`yard_layouts:${org}:${branch}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
       .on(
         'postgres_changes',
         {

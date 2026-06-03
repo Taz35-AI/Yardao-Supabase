@@ -114,7 +114,7 @@ export function useCustomers(): UseCustomersReturn {
     refresh()
 
     const channel = supabase
-      .channel(`customers:${org}`)
+      .channel(`customers:${org}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
       .on(
         'postgres_changes',
         {

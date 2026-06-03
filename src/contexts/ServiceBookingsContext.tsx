@@ -333,7 +333,7 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
 
       // refetch on any change to this org's service_bookings
       const channel = supabase
-        .channel(`service_bookings:${orgId}`)
+        .channel(`service_bookings:${orgId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
         .on(
           'postgres_changes',
           {

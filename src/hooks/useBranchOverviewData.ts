@@ -170,7 +170,7 @@ export function useBranchOverviewData() {
 
       // refetch on any change to this org's checked_in_vehicles
       const channel = supabase
-        .channel(`branch_overview:${organizationId}`)
+        .channel(`branch_overview:${organizationId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
         .on(
           'postgres_changes',
           {

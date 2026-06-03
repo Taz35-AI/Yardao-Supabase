@@ -354,7 +354,7 @@ export function useYardDataInternal(props?: UseYardDataProps) {
       refresh()
 
       const channel = supabase
-        .channel(`checked_in_vehicles:${orgId}:${listenBranchId}`)
+        .channel(`checked_in_vehicles:${orgId}:${listenBranchId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
         .on(
           'postgres_changes',
           {
