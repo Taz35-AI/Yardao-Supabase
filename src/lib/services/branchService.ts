@@ -139,7 +139,7 @@ export const branchService = {
     refresh()
 
     const channel = supabase
-      .channel(`branches:${organizationId}`)
+      .channel(`branches:${organizationId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
       .on(
         'postgres_changes',
         {
