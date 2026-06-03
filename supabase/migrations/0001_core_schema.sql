@@ -205,6 +205,7 @@ create table public.vehicles (
   restored_at             timestamptz,
   restored_by             uuid,
   restored_by_name        text,
+  last_edit_log           jsonb,                 -- audit of the last edit (edit modal / MOT-done / insurance)
   created_by              uuid,
   created_at              timestamptz not null default now(),
   updated_at              timestamptz,

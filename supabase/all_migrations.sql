@@ -211,6 +211,7 @@ create table public.vehicles (
   restored_at             timestamptz,
   restored_by             uuid,
   restored_by_name        text,
+  last_edit_log           jsonb,                 -- audit of the last edit (edit modal / MOT-done / insurance)
   created_by              uuid,
   created_at              timestamptz not null default now(),
   updated_at              timestamptz,
@@ -1608,5 +1609,16 @@ end;
 $$;
 
 grant execute on function public.create_organization(text, text) to authenticated;
+
+-- ===================== 0023_vehicles_last_edit_log.sql =====================
+-- ============================================================================
+-- 0023_vehicles_last_edit_log.sql
+-- The fleet update flows (edit modal, MOT-done via Zao, insurance changes)
+-- attach an audit `lastEditLog` to the vehicle, same as checked_in_vehicles.
+-- The vehicles table was missing the column, so those writes failed with
+-- PGRST204 ("Could not find the 'last_edit_log' column"). Add it.
+-- Idempotent.
+-- ============================================================================
+alter table public.vehicles add column if not exists last_edit_log jsonb;
 
 COMMIT;

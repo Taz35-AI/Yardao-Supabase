@@ -92,14 +92,24 @@ const YARD_VEHICLES = 'yard_vehicles'
 const PROFILES = 'profiles'
 const ORGANIZATIONS = 'organizations'
 
+// Postgres `date` columns reject empty strings ('' → 22007). The UI sometimes
+// sends '' to mean "cleared", so coerce those to null on write.
+const DATE_COLUMNS = ['mot_expiry', 'tax_expiry', 'insurance_policy_expiry', 'date_acquired', 'defleet_date']
+function nullEmptyDates(row: Record<string, any>): Record<string, any> {
+  for (const c of DATE_COLUMNS) {
+    if (row[c] === '') row[c] = null
+  }
+  return row
+}
+
 // ── vehicleService ───────────────────────────────────────────────────────────
 export const vehicleService = {
   async addVehicle(vehicle: Omit<Vehicle, 'id' | 'createdAt'>) {
-    const row = {
+    const row = nullEmptyDates({
       ...toSnake(vehicle),
       current_status: 'in_fleet',
       date_acquired: vehicle.dateAcquired ?? null,
-    }
+    })
     const { data, error } = await supabase.from(VEHICLES).insert(row).select().single()
     if (error) throw error
     return toCamel<Vehicle>(data) as Vehicle
@@ -183,7 +193,7 @@ export const vehicleService = {
         Object.fromEntries(Object.entries(pin).filter(([, v]) => v !== undefined))
       )
     }
-    const { error } = await supabase.from(VEHICLES).update(toSnake(cleaned)).eq('id', vehicleId)
+    const { error } = await supabase.from(VEHICLES).update(nullEmptyDates(toSnake(cleaned))).eq('id', vehicleId)
     if (error) throw error
   },
 
