@@ -287,19 +287,11 @@ function LinkedPartsSection({ registration, organizationId }: { registration: st
     fetchLinkedParts()
   }, [registration, organizationId])
 
-  if (loading) {
-    return (
-      <div className="mt-4">
-        <SectionTitle>{t('vehDetail.allocatedParts')}</SectionTitle>
-        <div className="flex items-center gap-2 text-xs text-[#8a9e94]">
-          <div className="w-3 h-3 border border-[#025940]/30 border-t-[#025940] rounded-full animate-spin" />
-          {t('vehDetail.loading')}
-        </div>
-      </div>
-    )
-  }
-
-  if (parts.length === 0) return null
+  // Render nothing while loading, and nothing when there are no linked parts.
+  // (Previously it showed a spinner block on open that then collapsed/grew when
+  // the fetch resolved — the height jump that looked like a "shake". The modal
+  // now opens at its natural height; the section only appears if parts exist.)
+  if (loading || parts.length === 0) return null
 
   return (
     <div className="mt-4">
