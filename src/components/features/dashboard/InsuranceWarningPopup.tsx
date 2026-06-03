@@ -10,8 +10,8 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { ShieldAlert, X, AlertTriangle, Download, Loader2, MapPin } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
-import { collection, query, where, getDocs } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { branchService } from '@/lib/services/branchService'
+import { supabase } from '@/lib/supabaseClient'
 import { isVehicleNotInsured } from '@/lib/insuranceUtils'
 import * as XLSX from 'xlsx'
 import { logger } from '@/lib/logger'
@@ -126,31 +126,29 @@ export function InsuranceWarningPopup({ vehicles: _legacy, fleetVehicles: _fleet
         if (!orgId) return
 
         // 2. Get all branches so we can label vehicles with branch names
-        const branchSnap = await getDocs(
-          query(collection(db, 'branches'), where('organizationId', '==', orgId), where('isActive', '==', true))
-        )
+        const branches = await branchService.getBranches(orgId)
         const branchMap: Record<string, string> = { main: t('dashboard.insurance.mainBranch') }
-        branchSnap.forEach(doc => {
-          const d = doc.data()
-          branchMap[d.slug] = d.name
+        branches.forEach(b => {
+          branchMap[b.slug] = b.name
         })
 
-        // 3. Get ALL checkedInVehicles for the org (not filtered by branchId)
-        const vehicleSnap = await getDocs(
-          query(collection(db, 'checkedInVehicles'), where('organizationId', '==', orgId))
-        )
+        // 3. Get ALL checked_in_vehicles for the org (not filtered by branchId)
+        const { data: rows, error: vehErr } = await supabase
+          .from('checked_in_vehicles')
+          .select('id, registration, make, model, insurance_status, branch_id')
+          .eq('organization_id', orgId)
+        if (vehErr) throw vehErr
 
         const uninsured: UninsuredVehicle[] = []
-        vehicleSnap.forEach(doc => {
-          const d = doc.data()
-          if (isVehicleNotInsured(d.insuranceStatus)) {
-            const branchId = d.branchId || 'main'
+        ;(rows ?? []).forEach(d => {
+          if (isVehicleNotInsured(d.insurance_status)) {
+            const branchId = d.branch_id || 'main'
             uninsured.push({
-              id:              doc.id,
+              id:              d.id,
               registration:    d.registration  || '',
               make:            d.make          || '',
               model:           d.model         || '',
-              insuranceStatus: d.insuranceStatus || null,
+              insuranceStatus: d.insurance_status || null,
               branchId,
               branchName:      branchMap[branchId] || branchId,
             })

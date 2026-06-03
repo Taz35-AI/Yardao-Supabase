@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Search, Calendar, TrendingUp, Clock, User, FileText, PoundSterling, Shield, Wrench, TrendingDown } from 'lucide-react'
-import { Timestamp, collection, query, where, getDocs } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { vehicleService } from '@/lib/firestore'
 import { HireHistoryService } from '@/lib/services/hireHistoryService'
 import { HireHistoryQueryResult } from '@/types/hireHistory'
 import { logger } from '@/lib/logger'
@@ -44,21 +43,17 @@ export default function VehicleHireLookup({ organizationId }: VehicleHireLookupP
       
       if (selectedPeriod === 'sinceAcquired') {
         // Fetch vehicle from fleet to get dateAcquired
-        const vehiclesRef = collection(db, 'vehicles')
-        const q = query(
-          vehiclesRef,
-          where('organizationId', '==', organizationId),
-          where('registration', '==', registration.toUpperCase())
+        const vehicleData = await vehicleService.getVehicleByRegistration(
+          organizationId,
+          registration.toUpperCase()
         )
-        const snapshot = await getDocs(q)
-        
-        if (snapshot.empty) {
+
+        if (!vehicleData) {
           throw new Error(t('dashboard.hireLookup.errNotFound', { reg: registration }))
         }
-        
-        const vehicleData = snapshot.docs[0].data()
+
         const dateAcquired = vehicleData.dateAcquired
-        
+
         if (!dateAcquired) {
           throw new Error(t('dashboard.hireLookup.errNoDateAcquired', { reg: registration }))
         }
@@ -96,17 +91,21 @@ export default function VehicleHireLookup({ organizationId }: VehicleHireLookupP
     }
   }
 
-  const formatDate = (date: Date | Timestamp | string | null | undefined): string => {
+  const formatDate = (date: Date | string | null | undefined | any): string => {
     if (!date) return t('dashboard.hireLookup.datePresent')
-    
+
     try {
       let dateObj: Date
-      if (date instanceof Timestamp) {
-        dateObj = date.toDate()
-      } else if (typeof date === 'string') {
+      // Supabase returns ISO strings; hireHistoryService revives them into Dates.
+      // Fall back to Date coercion for anything else (e.g. legacy Timestamp-like).
+      if (typeof date === 'string') {
         dateObj = new Date(date)
-      } else {
+      } else if (date instanceof Date) {
         dateObj = date
+      } else if (date && typeof date.toDate === 'function') {
+        dateObj = date.toDate()
+      } else {
+        dateObj = new Date(date)
       }
       
       return dateObj.toLocaleDateString('en-GB', { 

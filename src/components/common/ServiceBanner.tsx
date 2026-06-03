@@ -41,8 +41,8 @@ import { useDeliveriesDefleet } from '@/contexts/DeliveriesDefleetContext'
 import { useFleetData } from '@/hooks/useFleetData'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
-import { collection, query, where, getDocs } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
+import { branchService } from '@/lib/services/branchService'
 import { isVehicleNotInsured } from '@/lib/insuranceUtils'
 import * as XLSX from 'xlsx'
 import { logger } from '@/lib/logger'
@@ -279,45 +279,45 @@ function ServiceBannerComponent() {
         const orgId = profile?.organizationId
         if (!orgId) return
 
-        const branchSnap = await getDocs(
-          query(collection(db, 'branches'), where('organizationId', '==', orgId), where('isActive', '==', true))
-        )
+        const branches = await branchService.getBranches(orgId)
         const branchMap: Record<string, string> = { main: 'Main Branch' }
-        branchSnap.forEach(doc => {
-          const d = doc.data()
-          branchMap[d.slug] = d.name
+        branches.forEach(b => {
+          branchMap[b.slug] = b.name
         })
 
         // Step 1: Get ALL fleet vehicles — master source of truth for insurance
-        const fleetSnap = await getDocs(
-          query(collection(db, 'vehicles'), where('organizationId', '==', orgId))
-        )
+        // (raw query — must include defleeted so they can be filtered out below)
+        const { data: fleetRows, error: fleetError } = await supabase
+          .from('vehicles')
+          .select('*')
+          .eq('organization_id', orgId)
+        if (fleetError) throw fleetError
 
         // Step 2: Get all checked-in vehicles to know which branch each vehicle is at
-        const yardSnap = await getDocs(
-          query(collection(db, 'checkedInVehicles'), where('organizationId', '==', orgId))
-        )
+        const { data: yardRows, error: yardError } = await supabase
+          .from('checked_in_vehicles')
+          .select('*')
+          .eq('organization_id', orgId)
+        if (yardError) throw yardError
 
         // Build a reg → branchId lookup from yard
         const regToBranch: Record<string, string> = {}
-        yardSnap.forEach(doc => {
-          const d = doc.data()
+        ;(yardRows ?? []).forEach(d => {
           const reg = (d.registration || '').toUpperCase().replace(/\s+/g, '')
-          if (reg) regToBranch[reg] = d.branchId || 'main'
+          if (reg) regToBranch[reg] = d.branch_id || 'main'
         })
 
         // Step 3: Find uninsured fleet vehicles, attach branch
         const uninsured: UninsuredVehicle[] = []
-        fleetSnap.forEach(doc => {
-          const d = doc.data()
-          if (d.isDefleeted === true || d.currentStatus === 'defleeted') return
-          if (!isVehicleNotInsured(d.insuranceStatus)) return
+        ;(fleetRows ?? []).forEach(d => {
+          if (d.is_defleeted === true || d.current_status === 'defleeted') return
+          if (!isVehicleNotInsured(d.insurance_status)) return
 
           const reg = (d.registration || '').toUpperCase().replace(/\s+/g, '')
-          const branchId = regToBranch[reg] || d.currentLocation || d.lastKnownLocation || 'main'
+          const branchId = regToBranch[reg] || d.current_location || d.last_known_location || 'main'
 
           uninsured.push({
-            id: doc.id,
+            id: d.id,
             registration: d.registration || '',
             make: d.make || '',
             model: d.model || '',

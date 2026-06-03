@@ -42,9 +42,8 @@ import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
 import { DamageMapper } from '@/components/common/DamageMapper/DamageMapper'
 import type { DamagePin, VehicleDiagramType } from '@/components/common/DamageMapper/DamageMapper'
-import { collection, query, where, getDocs } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
 import { userProfileService } from '@/lib/firestore'
+import { stockService } from '@/lib/services/stockService'
 import { useAuth } from '@/contexts/AuthContext'
 import type { StockPart } from '@/types/stock'
 
@@ -259,23 +258,17 @@ function LinkedPartsSection({ registration, organizationId }: { registration: st
         // Clean reg for consistent matching — stored formats may vary
         const cleanReg = registration.toUpperCase().replace(/\s+/g, '')
 
-        const snap = await getDocs(query(
-          collection(db, 'stockParts'),
-          where('organizationId', '==', organizationId),
-          where('linkedRegistration', '==', registration) // try exact first
-        ))
+        // Fetch all parts for the org once, then mirror the original two-pass
+        // match: exact linkedRegistration first, fuzzy (space-insensitive,
+        // one-off only) as a fallback.
+        const allParts = await stockService.getParts(organizationId)
 
-        const results = snap.docs.map(d => ({ id: d.id, ...d.data() } as StockPart))
+        const results = allParts.filter(p => p.linkedRegistration === registration)
 
         // If no exact match, try without spaces (handles formatting differences)
         if (results.length === 0) {
-          const allSnap = await getDocs(query(
-            collection(db, 'stockParts'),
-            where('organizationId', '==', organizationId),
-            where('isOneOff', '==', true)
-          ))
-          const fuzzy = allSnap.docs
-            .map(d => ({ id: d.id, ...d.data() } as StockPart))
+          const fuzzy = allParts
+            .filter(p => p.isOneOff === true)
             .filter(p => {
               const storedReg = (p.linkedRegistration || '').toUpperCase().replace(/\s+/g, '')
               return storedReg === cleanReg

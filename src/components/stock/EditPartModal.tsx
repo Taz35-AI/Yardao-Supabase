@@ -17,8 +17,7 @@ import { toast } from 'sonner'
 import { StockPart } from '@/types/stock'
 import { AdjustStockModal } from './AdjustStockModal'
 import { logger } from '@/lib/logger'
-import { collection, query, where, getDocs } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
 import { useT } from '@/lib/i18n'
 
 interface EditPartModalProps {
@@ -135,29 +134,29 @@ export function EditPartModal({ isOpen, onClose, onSuccess, part }: EditPartModa
       try {
         const results: Array<{ id: string; registration: string; make?: string; model?: string; source: string }> = []
 
-        const fleetSnap = await getDocs(query(
-          collection(db, 'vehicles'),
-          where('organizationId', '==', organizationId)
-        ))
-        fleetSnap.forEach(d => {
-          const data = d.data()
-          const reg = (data.registration || '').toUpperCase().replace(/\s+/g, '')
+        const { data: fleetData, error: fleetError } = await supabase
+          .from('vehicles')
+          .select('id, registration, make, model')
+          .eq('organization_id', organizationId)
+        if (fleetError) throw fleetError
+        ;(fleetData ?? []).forEach(d => {
+          const reg = (d.registration || '').toUpperCase().replace(/\s+/g, '')
           if (reg.includes(trimmed)) {
-            results.push({ id: d.id, registration: data.registration, make: data.make, model: data.model, source: 'fleet' })
+            results.push({ id: d.id, registration: d.registration, make: d.make, model: d.model, source: 'fleet' })
           }
         })
 
-        const yardSnap = await getDocs(query(
-          collection(db, 'checkedInVehicles'),
-          where('organizationId', '==', organizationId)
-        ))
-        yardSnap.forEach(d => {
-          const data = d.data()
-          const reg = (data.registration || '').toUpperCase().replace(/\s+/g, '')
+        const { data: yardData, error: yardError } = await supabase
+          .from('checked_in_vehicles')
+          .select('id, registration, make, model')
+          .eq('organization_id', organizationId)
+        if (yardError) throw yardError
+        ;(yardData ?? []).forEach(d => {
+          const reg = (d.registration || '').toUpperCase().replace(/\s+/g, '')
           if (reg.includes(trimmed)) {
             const already = results.some(r => r.registration?.toUpperCase().replace(/\s+/g, '') === reg)
             if (!already) {
-              results.push({ id: d.id, registration: data.registration, make: data.make, model: data.model, source: 'yard' })
+              results.push({ id: d.id, registration: d.registration, make: d.make, model: d.model, source: 'yard' })
             }
           }
         })

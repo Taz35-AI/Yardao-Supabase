@@ -6,9 +6,7 @@
 import React, { useState, useEffect } from 'react'
 import { Trash2, AlertTriangle, CheckCircle, ArrowLeft, Database } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
-import { userProfileService } from '@/lib/firestore'
-import { collection, getDocs, deleteDoc, doc, query, where } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { userProfileService, conditionService } from '@/lib/firestore'
 import { useRouter } from 'next/navigation'
 
 interface CleanupResult {
@@ -60,26 +58,21 @@ export default function CleanupConditionsPage() {
     setPreview(null)
 
     try {
-      const q = query(
-        collection(db, 'conditionCategories'),
-        where('organizationId', '==', organizationId)
-      )
-      const snapshot = await getDocs(q)
+      const records = await conditionService.getConditions(organizationId)
 
       const groups = new Map<string, Array<{ id: string; name: string; createdAt: string }>>()
 
-      snapshot.docs.forEach(docSnap => {
-        const data = docSnap.data()
-        const normalizedName = data.name.trim().toLowerCase()
+      records.forEach((record: any) => {
+        const normalizedName = record.name.trim().toLowerCase()
 
         if (!groups.has(normalizedName)) {
           groups.set(normalizedName, [])
         }
 
         groups.get(normalizedName)!.push({
-          id: docSnap.id,
-          name: data.name,
-          createdAt: data.createdAt || new Date().toISOString()
+          id: record.id,
+          name: record.name,
+          createdAt: record.createdAt || new Date().toISOString()
         })
       })
 
@@ -108,10 +101,10 @@ export default function CleanupConditionsPage() {
 
       setPreview({
         success: true,
-        totalRecords: snapshot.docs.length,
+        totalRecords: records.length,
         uniqueConditions: groups.size,
         duplicatesRemoved: duplicateCount,
-        finalCount: snapshot.docs.length - duplicateCount,
+        finalCount: records.length - duplicateCount,
         details
       })
 
@@ -134,7 +127,7 @@ export default function CleanupConditionsPage() {
 
     const confirmed = window.confirm(
       '⚠️ FINAL CONFIRMATION\n\n' +
-      'This will permanently delete duplicate condition records from Firestore.\n\n' +
+      'This will permanently delete duplicate condition records from the database.\n\n' +
       'This action CANNOT be undone.\n\n' +
       'Continue?'
     )
@@ -145,26 +138,21 @@ export default function CleanupConditionsPage() {
     setResult(null)
 
     try {
-      const q = query(
-        collection(db, 'conditionCategories'),
-        where('organizationId', '==', organizationId)
-      )
-      const snapshot = await getDocs(q)
+      const records = await conditionService.getConditions(organizationId)
 
       const groups = new Map<string, Array<{ id: string; name: string; createdAt: string }>>()
 
-      snapshot.docs.forEach(docSnap => {
-        const data = docSnap.data()
-        const normalizedName = data.name.trim().toLowerCase()
+      records.forEach((record: any) => {
+        const normalizedName = record.name.trim().toLowerCase()
 
         if (!groups.has(normalizedName)) {
           groups.set(normalizedName, [])
         }
 
         groups.get(normalizedName)!.push({
-          id: docSnap.id,
-          name: data.name,
-          createdAt: data.createdAt || new Date().toISOString()
+          id: record.id,
+          name: record.name,
+          createdAt: record.createdAt || new Date().toISOString()
         })
       })
 
@@ -180,7 +168,7 @@ export default function CleanupConditionsPage() {
           const [keep, ...toDelete] = conditions
 
           for (const duplicate of toDelete) {
-            await deleteDoc(doc(db, 'conditionCategories', duplicate.id))
+            await conditionService.deleteCondition(duplicate.id)
             deletedCount++
           }
 
@@ -195,10 +183,10 @@ export default function CleanupConditionsPage() {
 
       setResult({
         success: true,
-        totalRecords: snapshot.docs.length,
+        totalRecords: records.length,
         uniqueConditions: groups.size,
         duplicatesRemoved: deletedCount,
-        finalCount: snapshot.docs.length - deletedCount,
+        finalCount: records.length - deletedCount,
         details
       })
 
@@ -253,7 +241,7 @@ export default function CleanupConditionsPage() {
             </h1>
           </div>
           <p className="text-gray-600 dark:text-gray-400">
-            Remove duplicate condition records from your Firestore database
+            Remove duplicate condition records from your database
           </p>
         </div>
 

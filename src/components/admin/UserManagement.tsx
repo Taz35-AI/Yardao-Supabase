@@ -4,9 +4,7 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
-import { createUserWithEmailAndPassword } from 'firebase/auth'
-import { initializeApp } from 'firebase/app'
-import { getAuth } from 'firebase/auth'
+import { supabase } from '@/lib/supabaseClient'
 import { UserProfile, isUserActive, isUserDeleted } from '@/types'
 import { formatLastLogin } from '@/utils/dateUtils'
 import {
@@ -51,24 +49,6 @@ function UserManagement() {
     temporaryPassword: string
     role: 'member' | 'mechanic'
   }>({ email: '', displayName: '', temporaryPassword: '', role: 'member' })
-
-  const createSecondaryAuth = () => {
-    const firebaseConfig = {
-      apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-      authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-      projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-      storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-      messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-      appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-    }
-    try {
-      const secondaryApp = initializeApp(firebaseConfig, 'secondary')
-      return getAuth(secondaryApp)
-    } catch (error) {
-      logger.error('Error creating secondary auth:', error)
-      return null
-    }
-  }
 
   useEffect(() => {
     if (success && !success.includes('User created successfully')) {
@@ -249,17 +229,28 @@ function UserManagement() {
     setSuccess('')
 
     try {
-      const secondaryAuth = createSecondaryAuth()
-      if (!secondaryAuth) throw new Error('Failed to initialize secondary authentication')
+      // Supabase cannot create auth users from the client without the
+      // service-role key, so creating the new account (without logging the
+      // current admin out — the old Firebase "secondary app" trick) is done by
+      // a privileged Edge Function that runs with the service role.
+      // TODO(phase5): admin-create-user edge function (service role) not deployed yet
+      const { data: createResult, error: createError } = await supabase.functions.invoke('admin-create-user', {
+        body: {
+          email: newUser.email.trim(),
+          displayName: newUser.displayName.trim(),
+          temporaryPassword: newUser.temporaryPassword,
+          organizationId: userProfile.organizationId,
+          organizationName: userProfile.organizationName || '',
+          createdBy: user!.uid,
+        },
+      })
+      if (createError) throw createError
 
-      const userCredential = await createUserWithEmailAndPassword(
-        secondaryAuth, newUser.email.trim(), newUser.temporaryPassword
-      )
-      const createdUser = userCredential.user
-      await userProfileService.updateUserDisplayName(createdUser, newUser.displayName.trim())
+      const createdUid = (createResult as any)?.uid ?? (createResult as any)?.id ?? (createResult as any)?.user?.id
+      if (!createdUid) throw new Error('Failed to create user')
 
       const newUserProfile = {
-        uid: createdUser.uid,
+        uid: createdUid,
         displayName: newUser.displayName.trim(),
         email: newUser.email.trim(),
         organizationId: userProfile.organizationId,

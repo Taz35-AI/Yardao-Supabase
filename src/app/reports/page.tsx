@@ -8,16 +8,9 @@
 
 import { useEffect, useState, Suspense, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import {
-  collection,
-  query,
-  where,
-  doc,
-  getDoc,
-  getDocs,
-  getCountFromServer,
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
+import { userProfileService } from '@/lib/firestore'
+import { toCamelList } from '@/lib/dbMap'
 import { CheckedInVehicle } from '@/types'
 import { Navigation } from '@/components/Navigation'
 import VehicleHireLookup from '@/components/dashboard/VehicleHireLookup'
@@ -92,25 +85,29 @@ function AnalyticsDashboardContent() {
       return
     }
     try {
-      const baseQ = query(collection(db, 'vehicles'), where('organizationId', '==', orgId))
-      const totalSnap = await getCountFromServer(baseQ)
-      const total = totalSnap.data().count
+      // Total fleet size — head:true returns only the count, no rows (cheap).
+      const { count: totalCount, error: totalError } = await supabase
+        .from('vehicles')
+        .select('*', { count: 'exact', head: true })
+        .eq('organization_id', orgId)
+      if (totalError) throw totalError
+      const total = totalCount ?? 0
 
       // Subtract defleeted. Defleet always writes both `currentStatus` and
       // `isDefleeted` together (see useFleetActions, useFleetData,
       // enhancedVehicleService) so a single field is enough.
       let defleeted = 0
       try {
-        const defleetedQ = query(
-          collection(db, 'vehicles'),
-          where('organizationId', '==', orgId),
-          where('currentStatus', '==', 'defleeted'),
-        )
-        const defleetedSnap = await getCountFromServer(defleetedQ)
-        defleeted = defleetedSnap.data().count
+        const { count: defleetedCount, error: defleetedError } = await supabase
+          .from('vehicles')
+          .select('*', { count: 'exact', head: true })
+          .eq('organization_id', orgId)
+          .eq('current_status', 'defleeted')
+        if (defleetedError) throw defleetedError
+        defleeted = defleetedCount ?? 0
       } catch (err) {
-        // Composite index (organizationId + currentStatus) may not be deployed
-        // yet — fall back to total. Slight overcount until the index is live.
+        // Defleeted count query failed — fall back to total. Slight overcount
+        // until the issue clears.
         logger.error('Defleeted count query failed, falling back to total:', err)
       }
 
@@ -133,15 +130,12 @@ function AnalyticsDashboardContent() {
       return
     }
     try {
-      const yardQuery = query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', orgId),
-      )
-      const snap = await getDocs(yardQuery)
-      const data: CheckedInVehicle[] = snap.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-      } as CheckedInVehicle))
+      const { data: rows, error } = await supabase
+        .from('checked_in_vehicles')
+        .select('*')
+        .eq('organization_id', orgId)
+      if (error) throw error
+      const data = toCamelList<CheckedInVehicle>(rows)
       setYardVehicles(data)
       writeCache(key, { vehicles: data, ts: Date.now() } as CachedYard)
     } catch (err) {
@@ -167,13 +161,13 @@ function AnalyticsDashboardContent() {
         let orgId = readCache<{ orgId: string }>(orgKey)?.orgId
 
         if (!orgId) {
-          const userDocSnap = await getDoc(doc(db, 'userProfiles', user.uid))
-          if (!userDocSnap.exists()) {
+          const profile = await userProfileService.getProfile(user.uid)
+          if (!profile) {
             logger.error('User profile not found')
             if (!cancelled) setLoading(false)
             return
           }
-          orgId = userDocSnap.data().organizationId
+          orgId = profile.organizationId
           if (!orgId) {
             logger.error('No organization ID found')
             if (!cancelled) setLoading(false)

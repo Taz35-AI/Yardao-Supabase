@@ -11,8 +11,7 @@ import { X, Package, Zap, Search, Tag, TrendingUp, Box, Sparkles, Link, Car } fr
 import { stockService } from '@/lib/services/stockService'
 import { userProfileService, settingsService } from '@/lib/firestore'
 import { useAuth } from '@/contexts/AuthContext'
-import { collection, query, where, getDocs } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import { useT, useLang } from '@/lib/i18n'
@@ -337,32 +336,32 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
         const results: VehicleSuggestion[] = []
 
         // Search fleet vehicles
-        const fleetSnap = await getDocs(query(
-          collection(db, 'vehicles'),
-          where('organizationId', '==', organizationId)
-        ))
-        fleetSnap.forEach(d => {
-          const data = d.data()
-          const reg = (data.registration || '').toUpperCase().replace(/\s+/g, '')
+        const { data: fleetData, error: fleetError } = await supabase
+          .from('vehicles')
+          .select('id, registration, make, model')
+          .eq('organization_id', organizationId)
+        if (fleetError) throw fleetError
+        ;(fleetData ?? []).forEach(d => {
+          const reg = (d.registration || '').toUpperCase().replace(/\s+/g, '')
           if (reg.includes(trimmed)) {
             results.push({
               id: d.id,
-              registration: data.registration,
-              make: data.make,
-              model: data.model,
+              registration: d.registration,
+              make: d.make,
+              model: d.model,
               source: 'fleet'
             })
           }
         })
 
         // Search checked-in yard vehicles (avoid duplicates)
-        const yardSnap = await getDocs(query(
-          collection(db, 'checkedInVehicles'),
-          where('organizationId', '==', organizationId)
-        ))
-        yardSnap.forEach(d => {
-          const data = d.data()
-          const reg = (data.registration || '').toUpperCase().replace(/\s+/g, '')
+        const { data: yardData, error: yardError } = await supabase
+          .from('checked_in_vehicles')
+          .select('id, registration, make, model')
+          .eq('organization_id', organizationId)
+        if (yardError) throw yardError
+        ;(yardData ?? []).forEach(d => {
+          const reg = (d.registration || '').toUpperCase().replace(/\s+/g, '')
           if (reg.includes(trimmed)) {
             // Only add if not already in results from fleet
             const alreadyAdded = results.some(r =>
@@ -371,9 +370,9 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
             if (!alreadyAdded) {
               results.push({
                 id: d.id,
-                registration: data.registration,
-                make: data.make,
-                model: data.model,
+                registration: d.registration,
+                make: d.make,
+                model: d.model,
                 source: 'yard'
               })
             }

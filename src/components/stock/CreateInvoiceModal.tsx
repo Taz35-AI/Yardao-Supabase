@@ -13,8 +13,8 @@ import { toast } from 'sonner'
 import { Vehicle } from '@/types'
 import { PartUsageRecord, LABOUR_PRESETS, DEFAULT_LABOUR_RATE, InvoicePart, LabourLine } from '@/types/stock'
 import { logger } from '@/lib/logger'
-import { collection, query, where, getDocs } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
+import { toCamelList } from '@/lib/dbMap'
 import { getEffectiveSlotCount } from '@/utils/serviceBookings/slotHelpers'
 import { useT } from '@/lib/i18n'
 
@@ -100,30 +100,34 @@ export function CreateInvoiceModal({ isOpen, onClose, onSuccess }: CreateInvoice
 
   try {
     // Find any bodyshop jobs for this vehicle registration
-    const jobsSnap = await getDocs(
-      query(
-        collection(db, 'bodyshopJobs'),
-        where('organizationId', '==', organizationId),
-        where('vehicleRegistration', '==', selectedVehicle.registration)
-      )
-    )
+    const { data: jobsData, error: jobsError } = await supabase
+      .from('bodyshop_jobs')
+      .select('id')
+      .eq('organization_id', organizationId)
+      .eq('vehicle_registration', selectedVehicle.registration)
+    if (jobsError) throw jobsError
 
-    if (jobsSnap.empty) return
+    if (!jobsData || jobsData.length === 0) return
 
-    // Sum up hours per stage across all jobs
+    // Sum up hours per stage across all jobs. The timeEntries sub-collection
+    // is now the org-scoped bodyshop_time_entries table (re-parented via
+    // job_id), so a single query over this reg's jobs replaces the per-job
+    // sub-collection reads.
     const stageHourTotals: Record<string, number> = {}
 
-    for (const jobDoc of jobsSnap.docs) {
-      const logsSnap = await getDocs(
-        collection(db, 'bodyshopJobs', jobDoc.id, 'timeEntries')
-      )
-      logsSnap.docs.forEach(logDoc => {
-        const log = logDoc.data()
-        const stage: string = log.stage || 'bodyshop'
-        const hours: number = log.hours || 0
-        stageHourTotals[stage] = (stageHourTotals[stage] || 0) + hours
-      })
-    }
+    const jobIds = jobsData.map(j => j.id as string)
+    const { data: logsData, error: logsError } = await supabase
+      .from('bodyshop_time_entries')
+      .select('stage, hours')
+      .eq('organization_id', organizationId)
+      .in('job_id', jobIds)
+    if (logsError) throw logsError
+
+    ;(logsData ?? []).forEach(log => {
+      const stage: string = log.stage || 'bodyshop'
+      const hours: number = log.hours || 0
+      stageHourTotals[stage] = (stageHourTotals[stage] || 0) + hours
+    })
 
     // Convert to labour lines
     const stageLabels: Record<string, string> = {
@@ -179,15 +183,19 @@ const loadServiceBookingHoursAndCustomer = async () => {
     tenDaysAgo.setDate(tenDaysAgo.getDate() - 10)
     const tenDaysAgoStr = tenDaysAgo.toISOString().split('T')[0] // YYYY-MM-DD
 
-    const snap = await getDocs(
-      query(
-        collection(db, 'serviceBookings'),
-        where('organizationId', '==', organizationId),
-        where('registration', '==', selectedVehicle.registration),
-        where('date', '>=', tenDaysAgoStr),
-      ),
-    )
-    if (snap.empty) return
+    const { data: bookingsData, error: bookingsError } = await supabase
+      .from('service_bookings')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .eq('registration', selectedVehicle.registration)
+      .gte('date', tenDaysAgoStr)
+    if (bookingsError) throw bookingsError
+    if (!bookingsData || bookingsData.length === 0) return
+
+    // Map snake→camel so downstream field access (timeSlot, slotCount,
+    // isExternalProvider, workRequired, customerName, …) is unchanged; the
+    // jsonb work_required passes through verbatim per dbMap.
+    const bookings = toCamelList<any>(bookingsData)
 
     // Aggregate hours per work-type. Cancelled bookings + scheduled-only
     // bookings (no work yet) + external-provider bookings (work didn't
@@ -198,8 +206,7 @@ const loadServiceBookingHoursAndCustomer = async () => {
     // (non-fleet) vehicle's make/model on the invoice so it isn't blank.
     let latestVehicleInfo: { date: string; make: string; model: string } | null = null
 
-    snap.docs.forEach((d) => {
-      const b = d.data() as any
+    bookings.forEach((b: any) => {
       const status = b.status as string | undefined
       if (status === 'cancelled' || status === 'scheduled') return
       if (b.isExternalProvider) return

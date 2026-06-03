@@ -4,26 +4,15 @@
 
 import { useState, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { userProfileService } from '@/lib/firestore'
+import { userProfileService, vehicleService } from '@/lib/firestore'
 import { ContractSyncService } from '@/services/contractSyncService'
 import { InsuranceSyncService } from '@/services/insuranceSyncService'
 import { ConditionSyncService } from '@/services/conditionSyncService'
 import { BulkInsuranceService } from '@/services/bulkInsuranceService'
 import { enhancedVehicleService } from '@/lib/services/enhancedVehicleService' // ✅ ADDED: Import defleet service
+import { supabase } from '@/lib/supabaseClient'
 import { InsuranceStatus, FleetVehicle, DefleetReason } from '@/types' // ✅ ADDED: DefleetReason
 import { DamageSyncService } from '@/services/damageSyncService'
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs,
-  writeBatch,
-  doc,
-  deleteDoc,
-  updateDoc,
-  serverTimestamp
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
 import { logger } from '@/lib/logger'
 
 // Import the SyncNotification type from the component file
@@ -106,32 +95,20 @@ export function useFleetActions(fleetData: FleetDataHook | any) {
     try {
       const userProfile = await userProfileService.getProfile(user.uid)
       if (!userProfile?.organizationId || !registration) return false
-      
-      // Clean the registration for comparison
-      const cleanReg = registration.trim().toUpperCase().replace(/\s+/g, '')
-      
-      // Query for existing vehicles with the same registration
-      const vehiclesQuery = query(
-        collection(db, 'vehicles'),
-        where('organizationId', '==', userProfile.organizationId)
+
+      // Look up an existing vehicle by (cleaned) registration. The service
+      // normalises the reg the same way the original loop did.
+      const existing = await vehicleService.getVehicleByRegistration(
+        userProfile.organizationId,
+        registration
       )
-      
-      const snapshot = await getDocs(vehiclesQuery)
-      
-      // Check each vehicle's registration
-      for (const doc of snapshot.docs) {
-        // Skip if we're checking for update (exclude current vehicle)
-        if (excludeId && doc.id === excludeId) continue
-        
-        const vehicleData = doc.data()
-        const existingReg = (vehicleData.registration || '').toUpperCase().replace(/\s+/g, '')
-        
-        if (existingReg === cleanReg) {
-          return true // Duplicate found
-        }
-      }
-      
-      return false // No duplicate found
+
+      if (!existing) return false // No duplicate found
+
+      // Skip if we're checking for update (exclude current vehicle)
+      if (excludeId && existing.id === excludeId) return false
+
+      return true // Duplicate found
     } catch (error) {
       logger.error('Error checking for duplicate registration:', error)
       return false
@@ -160,112 +137,32 @@ export function useFleetActions(fleetData: FleetDataHook | any) {
       logger.log(`🚗 Starting defleet process for ${vehicle.registration}...`)
       logger.log(`📋 Defleet details:`, { defleetReason, defleetReasonDetails, defleetDate })
 
-      logger.log(`🔍 Searching for ${vehicle.registration} across ALL branches...`)
-
-      // Find all branch instances
-      const branchVehiclesByIdQuery = query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', userProfile.organizationId),
-        where('vehicleId', '==', vehicleId)
-      )
-      
-      const cleanReg = vehicle.registration.toUpperCase().replace(/\s+/g, '')
-      const branchVehiclesByRegQuery = query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', userProfile.organizationId)
-      )
-      
-      const [byIdSnapshot, byRegSnapshot] = await Promise.all([
-        getDocs(branchVehiclesByIdQuery),
-        getDocs(branchVehiclesByRegQuery)
-      ])
-
-      // Combine results
-      const branchVehicleDocs = new Map()
-      const branchInfo = new Map()
-      
-      byIdSnapshot.forEach(docSnap => {
-        const data = docSnap.data()
-        branchVehicleDocs.set(docSnap.id, docSnap)
-        const branchId = data.branchId || 'main'
-        branchInfo.set(docSnap.id, { branchId, registration: data.registration })
-      })
-      
-      byRegSnapshot.forEach(docSnap => {
-        const data = docSnap.data()
-        const docReg = (data.registration || '').toUpperCase().replace(/\s+/g, '')
-        
-        if (docReg === cleanReg && !branchVehicleDocs.has(docSnap.id)) {
-          branchVehicleDocs.set(docSnap.id, docSnap)
-          const branchId = data.branchId || 'main'
-          branchInfo.set(docSnap.id, { branchId, registration: data.registration })
-        }
-      })
-
-      const branchCount = branchVehicleDocs.size
-      logger.log(`✅ Found ${branchCount} instance(s) across branches`)
-
       setDeletingVehicle(true)
 
-      // Delete from all branches if found
-      if (branchCount > 0) {
-        logger.log(`🗑️ Removing ${vehicle.registration} from ${branchCount} branch location(s)...`)
-        
-        const batch = writeBatch(db)
-        let batchCount = 0
-        const deletedBranches: string[] = []
-        
-        branchVehicleDocs.forEach((docSnap: any, docId: string) => {
-          if (batchCount >= 500) {
-            throw new Error('Too many branch instances to delete in one operation')
-          }
-          
-          const info = branchInfo.get(docId)
-          if (info && !deletedBranches.includes(info.branchId)) {
-            deletedBranches.push(info.branchId)
-          }
-          
-          batch.delete(docSnap.ref)
-          batchCount++
-          logger.log(`Queued deletion from branch: ${info?.branchId || 'unknown'}`)
-        })
-        
-        await batch.commit()
-        logger.log(`✅ Successfully removed ${vehicle.registration} from branches: ${deletedBranches.join(', ')}`)
-      }
-
-      // ✅ CRITICAL FIX: Mark as defleeted instead of deleting
-      logger.log('🏷️ Marking vehicle as defleeted in fleet inventory...')
-      
       const userDisplayName = userProfile.displayName || user.email || 'Unknown User'
-      
-      // Build defleet update data with NO undefined values
-      const defleetUpdateData: any = {
-        isDefleeted: true,
-        defleetDate: defleetDate || new Date().toISOString().split('T')[0],
-        defleetProcessedDate: new Date().toISOString(),
-        defleetReason: defleetReason,
-        defleetReasonDetails: defleetReasonDetails || '',
-        defleetedBy: user.uid,
-        defleetedByName: userDisplayName,
-        currentStatus: 'defleeted',
-        updatedAt: serverTimestamp()
-      }
 
-      // ✅ Remove any undefined values to prevent Firestore errors
-      Object.keys(defleetUpdateData).forEach(key => {
-        if (defleetUpdateData[key] === undefined) {
-          delete defleetUpdateData[key]
-        }
+      // Soft-defleet via the ported service: it finds every branch instance
+      // (by id + registration), preserves history, removes them, marks the
+      // fleet vehicle as defleeted, and flags any service bookings.
+      const result = await enhancedVehicleService.defleetVehicle(vehicleId, {
+        reason: defleetReason,
+        reasonDetails: defleetReasonDetails || '',
+        defleetDate: defleetDate || new Date().toISOString().split('T')[0],
+        userId: user.uid,
+        userDisplayName,
       })
 
-      await updateDoc(doc(db, 'vehicles', vehicleId), defleetUpdateData)
+      if (!result.success) {
+        throw new Error(result.errors.join(', ') || 'Failed to defleet vehicle')
+      }
+
+      const branchCount = result.removedFromBranches
       logger.log(`✅ ${vehicle.registration} marked as defleeted in fleet inventory`)
 
       // Show success notification
       setSyncNotification({
         type: 'success',
-        message: branchCount > 0 
+        message: branchCount > 0
           ? `✅ ${vehicle.registration} has been DEFLEETED! Removed from ${branchCount} branch location${branchCount > 1 ? 's' : ''} and marked as defleeted in fleet inventory.`
           : `✅ ${vehicle.registration} has been DEFLEETED from inventory.`,
         details: {
@@ -665,16 +562,17 @@ export function useFleetActions(fleetData: FleetDataHook | any) {
 const diagramType = processedUpdates.vehicleDiagramType || currentVehicle.vehicleDiagramType
 if (diagramType) {
   try {
-    const yardSnap = await getDocs(query(
-      collection(db, 'checkedInVehicles'),
-      where('organizationId', '==', userProfile.organizationId),
-      where('registration', '==', currentVehicle.registration.trim().toUpperCase())
-    ))
-    if (!yardSnap.empty) {
-      const batch = writeBatch(db)
-      yardSnap.forEach(d => batch.update(d.ref, { vehicleDiagramType: diagramType }))
-      await batch.commit()
-      logger.log(`✅ vehicleDiagramType synced to ${yardSnap.size} yard record(s)`)
+    // Update every yard (checked_in) record for this org + registration in
+    // one statement (replaces the read-all-then-batch-update Firestore flow).
+    const { data: updated, error: syncError } = await supabase
+      .from('checked_in_vehicles')
+      .update({ vehicle_diagram_type: diagramType })
+      .eq('organization_id', userProfile.organizationId)
+      .eq('registration', currentVehicle.registration.trim().toUpperCase())
+      .select('id')
+    if (syncError) throw syncError
+    if (updated && updated.length > 0) {
+      logger.log(`✅ vehicleDiagramType synced to ${updated.length} yard record(s)`)
     }
   } catch (syncError) {
     logger.error('vehicleDiagramType yard sync failed:', syncError)

@@ -6,8 +6,8 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
-import { db } from '@/lib/firebase'
-import { collection, getDocs, query, where } from 'firebase/firestore'
+import { supabase } from '@/lib/supabaseClient'
+import { toCamelList } from '@/lib/dbMap'
 import { toast } from 'sonner'
 import {
   Car, ClipboardCheck, CalendarClock, GitBranch, FileText, Wrench,
@@ -38,11 +38,16 @@ interface ExportDef {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-const fromFirestore = async (collectionName: string, orgId: string) => {
-  const snap = await getDocs(
-    query(collection(db, collectionName), where('organizationId', '==', orgId))
-  )
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+// Fetch every row in a Supabase table scoped to the org, snake→camel mapped so
+// the export column accessors (r.motExpiry, r.hireStatus, r.firstName, …) work
+// exactly as they did against Firestore docs.
+const fromSupabase = async (table: string, orgId: string) => {
+  const { data, error } = await supabase
+    .from(table)
+    .select('*')
+    .eq('organization_id', orgId)
+  if (error) throw error
+  return toCamelList<any>(data)
 }
 
 const formatDate = (v: any): string => {
@@ -64,7 +69,7 @@ const EXPORT_DEFS: ExportDef[] = [
     description: 'Every vehicle in the fleet inventory · registrations, make/model, contract, insurance',
     icon: Car,
     slug: 'fleet',
-    fetch: (orgId) => fromFirestore('vehicles', orgId),
+    fetch: (orgId) => fromSupabase('vehicles', orgId),
     columns: [
       { header: 'Registration',  value: (r) => r.registration },
       { header: 'Make',          value: (r) => r.make },
@@ -93,7 +98,7 @@ const EXPORT_DEFS: ExportDef[] = [
     description: 'Currently checked-in vehicles · status, contract, hire state, parking',
     icon: ClipboardCheck,
     slug: 'yard-occupancy',
-    fetch: (orgId) => fromFirestore('checkedInVehicles', orgId),
+    fetch: (orgId) => fromSupabase('checked_in_vehicles', orgId),
     columns: [
       { header: 'Registration',     value: (r) => r.registration },
       { header: 'Make',             value: (r) => r.make },
@@ -127,7 +132,7 @@ const EXPORT_DEFS: ExportDef[] = [
     description: 'All scheduled and historical service appointments',
     icon: CalendarClock,
     slug: 'service-bookings',
-    fetch: (orgId) => fromFirestore('serviceBookings', orgId),
+    fetch: (orgId) => fromSupabase('service_bookings', orgId),
     columns: [
       { header: 'Registration',  value: (r) => r.registration ?? r.vehicleRegistration ?? '' },
       { header: 'Make/model',    value: (r) => [r.make, r.model].filter(Boolean).join(' ') },
@@ -149,7 +154,7 @@ const EXPORT_DEFS: ExportDef[] = [
     description: 'Yard locations · slug, address, service bay count',
     icon: GitBranch,
     slug: 'branches',
-    fetch: (orgId) => fromFirestore('branches', orgId),
+    fetch: (orgId) => fromSupabase('branches', orgId),
     columns: [
       { header: 'Name',          value: (r) => r.name },
       { header: 'Slug',          value: (r) => r.slug },
@@ -168,7 +173,7 @@ const EXPORT_DEFS: ExportDef[] = [
     description: 'Contract types · name, colour, default flag',
     icon: FileText,
     slug: 'contracts',
-    fetch: (orgId) => fromFirestore('contracts', orgId),
+    fetch: (orgId) => fromSupabase('contracts', orgId),
     columns: [
       { header: 'Name',     value: (r) => r.name },
       { header: 'Colour',   value: (r) => r.color ?? '' },
@@ -183,7 +188,7 @@ const EXPORT_DEFS: ExportDef[] = [
     description: 'Third-party service providers used for bookings',
     icon: Wrench,
     slug: 'external-garages',
-    fetch: (orgId) => fromFirestore('externalGarages', orgId),
+    fetch: (orgId) => fromSupabase('external_garages', orgId),
     columns: [
       { header: 'Name',     value: (r) => r.name },
       { header: 'Address',  value: (r) => r.address ?? '' },
@@ -232,7 +237,7 @@ const EXPORT_DEFS: ExportDef[] = [
     description: 'Customer directory · names, phone, email, vehicle registrations, booking counts',
     icon: Users,
     slug: 'garage-customers',
-    fetch: (orgId) => fromFirestore('customers', orgId),
+    fetch: (orgId) => fromSupabase('customers', orgId),
     columns: [
       { header: 'First name',   value: (r) => r.firstName ?? '' },
       { header: 'Surname',      value: (r) => r.lastName ?? '' },

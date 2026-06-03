@@ -45,7 +45,7 @@ keeping every function signature identical. Online-only. Fresh-start data.
 | 2. Core schema + RLS draft | ✅ first pass (`0001`, `0002`, `0003`) |
 | 3a. Auth + core data layer on Supabase (type-clean) | ✅ done |
 | 3b. Yard map + realtime wiring, Vercel + Capacitor verify | ⏳ needs live project |
-| 4. Remaining tables + service-layer port | ⏳ wave 1 done (15 services), see below |
+| 4. Remaining tables + service-layer port | ✅ services + UI ported (waves 1–3); Firebase 62→11 files |
 | 5. Edge Functions (DVLA, bulk refresh, Groq, Resend) + pg_cron | ⬜ |
 | 6. RLS audit + realtime QA + cutover (on your go) | ⬜ |
 
@@ -117,6 +117,19 @@ Known follow-ups flagged by agents:
 - Components with inline Firestore: stock modals, `VehicleDetailModal`, `ServiceBanner`, `VehicleHireLookup`, `UserManagement`, `reports`, settings/dashboard widgets.
 - Bodyshop, tasks, user notes, notifications tables (not yet modelled).
 - Voice/Groq/push (`useGroqAssistant`, `SpeechEnabledGroqAssistant`, `VoiceCommandButton`, push debug) → Phase 5 Edge Functions.
+
+### Phase 4 — wave 3 done (UI components; tsc → 0)
+Ported all inline-Firestore UI off Firebase: stock modals (AddPart/EditPart/CreateInvoice),
+`VehicleDetailModal`, `useFleetActions`, `InsuranceWarningPopup`, `ServiceBanner`,
+`VehicleHireLookup`, `UserManagement`, `DataManagement`, `reports`, `cleanup-conditions`.
+Admin user-creation stubbed via `supabase.functions.invoke('admin-create-user')` (Phase 5,
+service-role Edge Function — can't create users from the client).
+
+### Only 11 Firebase files left (all expected)
+- Phase 5: `usePushNotifications`, `useGroqAssistant`, `SpeechEnabledGroqAssistant`,
+  `VoiceCommandButton`, `PushDebugScreen`, `push-debug/page` (voice/Groq/FCM).
+- Final cleanup (when firebase dep is removed): `types/{yardLayout,transfer,hireHistory}.ts`
+  (only import the `Timestamp` *type*), `lib/firebase.ts`, `hooks/common/useFirestoreNetwork.ts`.
 
 ### Core tables drafted (Firestore collection → Postgres table)
 organizations, userProfiles→`profiles`, organizationSettings→`organization_settings`,
