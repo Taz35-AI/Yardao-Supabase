@@ -1,5 +1,12 @@
-// src/lib/services/vehicleHireService.ts
-// ✅ FIXED: quickCheckIn now resets createdAt to serverTimestamp() so Days in Yard
+// src/lib/services/vehicleHireService.ts — SUPABASE re-implementation.
+//
+// ⚠️ Data-layer swap: class shape + every static method signature are kept
+// identical to the Firestore version so callers import nothing new. Only the
+// INTERNALS change — Firestore SDK calls become Supabase queries against
+// `checked_in_vehicles` (which already carries the per-vehicle hire columns)
+// and the `hire_history` ledger (migration 0012). snake↔camel mapping via dbMap.
+//
+// ✅ FIXED: quickCheckIn now resets createdAt to now() so Days in Yard
 //           counter restarts from 0 when a vehicle returns from hire.
 //           Previously createdAt was never touched, so the counter kept running
 //           from the original check-in date even across hire periods.
@@ -8,29 +15,18 @@
 //                space while the vehicle is off-yard. On return, the vehicle
 //                comes back unparked — user re-parks it manually (Option A).
 
-import { 
-  doc, 
-  updateDoc, 
-  serverTimestamp,
-  collection,
-  getDocs,
-  query,
-  where,
-  addDoc,
-  Timestamp,
-  getDoc
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
-import { 
-  CheckedInVehicle, 
-  VehicleHireStatus, 
+import { supabase } from '@/lib/supabaseClient'
+import { toCamel } from '@/lib/dbMap'
+import {
+  CheckedInVehicle,
+  VehicleHireStatus,
   createHireAuditLog
 } from '@/types'
 import { logger } from '@/lib/logger'
 
 export class VehicleHireService {
-  private static readonly VEHICLES_COLLECTION = 'checkedInVehicles'
-  private static readonly HIRE_HISTORY_COLLECTION = 'hireHistory'
+  private static readonly VEHICLES_TABLE = 'checked_in_vehicles'
+  private static readonly HIRE_HISTORY_TABLE = 'hire_history'
 
   /**
    * Calculate days between two dates — COUNTS NIGHTS
@@ -62,70 +58,82 @@ export class VehicleHireService {
   ): Promise<void> {
     try {
       logger.log(`🚗 Setting vehicle ${vehicleId} out on hire by ${userDisplayName}`)
-      
+
       const hireAuditLog = createHireAuditLog('hired', userDisplayName, userId, hireNotes)
 
       // Fetch current vehicle data
-      const vehicleDoc = await getDocs(
-        query(
-          collection(db, this.VEHICLES_COLLECTION),
-          where('__name__', '==', vehicleId)
-        )
-      )
+      const { data: vehicleRow, error: fetchError } = await supabase
+        .from(this.VEHICLES_TABLE)
+        .select('*')
+        .eq('id', vehicleId)
+        .maybeSingle()
 
-      if (vehicleDoc.empty) {
+      if (fetchError) throw fetchError
+
+      if (!vehicleRow) {
         throw new Error('Vehicle not found')
       }
 
-      const vehicleData = vehicleDoc.docs[0].data() as CheckedInVehicle
+      const vehicleData = toCamel<CheckedInVehicle>(vehicleRow) as CheckedInVehicle
 
       if (vehicleData.hireStatus === 'Out on Hire') {
         throw new Error(`Vehicle ${vehicleData.registration} is already out on hire`)
       }
 
+      const nowIso = new Date().toISOString()
+
       // Create hire history record
       const hireHistoryRecord = {
-        vehicleId,
+        vehicle_id: vehicleId,
         registration: vehicleData.registration.trim().toUpperCase().replace(/\s+/g, ''),
         make: vehicleData.make || '',
         model: vehicleData.model || '',
-        hireStartDate: serverTimestamp(),
-        hireEndDate: null,
-        hiredBy: userId,
-        hiredByName: userDisplayName,
-        hireNotes: hireNotes || '',
-        organizationId: vehicleData.organizationId,
-        branchId: vehicleData.branchId || 'main',
-        branchName: vehicleData.branchId || 'Main Branch',
-        createdAt: serverTimestamp()
+        hire_start_date: nowIso,
+        hire_end_date: null,
+        hired_by: userId,
+        hired_by_name: userDisplayName,
+        hire_notes: hireNotes || '',
+        organization_id: vehicleData.organizationId,
+        branch_id: vehicleData.branchId || 'main',
+        branch_name: vehicleData.branchId || 'Main Branch',
+        created_at: nowIso
       }
 
-      const hireHistoryRef = await addDoc(
-        collection(db, this.HIRE_HISTORY_COLLECTION),
-        hireHistoryRecord
-      )
+      const { data: hireHistoryInserted, error: insertError } = await supabase
+        .from(this.HIRE_HISTORY_TABLE)
+        .insert(hireHistoryRecord)
+        .select('id')
+        .single()
 
-      logger.log(`✅ Created hire history record: ${hireHistoryRef.id}`)
+      if (insertError) throw insertError
+
+      const hireHistoryId = hireHistoryInserted.id as string
+
+      logger.log(`✅ Created hire history record: ${hireHistoryId}`)
 
       // Update vehicle — mark as out on hire
-      const vehicleRef = doc(db, this.VEHICLES_COLLECTION, vehicleId)
-      await updateDoc(vehicleRef, {
-        hireStatus: 'Out on Hire' as VehicleHireStatus,
-        originalStatus: vehicleData.status,
-        hiredAt: serverTimestamp(),
-        hiredBy: userId,
-        hiredByName: userDisplayName,
-        hireNotes: hireNotes || '',
-        lastEditLog: hireAuditLog,
-        updatedAt: serverTimestamp(),
-        currentHireHistoryId: hireHistoryRef.id,
-        // ✨ Phase 2.5a: free the parking space — vehicle is leaving the yard
-        parkingSpaceId: null,
-        // ⚠️  createdAt intentionally NOT reset here — vehicle is still checked in,
-        //     the "days in yard" counter should keep running while it's out on hire
-        //     so managers can see how long it's been on-site total.
-        //     The counter resets in quickCheckIn() when the vehicle actually returns.
-      })
+      const { error: updateError } = await supabase
+        .from(this.VEHICLES_TABLE)
+        .update({
+          hire_status: 'Out on Hire' as VehicleHireStatus,
+          original_status: vehicleData.status,
+          hired_at: nowIso,
+          hired_by: userId,
+          hired_by_name: userDisplayName,
+          hire_notes: hireNotes || '',
+          last_edit_log: hireAuditLog,
+          updated_at: nowIso,
+          current_hire_history_id: hireHistoryId,
+          // ✨ Phase 2.5a: free the parking space — vehicle is leaving the yard
+          parking_space_id: null,
+          // ⚠️  created_at intentionally NOT reset here — vehicle is still checked in,
+          //     the "days in yard" counter should keep running while it's out on hire
+          //     so managers can see how long it's been on-site total.
+          //     The counter resets in quickCheckIn() when the vehicle actually returns.
+        })
+        .eq('id', vehicleId)
+
+      if (updateError) throw updateError
 
       logger.log(`✅ Vehicle ${vehicleData.registration} set out on hire (parking space released)`)
     } catch (error) {
@@ -136,7 +144,7 @@ export class VehicleHireService {
 
   // ─────────────────────────────────────────────────────────────────────────────
   // QUICK CHECK-IN  (return from hire)
-  // ✅ FIX: Now resets createdAt + checkInTime to serverTimestamp() so the
+  // ✅ FIX: Now resets createdAt + checkInTime to now() so the
   //         "Days in Yard" bar resets to 0d when the vehicle comes back.
   // ✨ Phase 2.5a: parkingSpaceId stays null so user has to manually re-park
   //                the vehicle when it returns from hire (Option A).
@@ -149,51 +157,64 @@ export class VehicleHireService {
   ): Promise<void> {
     try {
       logger.log(`🔄 Returning vehicle ${vehicleId} from hire by ${userDisplayName}`)
-      
+
       const returnAuditLog = createHireAuditLog('returned', userDisplayName, userId, returnNotes)
 
       // Fetch current vehicle data
-      const vehicleDoc = await getDocs(
-        query(
-          collection(db, this.VEHICLES_COLLECTION),
-          where('__name__', '==', vehicleId)
-        )
-      )
+      const { data: vehicleRow, error: fetchError } = await supabase
+        .from(this.VEHICLES_TABLE)
+        .select('*')
+        .eq('id', vehicleId)
+        .maybeSingle()
 
-      if (vehicleDoc.empty) {
+      if (fetchError) throw fetchError
+
+      if (!vehicleRow) {
         throw new Error('Vehicle not found')
       }
 
-      const vehicleData = vehicleDoc.docs[0].data() as CheckedInVehicle & { currentHireHistoryId?: string }
+      const vehicleData = toCamel<CheckedInVehicle & { currentHireHistoryId?: string }>(
+        vehicleRow
+      ) as CheckedInVehicle & { currentHireHistoryId?: string }
 
       if (vehicleData.hireStatus !== 'Out on Hire') {
         throw new Error(`Vehicle ${vehicleData.registration} is not currently on hire`)
       }
 
+      const nowIso = new Date().toISOString()
+
       // ── Update hire history record ──────────────────────────────────────────
       if (vehicleData.currentHireHistoryId) {
         try {
-          const hireHistoryRef = doc(db, this.HIRE_HISTORY_COLLECTION, vehicleData.currentHireHistoryId)
-          const hireHistoryDoc = await getDoc(hireHistoryRef)
+          const { data: hireRow, error: hireFetchError } = await supabase
+            .from(this.HIRE_HISTORY_TABLE)
+            .select('*')
+            .eq('id', vehicleData.currentHireHistoryId)
+            .maybeSingle()
 
-          if (hireHistoryDoc.exists()) {
-            const hireData = hireHistoryDoc.data()
+          if (hireFetchError) throw hireFetchError
 
-            const hireStartDate = hireData.hireStartDate instanceof Timestamp
-              ? hireData.hireStartDate.toDate()
-              : new Date(hireData.hireStartDate)
+          if (hireRow) {
+            const hireData = toCamel<any>(hireRow)!
+
+            const hireStartDate = new Date(hireData.hireStartDate)
 
             const now = new Date()
             const durationInDays = this.calculateDurationInDays(hireStartDate, now)
 
-            await updateDoc(hireHistoryRef, {
-              hireEndDate: serverTimestamp(),
-              durationInDays,
-              returnedBy: userId,
-              returnedByName: userDisplayName,
-              returnNotes: returnNotes || '',
-              updatedAt: serverTimestamp()
-            })
+            const { error: hireUpdateError } = await supabase
+              .from(this.HIRE_HISTORY_TABLE)
+              .update({
+                hire_end_date: nowIso,
+                duration_in_days: durationInDays,
+                returned_by: userId,
+                returned_by_name: userDisplayName,
+                return_notes: returnNotes || '',
+                updated_at: nowIso
+              })
+              .eq('id', vehicleData.currentHireHistoryId)
+
+            if (hireUpdateError) throw hireUpdateError
 
             logger.log(`✅ Updated hire history: ${vehicleData.currentHireHistoryId} (${durationInDays} days)`)
           }
@@ -206,28 +227,31 @@ export class VehicleHireService {
       }
 
       // ── Update vehicle record ───────────────────────────────────────────────
-      const vehicleRef = doc(db, this.VEHICLES_COLLECTION, vehicleId)
+      const { error: updateError } = await supabase
+        .from(this.VEHICLES_TABLE)
+        .update({
+          hire_status: 'In Yard' as VehicleHireStatus,
+          status: vehicleData.originalStatus || vehicleData.status,
+          last_edit_log: returnAuditLog,
+          updated_at: nowIso,
+          // ✅ FIX: Reset the yard clock so "Days in Yard" starts fresh from return
+          created_at: nowIso,
+          check_in_time: nowIso,
+          // ✨ Phase 2.5a: defensive — vehicle returns unparked. Even if some
+          // edge case set parkingSpaceId during the hire window (shouldn't
+          // happen), this guarantees the user re-parks intentionally.
+          parking_space_id: null,
+          // Clear all hire fields
+          original_status: null,
+          hired_at: null,
+          hired_by: null,
+          hired_by_name: null,
+          hire_notes: null,
+          current_hire_history_id: null
+        })
+        .eq('id', vehicleId)
 
-      await updateDoc(vehicleRef, {
-        hireStatus: 'In Yard' as VehicleHireStatus,
-        status: vehicleData.originalStatus || vehicleData.status,
-        lastEditLog: returnAuditLog,
-        updatedAt: serverTimestamp(),
-        // ✅ FIX: Reset the yard clock so "Days in Yard" starts fresh from return
-        createdAt: serverTimestamp(),
-        checkInTime: serverTimestamp(),
-        // ✨ Phase 2.5a: defensive — vehicle returns unparked. Even if some
-        // edge case set parkingSpaceId during the hire window (shouldn't
-        // happen), this guarantees the user re-parks intentionally.
-        parkingSpaceId: null,
-        // Clear all hire fields
-        originalStatus: null,
-        hiredAt: null,
-        hiredBy: null,
-        hiredByName: null,
-        hireNotes: null,
-        currentHireHistoryId: null
-      })
+      if (updateError) throw updateError
 
       logger.log(`✅ Vehicle ${vehicleData.registration} returned from hire — Days in Yard reset to 0, unparked`)
     } catch (error) {
@@ -244,21 +268,19 @@ export class VehicleHireService {
     branchId?: string
   ): Promise<CheckedInVehicle[]> {
     try {
-      let q = query(
-        collection(db, this.VEHICLES_COLLECTION),
-        where('organizationId', '==', organizationId),
-        where('hireStatus', '==', 'Out on Hire')
-      )
+      let q = supabase
+        .from(this.VEHICLES_TABLE)
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('hire_status', 'Out on Hire')
 
       if (branchId) {
-        q = query(q, where('branchId', '==', branchId))
+        q = q.eq('branch_id', branchId)
       }
 
-      const snapshot = await getDocs(q)
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as CheckedInVehicle))
+      const { data, error } = await q
+      if (error) throw error
+      return (data ?? []).map((row) => toCamel<CheckedInVehicle>(row) as CheckedInVehicle)
     } catch (error) {
       logger.error('Error fetching currently hired vehicles:', error)
       throw new Error(`Failed to fetch hired vehicles: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -273,20 +295,18 @@ export class VehicleHireService {
     branchId?: string
   ): Promise<CheckedInVehicle[]> {
     try {
-      let q = query(
-        collection(db, this.VEHICLES_COLLECTION),
-        where('organizationId', '==', organizationId)
-      )
+      let q = supabase
+        .from(this.VEHICLES_TABLE)
+        .select('*')
+        .eq('organization_id', organizationId)
 
       if (branchId) {
-        q = query(q, where('branchId', '==', branchId))
+        q = q.eq('branch_id', branchId)
       }
 
-      const snapshot = await getDocs(q)
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as CheckedInVehicle))
+      const { data, error } = await q
+      if (error) throw error
+      return (data ?? []).map((row) => toCamel<CheckedInVehicle>(row) as CheckedInVehicle)
     } catch (error) {
       logger.error('Error fetching vehicles with hire status:', error)
       throw new Error(`Failed to fetch vehicles: ${error instanceof Error ? error.message : 'Unknown error'}`)

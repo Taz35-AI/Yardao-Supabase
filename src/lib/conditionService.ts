@@ -1,16 +1,14 @@
-// src/lib/conditionService.ts - COMPLETE FIXED VERSION - Prevents ALL Duplicate Conditions
-import { 
-  collection, 
-  addDoc, 
-  getDocs, 
-  deleteDoc, 
-  doc, 
-  updateDoc,
-  query,
-  where,
-  orderBy 
-} from 'firebase/firestore'
-import { db } from './firebase'
+// src/lib/conditionService.ts — SUPABASE re-implementation.
+// Standalone conditionService (distinct from the conditionService inside
+// firestore.ts). Public interface + method signatures + the per-org read cache
+// are kept identical; only the internals swap Firestore → Supabase.
+//
+// order ↔ sort_order: the DB column is `sort_order` (0001) but the TS contract
+// exposes `order`. rowToCondition revives sort_order→order on read; conditionToRow
+// maps order→sort_order on write (same approach as firestore.ts).
+
+import { supabase } from '@/lib/supabaseClient'
+import { toCamel, toSnake } from '@/lib/dbMap'
 import { logger } from '@/lib/logger'
 
 export interface ConditionCategory {
@@ -26,15 +24,27 @@ export interface ConditionCategory {
   updatedAt?: string
 }
 
-const CONDITIONS_COLLECTION = 'conditionCategories'
+const CONDITIONS_COLLECTION = 'condition_categories'
+
+// snake→camel + sort_order→order
+function rowToCondition(row: any): ConditionCategory {
+  const c = toCamel<any>(row)!
+  return { ...c, order: c.sortOrder ?? 0 } as ConditionCategory
+}
+// camel→snake + order→sort_order
+function conditionToRow(c: Record<string, any>): Record<string, any> {
+  const { order, ...rest } = c
+  const row = toSnake(rest)
+  if (order !== undefined) row.sort_order = order
+  return row
+}
 
 // ── Read cache ────────────────────────────────────────────────────────────────
 // conditionCategories is reference data that changes ~never, yet it was being
-// re-read in full (hundreds of docs) on every context mount / branch remount —
-// a top Firestore read offender. Cache the per-org list for the browser
-// session; every write below busts it so edits are reflected immediately on
-// the device that made them. The TTL is a safety net so a change made on a
-// DIFFERENT device still propagates within a few minutes.
+// re-read in full on every context mount / branch remount. Cache the per-org
+// list for the browser session; every write below busts it so edits are
+// reflected immediately on the device that made them. The TTL is a safety net
+// so a change made on a DIFFERENT device still propagates within a few minutes.
 const CONDITIONS_TTL_MS = 5 * 60 * 1000
 const conditionsCache = new Map<string, { data: ConditionCategory[]; ts: number }>()
 
@@ -66,16 +76,14 @@ export const conditionService = {
       }
     }
 
-    const q = query(
-      collection(db, CONDITIONS_COLLECTION),
-      where('organizationId', '==', organizationId),
-      orderBy('order', 'asc')
-    )
-    const querySnapshot = await getDocs(q)
-    const data = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as ConditionCategory))
+    const { data: rows, error } = await supabase
+      .from(CONDITIONS_COLLECTION)
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('sort_order', { ascending: true })
+    if (error) throw error
+
+    const data = (rows ?? []).map(rowToCondition)
 
     conditionsCache.set(organizationId, { data, ts: Date.now() })
     return data.map(c => ({ ...c }))
@@ -87,19 +95,16 @@ export const conditionService = {
    */
   async conditionExists(organizationId: string, name: string): Promise<boolean> {
     const normalizedName = name.trim()
-    const q = query(
-      collection(db, CONDITIONS_COLLECTION),
-      where('organizationId', '==', organizationId)
-    )
-    const querySnapshot = await getDocs(q)
-    
+    const { data: rows, error } = await supabase
+      .from(CONDITIONS_COLLECTION)
+      .select('name')
+      .eq('organization_id', organizationId)
+    if (error) throw error
+
     // Check case-insensitive match
-    const exists = querySnapshot.docs.some(doc => {
-      const data = doc.data()
-      return data.name.trim().toLowerCase() === normalizedName.toLowerCase()
-    })
-    
-    return exists
+    return (rows ?? []).some(
+      (r: any) => (r.name ?? '').trim().toLowerCase() === normalizedName.toLowerCase()
+    )
   },
 
   /**
@@ -109,16 +114,16 @@ export const conditionService = {
   async addCondition(condition: Omit<ConditionCategory, 'id' | 'createdAt'>): Promise<ConditionCategory> {
     // ✅ CRITICAL FIX: Check for duplicates before adding
     const exists = await this.conditionExists(condition.organizationId, condition.name)
-    
+
     if (exists) {
       logger.log(`⚠️ Condition "${condition.name}" already exists for this organization. Skipping duplicate creation.`)
-      
+
       // Return the existing condition instead of creating a duplicate
       const allConditions = await this.getConditions(condition.organizationId)
       const existingCondition = allConditions.find(
         c => c.name.trim().toLowerCase() === condition.name.trim().toLowerCase()
       )
-      
+
       if (existingCondition) {
         logger.log(`✅ Returning existing condition: "${existingCondition.name}" (ID: ${existingCondition.id})`)
         return existingCondition
@@ -131,20 +136,25 @@ export const conditionService = {
       name: condition.name.trim(), // ✅ Always trim whitespace
       createdAt: new Date().toISOString(),
       isDefault: condition.isDefault ?? false,
-      isEditable: condition.isEditable ?? true
+      isEditable: condition.isEditable ?? true,
     }
-    
+
     logger.log(`✅ Creating new condition: "${conditionData.name}"`)
-    const docRef = await addDoc(collection(db, CONDITIONS_COLLECTION), conditionData)
+    const { data, error } = await supabase
+      .from(CONDITIONS_COLLECTION)
+      .insert(conditionToRow(conditionData))
+      .select()
+      .single()
+    if (error) throw error
     clearConditionsCache(condition.organizationId)
-    return { id: docRef.id, ...conditionData }
+    return rowToCondition(data)
   },
 
   /**
    * Update an existing condition
    */
   async updateCondition(
-    conditionId: string, 
+    conditionId: string,
     updates: Partial<Pick<ConditionCategory, 'name' | 'color' | 'severity' | 'order'>>
   ): Promise<void> {
     // ✅ Trim name if provided
@@ -153,10 +163,11 @@ export const conditionService = {
       cleanUpdates.name = cleanUpdates.name.trim()
     }
 
-    await updateDoc(doc(db, CONDITIONS_COLLECTION, conditionId), {
-      ...cleanUpdates,
-      updatedAt: new Date().toISOString()
-    })
+    const { error } = await supabase
+      .from(CONDITIONS_COLLECTION)
+      .update(conditionToRow({ ...cleanUpdates, updatedAt: new Date().toISOString() }))
+      .eq('id', conditionId)
+    if (error) throw error
     // No orgId on this signature — clear all (rare admin op, zero risk)
     clearConditionsCache()
   },
@@ -165,7 +176,8 @@ export const conditionService = {
    * Delete a condition
    */
   async deleteCondition(conditionId: string): Promise<void> {
-    await deleteDoc(doc(db, CONDITIONS_COLLECTION, conditionId))
+    const { error } = await supabase.from(CONDITIONS_COLLECTION).delete().eq('id', conditionId)
+    if (error) throw error
     clearConditionsCache()
   },
 
@@ -174,10 +186,13 @@ export const conditionService = {
    */
   async reorderConditions(conditionUpdates: Array<{ id: string; order: number }>): Promise<void> {
     const updatePromises = conditionUpdates.map(({ id, order }) =>
-      updateDoc(doc(db, CONDITIONS_COLLECTION, id), { 
-        order,
-        updatedAt: new Date().toISOString()
-      })
+      supabase
+        .from(CONDITIONS_COLLECTION)
+        .update({ sort_order: order, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .then(({ error }) => {
+          if (error) throw error
+        })
     )
     await Promise.all(updatePromises)
     clearConditionsCache()
@@ -185,17 +200,7 @@ export const conditionService = {
 
   /**
    * ✅ COMPLETELY FIXED: Initialize default conditions with duplicate prevention
-   * 
-   * WHY DUPLICATES WERE CREATED BEFORE:
-   * 1. This function was called multiple times when:
-   *    - User refreshed the page
-   *    - User logged out and back in
-   *    - Multiple components loaded simultaneously
-   *    - App restarted during development
-   * 
-   * 2. There was NO CHECK if conditions already existed
-   * 3. Promise.all() would create all conditions at once without checking
-   * 
+   *
    * NOW FIXED:
    * 1. ✅ Checks if ANY conditions exist first
    * 2. ✅ Returns existing conditions if found
@@ -204,19 +209,19 @@ export const conditionService = {
    */
   async initializeDefaultConditions(organizationId: string): Promise<ConditionCategory[]> {
     logger.log('🚀 Initializing default conditions for organization:', organizationId)
-    
+
     // ✅ CRITICAL FIX #1: Check if conditions already exist
     // Force a fresh read — correctness here matters more than the cache.
     const existingConditions = await this.getConditions(organizationId, { force: true })
-    
+
     if (existingConditions.length > 0) {
       logger.log(`⚠️ Organization already has ${existingConditions.length} condition(s). Skipping initialization.`)
       logger.log('Existing conditions:', existingConditions.map(c => `${c.name} (ID: ${c.id})`))
       return existingConditions
     }
-    
+
     logger.log('✅ No existing conditions found. Creating defaults...')
-    
+
     const defaultConditions = [
       {
         name: 'Excellent',
@@ -225,7 +230,7 @@ export const conditionService = {
         severity: 'excellent' as const,
         organizationId,
         isDefault: true,
-        isEditable: true
+        isEditable: true,
       },
       {
         name: 'Good',
@@ -234,7 +239,7 @@ export const conditionService = {
         severity: 'good' as const,
         organizationId,
         isDefault: true,
-        isEditable: true
+        isEditable: true,
       },
       {
         name: 'Fair',
@@ -243,7 +248,7 @@ export const conditionService = {
         severity: 'fair' as const,
         organizationId,
         isDefault: true,
-        isEditable: true
+        isEditable: true,
       },
       {
         name: 'Poor',
@@ -252,7 +257,7 @@ export const conditionService = {
         severity: 'poor' as const,
         organizationId,
         isDefault: true,
-        isEditable: true
+        isEditable: true,
       },
       {
         name: 'Critical',
@@ -261,8 +266,8 @@ export const conditionService = {
         severity: 'critical' as const,
         organizationId,
         isDefault: true,
-        isEditable: true
-      }
+        isEditable: true,
+      },
     ]
 
     logger.log('📝 Creating default conditions:', defaultConditions.map(c => `${c.name} (${c.color})`))
@@ -270,7 +275,7 @@ export const conditionService = {
     // ✅ CRITICAL FIX #2: Create conditions SEQUENTIALLY (not with Promise.all)
     // This prevents race conditions where multiple conditions try to check existence simultaneously
     const results: ConditionCategory[] = []
-    
+
     for (const condition of defaultConditions) {
       try {
         logger.log(`Adding condition: ${condition.name}`)
@@ -293,18 +298,18 @@ export const conditionService = {
    */
   async cleanupDuplicates(organizationId: string): Promise<number> {
     logger.log('🧹 Starting duplicate cleanup for organization:', organizationId)
-    
+
     const allConditions = await this.getConditions(organizationId, { force: true })
     logger.log(`Found ${allConditions.length} total condition records`)
-    
+
     if (allConditions.length === 0) {
       logger.log('No conditions to clean up')
       return 0
     }
-    
+
     // Group conditions by normalized name (case-insensitive, trimmed)
     const groups = new Map<string, ConditionCategory[]>()
-    
+
     allConditions.forEach(condition => {
       const normalizedName = condition.name.trim().toLowerCase()
       if (!groups.has(normalizedName)) {
@@ -312,15 +317,15 @@ export const conditionService = {
       }
       groups.get(normalizedName)!.push(condition)
     })
-    
+
     let deletedCount = 0
-    
+
     // For each group with duplicates, keep the first one and delete the rest
     for (const [normalizedName, conditions] of groups.entries()) {
       if (conditions.length > 1) {
         logger.log(`⚠️ Found ${conditions.length} duplicates of "${normalizedName}":`)
         conditions.forEach(c => logger.log(`   - ${c.name} (ID: ${c.id}, Created: ${c.createdAt})`))
-        
+
         // Sort by creation date (keep oldest) to maintain data consistency
         conditions.sort((a, b) => {
           const dateA = new Date(a.createdAt).getTime()
@@ -328,12 +333,12 @@ export const conditionService = {
           if (dateA !== dateB) return dateA - dateB
           return a.order - b.order
         })
-        
+
         // Keep the first one (oldest), delete the rest
         const [keep, ...remove] = conditions
         logger.log(`✅ Keeping: ${keep.name} (ID: ${keep.id})`)
         logger.log(`🗑️  Deleting: ${remove.map(c => `${c.name} (${c.id})`).join(', ')}`)
-        
+
         for (const duplicate of remove) {
           try {
             await this.deleteCondition(duplicate.id)
@@ -345,9 +350,9 @@ export const conditionService = {
         }
       }
     }
-    
+
     logger.log(`✅ Cleanup complete! Deleted ${deletedCount} duplicate condition record(s)`)
     clearConditionsCache(organizationId)
     return deletedCount
-  }
+  },
 }

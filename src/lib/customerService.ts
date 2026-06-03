@@ -1,39 +1,34 @@
-// src/lib/customerService.ts
-// CRUD + dedupe-aware upsert for the customers collection. Mirrors the
-// class-singleton pattern used by externalGarageService.
+// src/lib/customerService.ts — SUPABASE re-implementation.
 //
-// The key operation is `upsertCustomerForBooking` — called from inside
+// ⚠️ Data-layer swap: the file name and every EXPORT below are kept identical
+// to the original Firestore version so the frontend imports nothing new. Only
+// the INTERNALS change — Firestore SDK calls become Supabase queries, with
+// snake↔camel mapping (see dbMap) so returned objects match the Customer
+// interface byte-for-byte. RLS scopes every query to the caller's org.
+//
+// CRUD + dedupe-aware upsert for the `customers` table. The key operation is
+// `upsertCustomerForBooking` — called from inside
 // ServiceBookingsContext.createBooking right after a booking is written.
 // It looks up an existing customer by phone (normalised) and either:
 //   - patches their name/email + bumps bookingCount + lastBookingDate, OR
 //   - creates a fresh customer record.
 // Either way the booking succeeds; the upsert is fire-and-forget from the
-// caller's perspective so a transient Firestore hiccup never blocks save.
+// caller's perspective so a transient DB hiccup never blocks save.
+//
+// Firestore atomic helpers have no direct Supabase equivalent at the client:
+//   - increment(1)   → read current bookingCount, write count + 1
+//   - arrayUnion(reg) → merge reg into the existing registrations array (deduped)
+// Both are reproduced read-then-write; the per-customer upsert is low-traffic
+// (one booking save at a time) so the lack of a server-side atomic is fine.
 
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  orderBy,
-  Timestamp,
-  serverTimestamp,
-  increment,
-  arrayUnion,
-  limit,
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
+import { toCamel } from '@/lib/dbMap'
 import type { Customer } from '@/types/customer'
 import { normalizePhone, isPhoneUsable } from '@/lib/utils/phone'
 import { normalizeReg } from '@/lib/utils/registration'
 import { logger } from '@/lib/logger'
 
-const COLLECTION_NAME = 'customers'
+const TABLE = 'customers'
 
 /** Best-effort split of a combined name into first + last. First whitespace
  *  token is the first name; everything after is the surname. Single-word
@@ -79,25 +74,52 @@ export interface UpsertForBookingInput {
   actorName: string
 }
 
+// timestamptz string | Date → Date (the Firestore version revived Timestamps
+// to Date; consumers rely on Customer.createdAt being a Date).
+const toDate = (v: any): Date | undefined => {
+  if (!v) return undefined
+  const d = v instanceof Date ? v : new Date(v)
+  return isNaN(d.getTime()) ? undefined : d
+}
+
 class CustomerService {
-  private getCollectionRef() {
-    return collection(db, COLLECTION_NAME)
-  }
-  private getDocRef(id: string) {
-    return doc(db, COLLECTION_NAME, id)
+  /** Row → typed Customer (snake→camel + revive timestamps + defaults). */
+  private mapDoc(row: any): Customer {
+    const data = toCamel<any>(row)!
+    return {
+      id: data.id,
+      organizationId: data.organizationId,
+      name: data.name || '',
+      firstName: data.firstName || undefined,
+      lastName: data.lastName || undefined,
+      phone: data.phone || '',
+      email: data.email || undefined,
+      phoneNormalized: data.phoneNormalized || normalizePhone(data.phone || ''),
+      registrations: Array.isArray(data.registrations) ? data.registrations : undefined,
+      notes: data.notes || undefined,
+      bookingCount:
+        typeof data.bookingCount === 'number' ? data.bookingCount : 0,
+      lastBookingDate: data.lastBookingDate || undefined,
+      createdAt: toDate(data.createdAt) || new Date(),
+      createdBy: data.createdBy || '',
+      createdByName: data.createdByName || '',
+      updatedAt: toDate(data.updatedAt),
+      updatedBy: data.updatedBy || undefined,
+      updatedByName: data.updatedByName || undefined,
+    }
   }
 
-  /** All customers for the org, sorted by most-recent booking first then
-   *  name. Used by useCustomers / the customers admin page. */
+  /** All customers for the org, sorted by name. Used by useCustomers / the
+   *  customers admin page. */
   async getCustomers(organizationId: string): Promise<Customer[]> {
     try {
-      const q = query(
-        this.getCollectionRef(),
-        where('organizationId', '==', organizationId),
-        orderBy('name', 'asc'),
-      )
-      const snapshot = await getDocs(q)
-      return snapshot.docs.map((d) => this.mapDoc(d.id, d.data()))
+      const { data, error } = await supabase
+        .from(TABLE)
+        .select('*')
+        .eq('organization_id', organizationId)
+        .order('name', { ascending: true })
+      if (error) throw error
+      return (data ?? []).map((d) => this.mapDoc(d))
     } catch (err) {
       logger.error('Error fetching customers:', err)
       throw new Error('Failed to fetch customers')
@@ -106,8 +128,9 @@ class CustomerService {
 
   async getCustomer(id: string): Promise<Customer | null> {
     try {
-      const snap = await getDoc(this.getDocRef(id))
-      return snap.exists() ? this.mapDoc(snap.id, snap.data()) : null
+      const { data, error } = await supabase.from(TABLE).select('*').eq('id', id).maybeSingle()
+      if (error) throw error
+      return data ? this.mapDoc(data) : null
     } catch (err) {
       logger.error('Error fetching customer:', err)
       throw new Error('Failed to fetch customer')
@@ -123,15 +146,15 @@ class CustomerService {
     const normalized = normalizePhone(phone)
     if (!normalized) return null
     try {
-      const q = query(
-        this.getCollectionRef(),
-        where('organizationId', '==', organizationId),
-        where('phoneNormalized', '==', normalized),
-        limit(1),
-      )
-      const snap = await getDocs(q)
-      const first = snap.docs[0]
-      return first ? this.mapDoc(first.id, first.data()) : null
+      const { data, error } = await supabase
+        .from(TABLE)
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('phone_normalized', normalized)
+        .limit(1)
+        .maybeSingle()
+      if (error) throw error
+      return data ? this.mapDoc(data) : null
     } catch (err) {
       logger.error('Error finding customer by phone:', err)
       return null
@@ -149,21 +172,22 @@ class CustomerService {
     const firstName = (input.firstName || '').trim()
     const lastName = (input.lastName || '').trim()
     const name = combineName(firstName, lastName, input.name || '')
-    const docRef = await addDoc(this.getCollectionRef(), {
-      organizationId,
+    const row = {
+      organization_id: organizationId,
       name,
-      ...(firstName ? { firstName } : {}),
-      ...(lastName ? { lastName } : {}),
+      ...(firstName ? { first_name: firstName } : {}),
+      ...(lastName ? { last_name: lastName } : {}),
       phone: input.phone.trim(),
-      phoneNormalized: normalized,
+      phone_normalized: normalized,
       ...(input.email?.trim() ? { email: input.email.trim() } : {}),
       ...(input.notes?.trim() ? { notes: input.notes.trim() } : {}),
-      bookingCount: 0,
-      createdAt: serverTimestamp(),
-      createdBy: actorId,
-      createdByName: actorName,
-    })
-    return docRef.id
+      booking_count: 0,
+      created_by: actorId,
+      created_by_name: actorName,
+    }
+    const { data, error } = await supabase.from(TABLE).insert(row).select('id').single()
+    if (error) throw error
+    return data.id as string
   }
 
   /** Patch an existing customer (admin edit). Only writes the fields
@@ -175,40 +199,42 @@ class CustomerService {
     actorName: string,
   ): Promise<void> {
     const patch: Record<string, unknown> = {
-      updatedAt: serverTimestamp(),
-      updatedBy: actorId,
-      updatedByName: actorName,
+      updated_at: new Date().toISOString(),
+      updated_by: actorId,
+      updated_by_name: actorName,
     }
     // First / last drive the combined `name`. When either is supplied we
     // recompute name from both so search + display stay consistent.
     if (changes.firstName !== undefined || changes.lastName !== undefined) {
       const firstName = (changes.firstName ?? '').trim()
       const lastName = (changes.lastName ?? '').trim()
-      patch.firstName = firstName || null
-      patch.lastName = lastName || null
+      patch.first_name = firstName || null
+      patch.last_name = lastName || null
       patch.name = combineName(firstName, lastName, changes.name || '')
     } else if (changes.name !== undefined) {
       patch.name = changes.name.trim()
     }
     if (changes.phone !== undefined) {
       patch.phone = changes.phone.trim()
-      patch.phoneNormalized = normalizePhone(changes.phone)
+      patch.phone_normalized = normalizePhone(changes.phone)
     }
     if (changes.email !== undefined) patch.email = changes.email.trim() || null
     if (changes.notes !== undefined) patch.notes = changes.notes.trim() || null
-    await updateDoc(this.getDocRef(id), patch)
+    const { error } = await supabase.from(TABLE).update(patch).eq('id', id)
+    if (error) throw error
   }
 
   async deleteCustomer(id: string): Promise<void> {
-    await deleteDoc(this.getDocRef(id))
+    const { error } = await supabase.from(TABLE).delete().eq('id', id)
+    if (error) throw error
   }
 
   /**
    * Upsert called immediately after a booking is created.
    * Matches existing customer by normalised phone:
    *   - If found: patch name/email if blank-or-different (booking form is
-   *     source of truth), bump bookingCount via Firestore increment(),
-   *     update lastBookingDate when later than the stored value.
+   *     source of truth), bump bookingCount, update lastBookingDate when
+   *     later than the stored value.
    *   - If not found: create a fresh customer with bookingCount = 1.
    *
    * Fire-and-forget — caller logs errors but does not surface to user.
@@ -221,10 +247,11 @@ class CustomerService {
       // overwrite a stored email with empty (bookings don't always carry
       // email). Same for name — keep existing if booking is somehow blank.
       const patch: Record<string, unknown> = {
-        bookingCount: increment(1),
-        updatedAt: serverTimestamp(),
-        updatedBy: input.actorId,
-        updatedByName: input.actorName,
+        // increment(1) has no client-side atomic in Supabase — read+write.
+        booking_count: (existing.bookingCount || 0) + 1,
+        updated_at: new Date().toISOString(),
+        updated_by: input.actorId,
+        updated_by_name: input.actorName,
       }
       // Newer booking → bump lastBookingDate. String compare is safe for
       // the YYYY-MM-DD format we use everywhere.
@@ -232,7 +259,7 @@ class CustomerService {
         !existing.lastBookingDate ||
         input.bookingDate > existing.lastBookingDate
       ) {
-        patch.lastBookingDate = input.bookingDate
+        patch.last_booking_date = input.bookingDate
       }
       const trimmedName = input.name.trim()
       if (trimmedName && trimmedName !== existing.name) {
@@ -240,65 +267,45 @@ class CustomerService {
         // so the admin record doesn't drift from what was last booked.
         patch.name = trimmedName
         const { firstName, lastName } = splitName(trimmedName)
-        patch.firstName = firstName || null
-        patch.lastName = lastName || null
+        patch.first_name = firstName || null
+        patch.last_name = lastName || null
       }
       const trimmedEmail = input.email?.trim()
       if (trimmedEmail && trimmedEmail !== existing.email) {
         patch.email = trimmedEmail
       }
-      // Append this booking's reg (deduped — arrayUnion no-ops if
-      // present). Same canonical key the parts flow uses so a customer's
-      // registration history joins cleanly with partUsage.
+      // Append this booking's reg (deduped — arrayUnion semantics: no-op if
+      // already present). Same canonical key the parts flow uses so a
+      // customer's registration history joins cleanly with partUsage.
       const reg = normalizeReg(input.registration)
       if (reg) {
-        patch.registrations = arrayUnion(reg)
+        const current = Array.isArray(existing.registrations) ? existing.registrations : []
+        if (!current.includes(reg)) {
+          patch.registrations = [...current, reg]
+        }
       }
-      await updateDoc(this.getDocRef(existing.id), patch)
+      const { error } = await supabase.from(TABLE).update(patch).eq('id', existing.id)
+      if (error) throw error
     } else {
       const trimmedName = input.name.trim()
       const { firstName, lastName } = splitName(trimmedName)
       const reg = normalizeReg(input.registration)
-      await addDoc(this.getCollectionRef(), {
-        organizationId: input.organizationId,
+      const row = {
+        organization_id: input.organizationId,
         name: trimmedName,
-        ...(firstName ? { firstName } : {}),
-        ...(lastName ? { lastName } : {}),
+        ...(firstName ? { first_name: firstName } : {}),
+        ...(lastName ? { last_name: lastName } : {}),
         phone: input.phone.trim(),
-        phoneNormalized: normalizePhone(input.phone),
+        phone_normalized: normalizePhone(input.phone),
         ...(input.email?.trim() ? { email: input.email.trim() } : {}),
         ...(reg ? { registrations: [reg] } : {}),
-        bookingCount: 1,
-        lastBookingDate: input.bookingDate,
-        createdAt: serverTimestamp(),
-        createdBy: input.actorId,
-        createdByName: input.actorName,
-      })
-    }
-  }
-
-  /** Internal: convert a Firestore doc into the typed Customer. */
-  private mapDoc(id: string, data: any): Customer {
-    return {
-      id,
-      organizationId: data.organizationId,
-      name: data.name || '',
-      firstName: data.firstName || undefined,
-      lastName: data.lastName || undefined,
-      phone: data.phone || '',
-      email: data.email || undefined,
-      phoneNormalized: data.phoneNormalized || normalizePhone(data.phone || ''),
-      registrations: Array.isArray(data.registrations) ? data.registrations : undefined,
-      notes: data.notes || undefined,
-      bookingCount:
-        typeof data.bookingCount === 'number' ? data.bookingCount : 0,
-      lastBookingDate: data.lastBookingDate || undefined,
-      createdAt: data.createdAt?.toDate?.() || data.createdAt || new Date(),
-      createdBy: data.createdBy || '',
-      createdByName: data.createdByName || '',
-      updatedAt: data.updatedAt?.toDate?.() || data.updatedAt || undefined,
-      updatedBy: data.updatedBy || undefined,
-      updatedByName: data.updatedByName || undefined,
+        booking_count: 1,
+        last_booking_date: input.bookingDate,
+        created_by: input.actorId,
+        created_by_name: input.actorName,
+      }
+      const { error } = await supabase.from(TABLE).insert(row)
+      if (error) throw error
     }
   }
 }

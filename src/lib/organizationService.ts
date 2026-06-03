@@ -1,17 +1,11 @@
-// src/lib/organizationService.ts
-// ✅ FIXED: Initialize conditions DURING organization creation to prevent duplicates
+// src/lib/organizationService.ts — SUPABASE re-implementation.
+// Standalone organizationService (distinct from the organizationService inside
+// firestore.ts). Public interface + method signatures are kept identical; only
+// the internals swap Firestore → Supabase. Its own Organization interface is
+// preserved verbatim.
 
-import { 
-  collection, 
-  addDoc, 
-  getDocs, 
-  query, 
-  where, 
-  doc, 
-  updateDoc,
-  deleteDoc 
-} from 'firebase/firestore'
-import { db } from './firebase'
+import { supabase } from '@/lib/supabaseClient'
+import { toCamel, toCamelList, toSnake } from '@/lib/dbMap'
 import { conditionService } from './conditionService'
 import { logger } from '@/lib/logger'
 
@@ -30,44 +24,50 @@ const ORGANIZATIONS_COLLECTION = 'organizations'
 export const organizationService = {
   /**
    * ✅ FIXED: Create organization AND initialize default conditions atomically
-   * This ensures conditions are created ONCE during org creation
+   * This ensures conditions are created ONCE during org creation.
+   *
+   * Org creation is delegated to the create_organization SECURITY DEFINER RPC
+   * (migration 0003): it inserts the org, joins the caller as admin and seeds
+   * the default conditions in one RLS-safe transaction — a direct client INSERT
+   * would be blocked because the new org_id JWT claim doesn't exist yet. We then
+   * refresh the session so the re-issued JWT carries org_id, and call
+   * initializeDefaultConditions (idempotent — returns the already-seeded rows).
    */
   async createOrganization(
     organization: Omit<Organization, 'id' | 'createdAt' | 'updatedAt' | 'memberCount'>
   ): Promise<Organization> {
     logger.log('🏢 Creating organization:', organization.name)
-    
+
     try {
-      // Step 1: Create organization
-      const organizationData = {
-        ...organization,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        memberCount: 1
-      }
-      
-      const docRef = await addDoc(collection(db, ORGANIZATIONS_COLLECTION), organizationData)
-      const orgId = docRef.id
-      
+      // Step 1: Create organization (RLS-safe via RPC)
+      const { data: orgId, error } = await supabase.rpc('create_organization', {
+        p_name: organization.name,
+        p_description: organization.description ?? null,
+      })
+      if (error) throw error
+
       logger.log(`✅ Organization created with ID: ${orgId}`)
-      
-      // Step 2: ✅ CRITICAL FIX - Initialize default conditions IMMEDIATELY
-      // This happens ONCE during org creation, preventing race conditions
+
+      // Re-issue the JWT so it carries the new org_id claim; without this the
+      // RLS-scoped reads/writes below would be empty/denied.
+      await supabase.auth.refreshSession()
+
+      // Step 2: ✅ CRITICAL FIX - Initialize default conditions IMMEDIATELY.
+      // Idempotent: the RPC already seeded them, so this returns the existing set.
       logger.log('🎨 Initializing default conditions for new organization...')
       try {
-        await conditionService.initializeDefaultConditions(orgId)
+        await conditionService.initializeDefaultConditions(orgId as string)
         logger.log('✅ Default conditions initialized')
       } catch (error) {
         logger.error('❌ Failed to initialize conditions:', error)
         // Rollback: Delete the organization if condition creation fails
-        await deleteDoc(docRef)
+        await supabase.from(ORGANIZATIONS_COLLECTION).delete().eq('id', orgId as string)
         throw new Error('Failed to initialize organization conditions')
       }
-      
-      return { 
-        id: orgId, 
-        ...organizationData 
-      }
+
+      const created = await this.getOrganization(orgId as string)
+      if (!created) throw new Error('Failed to create organization')
+      return created
     } catch (error) {
       logger.error('❌ Failed to create organization:', error)
       throw new Error('Failed to create organization')
@@ -75,29 +75,19 @@ export const organizationService = {
   },
 
   async getOrganization(organizationId: string): Promise<Organization | null> {
-    const q = query(
-      collection(db, ORGANIZATIONS_COLLECTION),
-      where('__name__', '==', organizationId)
-    )
-    const querySnapshot = await getDocs(q)
-    
-    if (querySnapshot.empty) {
-      return null
-    }
-    
-    const doc = querySnapshot.docs[0]
-    return {
-      id: doc.id,
-      ...doc.data()
-    } as Organization
+    const { data, error } = await supabase
+      .from(ORGANIZATIONS_COLLECTION)
+      .select('*')
+      .eq('id', organizationId)
+      .maybeSingle()
+    if (error) throw error
+    return toCamel<Organization>(data)
   },
 
   async getAllOrganizations(): Promise<Organization[]> {
-    const querySnapshot = await getDocs(collection(db, ORGANIZATIONS_COLLECTION))
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as Organization))
+    const { data, error } = await supabase.from(ORGANIZATIONS_COLLECTION).select('*')
+    if (error) throw error
+    return toCamelList<Organization>(data)
   },
 
   async updateOrganization(
@@ -106,20 +96,25 @@ export const organizationService = {
   ): Promise<void> {
     const updateData = {
       ...updates,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     }
-    await updateDoc(doc(db, ORGANIZATIONS_COLLECTION, organizationId), updateData)
+    const { error } = await supabase
+      .from(ORGANIZATIONS_COLLECTION)
+      .update(toSnake(updateData))
+      .eq('id', organizationId)
+    if (error) throw error
   },
 
   async deleteOrganization(organizationId: string): Promise<void> {
-    await deleteDoc(doc(db, ORGANIZATIONS_COLLECTION, organizationId))
+    const { error } = await supabase.from(ORGANIZATIONS_COLLECTION).delete().eq('id', organizationId)
+    if (error) throw error
   },
 
   async incrementMemberCount(organizationId: string): Promise<void> {
     const org = await this.getOrganization(organizationId)
     if (org) {
       await this.updateOrganization(organizationId, {
-        memberCount: org.memberCount + 1
+        memberCount: org.memberCount + 1,
       })
     }
   },
@@ -128,8 +123,8 @@ export const organizationService = {
     const org = await this.getOrganization(organizationId)
     if (org && org.memberCount > 0) {
       await this.updateOrganization(organizationId, {
-        memberCount: org.memberCount - 1
+        memberCount: org.memberCount - 1,
       })
     }
-  }
+  },
 }

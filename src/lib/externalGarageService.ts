@@ -1,51 +1,37 @@
-// src/lib/externalGarageService.ts
-import {
-  collection,
-  doc,
-  getDocs,
-  getDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  orderBy,
-  Timestamp,
-  writeBatch,
-  limit, // ⬅️ necesar pentru testCollectionAccess
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+// src/lib/externalGarageService.ts — SUPABASE re-implementation.
+// Public interface (class + singleton export) and every method signature are
+// kept identical; only the internals swap Firestore → Supabase. Created/updated
+// timestamps are revived into Date objects, matching the Firestore version's
+// .toDate() behaviour so consumers keep working unchanged.
+
+import { supabase } from '@/lib/supabaseClient'
+import { toCamel } from '@/lib/dbMap'
 import type { ExternalGarage, ExternalGarageFormData } from '@/types'
 import { logger } from '@/lib/logger'
 
-const COLLECTION_NAME = 'externalGarages'
+const COLLECTION_NAME = 'external_garages'
+
+// Row → ExternalGarage: snake→camel + revive timestamps into Date objects.
+const toDate = (v: any) => (v ? new Date(v) : v)
+function rowToGarage(row: any): ExternalGarage {
+  const g = toCamel<any>(row)!
+  g.createdAt = toDate(g.createdAt)
+  g.updatedAt = toDate(g.updatedAt)
+  return g as ExternalGarage
+}
 
 class ExternalGarageService {
-  private getCollectionRef() {
-    return collection(db, COLLECTION_NAME)
-  }
-
-  private getDocRef(id: string) {
-    return doc(db, COLLECTION_NAME, id)
-  }
-
   // Get all active external garages for an organization
   async getExternalGarages(organizationId: string): Promise<ExternalGarage[]> {
     try {
-      const q = query(
-        this.getCollectionRef(),
-        where('organizationId', '==', organizationId),
-        where('isActive', '==', true),
-        orderBy('name', 'asc')
-      )
-
-      const snapshot = await getDocs(q)
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt,
-        updatedAt: doc.data().updatedAt?.toDate?.() || doc.data().updatedAt
-      })) as ExternalGarage[]
+      const { data, error } = await supabase
+        .from(COLLECTION_NAME)
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('is_active', true)
+        .order('name', { ascending: true })
+      if (error) throw error
+      return (data ?? []).map(rowToGarage)
     } catch (error) {
       logger.error('Error fetching external garages:', error)
       throw new Error('Failed to fetch external garages')
@@ -55,19 +41,13 @@ class ExternalGarageService {
   // Get all external garages (including inactive) for management
   async getAllExternalGarages(organizationId: string): Promise<ExternalGarage[]> {
     try {
-      const q = query(
-        this.getCollectionRef(),
-        where('organizationId', '==', organizationId),
-        orderBy('name', 'asc')
-      )
-
-      const snapshot = await getDocs(q)
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt,
-        updatedAt: doc.data().updatedAt?.toDate?.() || doc.data().updatedAt
-      })) as ExternalGarage[]
+      const { data, error } = await supabase
+        .from(COLLECTION_NAME)
+        .select('*')
+        .eq('organization_id', organizationId)
+        .order('name', { ascending: true })
+      if (error) throw error
+      return (data ?? []).map(rowToGarage)
     } catch (error) {
       logger.error('Error fetching all external garages:', error)
       throw new Error('Failed to fetch external garages')
@@ -77,18 +57,14 @@ class ExternalGarageService {
   // Get a single external garage by ID
   async getExternalGarage(id: string): Promise<ExternalGarage | null> {
     try {
-      const docSnap = await getDoc(this.getDocRef(id))
-      
-      if (!docSnap.exists()) {
-        return null
-      }
-
-      return {
-        id: docSnap.id,
-        ...docSnap.data(),
-        createdAt: docSnap.data().createdAt?.toDate?.() || docSnap.data().createdAt,
-        updatedAt: docSnap.data().updatedAt?.toDate?.() || docSnap.data().updatedAt
-      } as ExternalGarage
+      const { data, error } = await supabase
+        .from(COLLECTION_NAME)
+        .select('*')
+        .eq('id', id)
+        .maybeSingle()
+      if (error) throw error
+      if (!data) return null
+      return rowToGarage(data)
     } catch (error) {
       logger.error('Error fetching external garage:', error)
       throw new Error('Failed to fetch external garage')
@@ -103,7 +79,7 @@ class ExternalGarageService {
   ): Promise<ExternalGarage> {
     try {
       logger.log('Creating external garage:', { garageData, organizationId, createdBy })
-      
+
       // Validate input
       this.validateGarageData(garageData)
 
@@ -111,30 +87,27 @@ class ExternalGarageService {
         throw new Error('Organization ID and created by user ID are required')
       }
 
-      const now = Timestamp.now()
       const docData = {
         ...garageData,
         name: garageData.name.trim(),
         address: garageData.address.trim(),
-        organizationId,
-        createdBy,
-        createdAt: now,
-        updatedAt: now,
-        isActive: true
+        organization_id: organizationId,
+        created_by: createdBy,
+        is_active: true,
       }
 
       logger.log('Document data to be saved:', docData)
 
-      const docRef = await addDoc(this.getCollectionRef(), docData)
-      
-      logger.log('Document created with ID:', docRef.id)
-      
-      return {
-        id: docRef.id,
-        ...docData,
-        createdAt: now.toDate(),
-        updatedAt: now.toDate()
-      }
+      const { data, error } = await supabase
+        .from(COLLECTION_NAME)
+        .insert(docData)
+        .select()
+        .single()
+      if (error) throw error
+
+      logger.log('Document created with ID:', data.id)
+
+      return rowToGarage(data)
     } catch (error) {
       logger.error('Error creating external garage:', error)
       if (error instanceof Error && error.message.includes('validation')) {
@@ -161,12 +134,12 @@ class ExternalGarageService {
       if (garageData.name !== undefined || garageData.address !== undefined) {
         this.validateGarageData({
           name: garageData.name || existingGarage.name,
-          address: garageData.address || existingGarage.address
+          address: garageData.address || existingGarage.address,
         })
       }
 
       const updateData: any = {
-        updatedAt: Timestamp.now()
+        updated_at: new Date().toISOString(),
       }
 
       if (garageData.name !== undefined) {
@@ -176,7 +149,8 @@ class ExternalGarageService {
         updateData.address = garageData.address.trim()
       }
 
-      await updateDoc(this.getDocRef(id), updateData)
+      const { error } = await supabase.from(COLLECTION_NAME).update(updateData).eq('id', id)
+      if (error) throw error
     } catch (error) {
       logger.error('Error updating external garage:', error)
       if (error instanceof Error && error.message.includes('validation')) {
@@ -199,11 +173,12 @@ class ExternalGarageService {
       }
 
       const newStatus = !existingGarage.isActive
-      
-      await updateDoc(this.getDocRef(id), {
-        isActive: newStatus,
-        updatedAt: Timestamp.now()
-      })
+
+      const { error } = await supabase
+        .from(COLLECTION_NAME)
+        .update({ is_active: newStatus, updated_at: new Date().toISOString() })
+        .eq('id', id)
+      if (error) throw error
 
       return newStatus
     } catch (error) {
@@ -221,10 +196,11 @@ class ExternalGarageService {
         throw new Error('External garage not found or access denied')
       }
 
-      await updateDoc(this.getDocRef(id), {
-        isActive: false,
-        updatedAt: Timestamp.now()
-      })
+      const { error } = await supabase
+        .from(COLLECTION_NAME)
+        .update({ is_active: false, updated_at: new Date().toISOString() })
+        .eq('id', id)
+      if (error) throw error
     } catch (error) {
       logger.error('Error deleting external garage:', error)
       throw new Error('Failed to delete external garage')
@@ -243,7 +219,8 @@ class ExternalGarageService {
         throw new Error('External garage not found or access denied')
       }
 
-      await deleteDoc(this.getDocRef(id))
+      const { error } = await supabase.from(COLLECTION_NAME).delete().eq('id', id)
+      if (error) throw error
     } catch (error) {
       logger.error('Error permanently deleting external garage:', error)
       throw new Error('Failed to permanently delete external garage')
@@ -258,8 +235,8 @@ class ExternalGarageService {
     }>,
     organizationId: string
   ): Promise<{ successful: number; failed: number; errors: string[] }> {
-    const batch = writeBatch(db)
     const results = { successful: 0, failed: 0, errors: [] as string[] }
+    const pending: Array<{ id: string; updateData: Record<string, any> }> = []
 
     try {
       for (const op of operations) {
@@ -272,21 +249,21 @@ class ExternalGarageService {
             continue
           }
 
-          const updateData: any = { updatedAt: Timestamp.now() }
+          const updateData: any = { updated_at: new Date().toISOString() }
 
           switch (op.operation) {
             case 'activate':
-              updateData.isActive = true
+              updateData.is_active = true
               break
             case 'deactivate':
-              updateData.isActive = false
+              updateData.is_active = false
               break
             case 'delete':
-              updateData.isActive = false
+              updateData.is_active = false
               break
           }
 
-          batch.update(this.getDocRef(op.id), updateData)
+          pending.push({ id: op.id, updateData })
           results.successful++
         } catch (error) {
           results.failed++
@@ -295,7 +272,17 @@ class ExternalGarageService {
       }
 
       if (results.successful > 0) {
-        await batch.commit()
+        await Promise.all(
+          pending.map(({ id, updateData }) =>
+            supabase
+              .from(COLLECTION_NAME)
+              .update(updateData)
+              .eq('id', id)
+              .then(({ error }) => {
+                if (error) throw error
+              })
+          )
+        )
       }
 
       return results
@@ -340,20 +327,20 @@ class ExternalGarageService {
     excludeId?: string
   ): Promise<boolean> {
     try {
-      const q = query(
-        this.getCollectionRef(),
-        where('organizationId', '==', organizationId),
-        where('name', '==', name.trim()),
-        where('isActive', '==', true)
-      )
+      const { data, error } = await supabase
+        .from(COLLECTION_NAME)
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('name', name.trim())
+        .eq('is_active', true)
+      if (error) throw error
 
-      const snapshot = await getDocs(q)
-      
+      const rows = data ?? []
       if (excludeId) {
-        return snapshot.docs.some(doc => doc.id !== excludeId)
+        return rows.some((r: any) => r.id !== excludeId)
       }
-      
-      return !snapshot.empty
+
+      return rows.length > 0
     } catch (error) {
       logger.error('Error checking garage name existence:', error)
       return false
@@ -367,12 +354,13 @@ class ExternalGarageService {
   async testCollectionAccess(organizationId?: string): Promise<boolean> {
     if (process.env.NODE_ENV !== 'development') return true
     try {
-      const col = this.getCollectionRef()
-      const q = organizationId
-        ? query(col, where('organizationId', '==', organizationId), limit(1))
-        : query(col, limit(1))
-      const snap = await getDocs(q)
-      logger.log('[externalGarageService] testCollectionAccess OK; docs:', snap.size)
+      let query = supabase.from(COLLECTION_NAME).select('*').limit(1)
+      if (organizationId) {
+        query = query.eq('organization_id', organizationId)
+      }
+      const { data, error } = await query
+      if (error) throw error
+      logger.log('[externalGarageService] testCollectionAccess OK; docs:', (data ?? []).length)
       return true
     } catch (err) {
       logger.error('[externalGarageService] testCollectionAccess FAILED', err)

@@ -45,7 +45,7 @@ keeping every function signature identical. Online-only. Fresh-start data.
 | 2. Core schema + RLS draft | ✅ first pass (`0001`, `0002`, `0003`) |
 | 3a. Auth + core data layer on Supabase (type-clean) | ✅ done |
 | 3b. Yard map + realtime wiring, Vercel + Capacitor verify | ⏳ needs live project |
-| 4. Remaining tables + service-layer port | ⬜ |
+| 4. Remaining tables + service-layer port | ⏳ wave 1 done (15 services), see below |
 | 5. Edge Functions (DVLA, bulk refresh, Groq, Resend) + pg_cron | ⬜ |
 | 6. RLS audit + realtime QA + cutover (on your go) | ⬜ |
 
@@ -94,6 +94,29 @@ Still to do for a runnable slice (needs live project):
   Supabase Realtime channels.
 - Add `vercel.json`, deploy, verify in a Capacitor build.
 - ⚠️ Still split-brain until the rest of Phase 4 lands — don't run end-to-end yet.
+
+### Phase 4 — wave 1 (6 parallel agents; whole project `tsc --noEmit` → 0)
+Ported to Supabase (identical signatures):
+- Stock/invoicing: `stockService`, `settingsService` (→ existing tables; `organization_settings` gained suppliers/companies/policies jsonb).
+- Transfers: `transferService` (uses existing `checked_in_vehicles`; `service_booking_id` relaxed to text).
+- Hire: `vehicleHireService`, `hireHistoryService` (+ new `hire_history` table).
+- Customers/history: `customerService`, `customerJobHistoryService` (derived from bookings), `vehicleServiceHistoryService` (+ new `vehicle_service_history`).
+- Branches/org/garages/conditions/contracts: `branchService` (Realtime subscribe), standalone `organizationService`, `externalGarageService`, standalone `conditionService`, `contractService` (+ new `branch_migrations`; branches→Realtime).
+- Bulk ops: `bulkInsuranceService` (×2 paths), `bulkRoadTaxService`, `bulkVehicleRefreshService` (Realtime; DVLA call stubbed via `functions.invoke` for Phase 5).
+- New migrations: `0010_stock_settings` … `0015_bulk_insurance`.
+- ⚠️ Migrations are TS-side validated only — not yet applied to a DB (`supabase db push` will validate SQL once a project exists).
+
+Known follow-ups flagged by agents:
+- A few `writeBatch` ops are now non-atomic parallel writes → convert to RPCs if true atomicity matters (stock batch-use, bulk updates).
+- `insurance_policies` table created but unused (policies live as jsonb on `organization_settings`) — reconcile/drop later.
+- `src/types/{transfer,hireHistory,yardLayout}.ts` still import the Firebase `Timestamp` type — clean up when removing the firebase dep.
+
+### Phase 4 — remaining (wave 2+)
+- Realtime hooks/contexts still on `onSnapshot`: `useYardData`, `useYardLayout`, `useVehicleTransfers`, `useIncomingTransfers`, `useNotifications`, `useCustomers`, `useCheckoutHistory`, `useBranchOverviewData`, `useBodyshopJobs`, `useDeliveriesDefleet`, `ServiceBookingsContext`.
+- Sync/util services: `insuranceSyncService`, `damageSyncService`, `contractSyncService`, `conditionSyncService`, `RegistrationUpdateService`, `notesCleanupService`, `cleanupExistingData`, `lib/zao/fleetQueries`.
+- Components with inline Firestore: stock modals, `VehicleDetailModal`, `ServiceBanner`, `VehicleHireLookup`, `UserManagement`, `reports`, settings/dashboard widgets.
+- Bodyshop, tasks, user notes, notifications tables (not yet modelled).
+- Voice/Groq/push (`useGroqAssistant`, `SpeechEnabledGroqAssistant`, `VoiceCommandButton`, push debug) → Phase 5 Edge Functions.
 
 ### Core tables drafted (Firestore collection → Postgres table)
 organizations, userProfiles→`profiles`, organizationSettings→`organization_settings`,

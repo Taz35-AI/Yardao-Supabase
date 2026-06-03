@@ -1,44 +1,36 @@
-// src/lib/services/vehicleServiceHistoryService.ts
+// src/lib/services/vehicleServiceHistoryService.ts — SUPABASE re-implementation.
+//
+// ⚠️ Data-layer swap: every export + signature below is kept identical to the
+// Firestore version. Only the INTERNALS change.
+//
 // Per-vehicle service history — read on demand, scoped to ONE vehicle + a
-// limit, so it adds negligible Firestore read cost (getDocs, never a
-// listener). Booking-sourced rows are derived from completed
-// serviceBookings (no copy / no migration); manual rows live in the
-// `vehicleServiceHistory` collection.
+// limit, so it adds negligible read cost (SELECTs, never a listener).
+// Booking-sourced rows are DERIVED from completed service_bookings (no copy /
+// no migration); manual rows live in the `vehicle_service_history` table
+// (new in migration 0013). RLS scopes every query to the caller's org.
 
-import {
-  collection,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  getDocs,
-  query,
-  where,
-  orderBy,
-  limit as fbLimit,
-  serverTimestamp,
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
+import { toCamel, toSnake } from '@/lib/dbMap'
 import { logger } from '@/lib/logger'
 import {
-  VEHICLE_SERVICE_HISTORY_COLLECTION,
   ManualServiceHistoryDoc,
   VehicleServiceRecord,
 } from '@/types/vehicleServiceHistory'
 
-const SERVICE_BOOKINGS_COLLECTION = 'serviceBookings'
+const SERVICE_BOOKINGS_TABLE = 'service_bookings'
+const VEHICLE_SERVICE_HISTORY_TABLE = 'vehicle_service_history'
 
 // UPPER + no whitespace — used for equality matching across spacing variants
 export function normalizeReg(reg: string): string {
   return (reg || '').toUpperCase().replace(/\s+/g, '')
 }
 
-// Firestore Timestamp | Date | 'YYYY-MM-DD' string → 'YYYY-MM-DD'
+// timestamptz | Date | 'YYYY-MM-DD' string → 'YYYY-MM-DD'
 function toDateStr(value: any, fallback: string): string {
   try {
     if (!value) return fallback
     if (typeof value === 'string') return value.slice(0, 10)
-    const d: Date = typeof value.toDate === 'function' ? value.toDate() : new Date(value)
+    const d: Date = value instanceof Date ? value : new Date(value)
     if (isNaN(d.getTime())) return fallback
     const y = d.getFullYear()
     const m = String(d.getMonth() + 1).padStart(2, '0')
@@ -49,12 +41,12 @@ function toDateStr(value: any, fallback: string): string {
   }
 }
 
-function bookingToRecord(id: string, b: any): VehicleServiceRecord {
+function bookingToRecord(b: any): VehicleServiceRecord {
   const work = Array.isArray(b.workRequired)
     ? b.workRequired.filter(Boolean).join(', ')
     : (b.workRequired || '')
   return {
-    id,
+    id: b.id,
     source: 'booking',
     date: toDateStr(b.completedAt, typeof b.date === 'string' ? b.date : ''),
     locationType: b.isExternalProvider ? 'external' : 'internal',
@@ -72,9 +64,9 @@ function bookingToRecord(id: string, b: any): VehicleServiceRecord {
   }
 }
 
-function manualToRecord(id: string, m: ManualServiceHistoryDoc): VehicleServiceRecord {
+function manualToRecord(m: any): VehicleServiceRecord {
   return {
-    id,
+    id: m.id,
     source: 'manual',
     date: (m.date || '').slice(0, 10),
     locationType: m.locationType,
@@ -89,7 +81,7 @@ function manualToRecord(id: string, m: ManualServiceHistoryDoc): VehicleServiceR
 
 export const vehicleServiceHistoryService = {
   /**
-   * Merged history for ONE vehicle: completed serviceBookings (derived,
+   * Merged history for ONE vehicle: completed service_bookings (derived,
    * no migration) + manual records. On-demand, capped by `max` per source.
    */
   async getVehicleServiceHistory(params: {
@@ -104,63 +96,53 @@ export const vehicleServiceHistoryService = {
     const raw = registration.trim()
     const spaceless = normalizeReg(registration)
     // Query the registration as stored, plus the spaceless variant when it
-    // differs — two cheap indexed equality queries, deduped by doc id.
+    // differs — one indexed IN query, naturally deduped.
     const regCandidates = Array.from(new Set([raw, spaceless].filter(Boolean)))
 
     const records: VehicleServiceRecord[] = []
-    const seenBooking = new Set<string>()
     let bookingOk = false
     let manualOk = false
     let lastErr: unknown = null
 
-    // Booking-sourced (completed only). Isolated so a problem here (missing
-    // index, rules) can't take out the manual records, and vice-versa.
+    // Booking-sourced (completed only). Isolated so a problem here can't take
+    // out the manual records, and vice-versa.
     try {
-      for (const regValue of regCandidates) {
-        const q = query(
-          collection(db, SERVICE_BOOKINGS_COLLECTION),
-          where('organizationId', '==', organizationId),
-          where('registration', '==', regValue),
-          where('status', '==', 'completed'),
-          orderBy('date', 'desc'),
-          fbLimit(max),
-        )
-        const snap = await getDocs(q)
-        snap.forEach(d => {
-          if (seenBooking.has(d.id)) return
-          seenBooking.add(d.id)
-          records.push(bookingToRecord(d.id, d.data()))
-        })
-      }
+      const { data, error } = await supabase
+        .from(SERVICE_BOOKINGS_TABLE)
+        .select('*')
+        .eq('organization_id', organizationId)
+        .in('registration', regCandidates)
+        .eq('status', 'completed')
+        .order('date', { ascending: false })
+        .limit(max)
+      if (error) throw error
+      ;(data ?? []).forEach((row) => records.push(bookingToRecord(toCamel<any>(row)!)))
       bookingOk = true
     } catch (err) {
       lastErr = err
-      logger.error('Service history: booking query failed (often a missing composite index or serviceBookings rules):', err)
+      logger.error('Service history: booking query failed:', err)
     }
 
-    // Manual records. Separate, newer collection — if its Firestore security
-    // rule / index isn't in place yet this must NOT wipe out the
-    // booking-derived history that is perfectly readable.
+    // Manual records. Separate table — if it isn't reachable this must NOT
+    // wipe out the booking-derived history that is perfectly readable.
     try {
-      const mq = query(
-        collection(db, VEHICLE_SERVICE_HISTORY_COLLECTION),
-        where('organizationId', '==', organizationId),
-        where('registrationKey', '==', spaceless),
-        orderBy('date', 'desc'),
-        fbLimit(max),
-      )
-      const msnap = await getDocs(mq)
-      msnap.forEach(d => {
-        records.push(manualToRecord(d.id, d.data() as ManualServiceHistoryDoc))
-      })
+      const { data, error } = await supabase
+        .from(VEHICLE_SERVICE_HISTORY_TABLE)
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('registration_key', spaceless)
+        .order('date', { ascending: false })
+        .limit(max)
+      if (error) throw error
+      ;(data ?? []).forEach((row) => records.push(manualToRecord(toCamel<any>(row)!)))
       manualOk = true
     } catch (err) {
       lastErr = err
-      logger.error('Service history: manual query failed (the vehicleServiceHistory collection likely has no Firestore rule yet):', err)
+      logger.error('Service history: manual query failed:', err)
     }
 
     // Only surface an error if BOTH sources failed — otherwise show whatever
-    // we could read so the tab stays useful while rules/indexes catch up.
+    // we could read so the tab stays useful.
     if (!bookingOk && !manualOk) {
       throw lastErr instanceof Error
         ? lastErr
@@ -176,30 +158,41 @@ export const vehicleServiceHistoryService = {
     record: Omit<ManualServiceHistoryDoc, 'id' | 'createdAt' | 'updatedAt' | 'registrationKey'>,
   ): Promise<string> {
     const payload = {
-      ...record,
-      registrationKey: normalizeReg(record.registration),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+      ...toSnake(record),
+      registration_key: normalizeReg(record.registration),
     }
-    const ref = await addDoc(collection(db, VEHICLE_SERVICE_HISTORY_COLLECTION), payload)
-    logger.log('🧾 Manual service history added:', ref.id)
-    return ref.id
+    const { data, error } = await supabase
+      .from(VEHICLE_SERVICE_HISTORY_TABLE)
+      .insert(payload)
+      .select('id')
+      .single()
+    if (error) throw error
+    logger.log('🧾 Manual service history added:', data.id)
+    return data.id as string
   },
 
   async updateManualServiceRecord(
     id: string,
     patch: Partial<Omit<ManualServiceHistoryDoc, 'id' | 'organizationId' | 'createdBy' | 'createdByName' | 'createdAt'>>,
   ): Promise<void> {
-    const next: Record<string, any> = { ...patch, updatedAt: serverTimestamp() }
+    const next: Record<string, any> = { ...toSnake(patch) }
     if (typeof patch.registration === 'string') {
-      next.registrationKey = normalizeReg(patch.registration)
+      next.registration_key = normalizeReg(patch.registration)
     }
-    await updateDoc(doc(db, VEHICLE_SERVICE_HISTORY_COLLECTION, id), next)
+    const { error } = await supabase
+      .from(VEHICLE_SERVICE_HISTORY_TABLE)
+      .update(next)
+      .eq('id', id)
+    if (error) throw error
     logger.log('🧾 Manual service history updated:', id)
   },
 
   async deleteManualServiceRecord(id: string): Promise<void> {
-    await deleteDoc(doc(db, VEHICLE_SERVICE_HISTORY_COLLECTION, id))
+    const { error } = await supabase
+      .from(VEHICLE_SERVICE_HISTORY_TABLE)
+      .delete()
+      .eq('id', id)
+    if (error) throw error
     logger.log('🧾 Manual service history deleted:', id)
   },
 }

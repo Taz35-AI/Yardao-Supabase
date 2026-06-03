@@ -1,46 +1,38 @@
-// src/lib/services/stockService.ts
-// Stock Management Service - All database operations
-// ✅ CLEAN VERSION: No undo feature - use Adjust Stock instead
-// ✅ FEATURES: Stock adjustments, edit parts, delete orders, all existing functions
-// ✅ FIXED: Firestore compatibility - no undefined values
-// ✅ NEW: Delete all stock function added
+// src/lib/services/stockService.ts — SUPABASE re-implementation.
+//
+// ⚠️ Data-layer swap: every EXPORT and method SIGNATURE below is kept identical
+// to the original Firestore version so the frontend imports/usage are unchanged.
+// Only the INTERNALS change — Firestore SDK calls become Supabase queries with
+// snake↔camel mapping (see dbMap) so returned objects match the TS interfaces
+// byte-for-byte. RLS scopes every query to the caller's org.
+//
+// Maps to existing tables (0001): stock_parts, part_usage, invoices,
+// order_history, stock_adjustments.
+//
+// Firestore writeBatch atomicity has no direct client equivalent in Supabase;
+// the batched flows (removePartQuantity, adjustStock, batchUseParts) are
+// performed as sequential writes that validate before mutating and throw on the
+// first error — same observable contract for callers.
 
-import {
-  collection,
-  addDoc,
-  getDocs,
-  getDoc,
-  doc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  orderBy,
-  increment,
-  serverTimestamp,
-  writeBatch,
-  Timestamp,
-  deleteField  // ✅ NEW: Import deleteField for removing fields
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
 import { StockPart, PartUsageRecord, Invoice, OrderHistoryRecord, StockAdjustment } from '@/types/stock'
+import { toCamel, toCamelList, toSnake } from '@/lib/dbMap'
 import { logger } from '@/lib/logger'
 import { normalizeReg } from '@/lib/utils/registration'
 
-const STOCK_COLLECTION = 'stockParts'
-const USAGE_COLLECTION = 'partUsage'
-const INVOICE_COLLECTION = 'invoices'
-const ORDER_HISTORY_COLLECTION = 'orderHistory'
-const STOCK_ADJUSTMENTS_COLLECTION = 'stockAdjustments'
+const STOCK_TABLE = 'stock_parts'
+const USAGE_TABLE = 'part_usage'
+const INVOICE_TABLE = 'invoices'
+const ORDER_HISTORY_TABLE = 'order_history'
+const STOCK_ADJUSTMENTS_TABLE = 'stock_adjustments'
 
 export const stockService = {
   // ==================== STOCK PARTS ====================
-  
+
   /**
    * Add new part to stock
    */
   async addPart(part: Omit<StockPart, 'id' | 'createdAt'>): Promise<StockPart> {
-    // ✅ FIXED: Remove undefined fields for Firestore compatibility
     const partData: any = {
       partName: part.partName,
       partNumber: part.partNumber,
@@ -52,15 +44,15 @@ export const stockService = {
       organizationId: part.organizationId,
       createdBy: part.createdBy,
       createdAt: new Date().toISOString(),
-      totalUsageCount: 0
+      totalUsageCount: 0,
     }
-    
+
     // Only add supplier if it has a value
     if (part.supplier && part.supplier.trim()) {
       partData.supplier = part.supplier.trim()
     }
-    
-    // ✅ NEW: Only add comments if it has a value
+
+    // Only add comments if it has a value
     if (part.comments && part.comments.trim()) {
       partData.comments = part.comments.trim()
     }
@@ -68,98 +60,90 @@ export const stockService = {
     if (part.isOneOff) partData.isOneOff = true
     if (part.linkedRegistration) partData.linkedRegistration = part.linkedRegistration
     if (part.linkedVehicleId) partData.linkedVehicleId = part.linkedVehicleId
-    
-    const docRef = await addDoc(collection(db, STOCK_COLLECTION), partData)
-    return { id: docRef.id, ...partData }
+
+    const { data, error } = await supabase.from(STOCK_TABLE).insert(toSnake(partData)).select().single()
+    if (error) throw error
+    return toCamel<StockPart>(data) as StockPart
   },
 
   /**
    * Get all parts for organization
    */
   async getParts(organizationId: string): Promise<StockPart[]> {
-    const q = query(
-      collection(db, STOCK_COLLECTION),
-      where('organizationId', '==', organizationId),
-      orderBy('partName', 'asc')
-    )
-    
-    const snapshot = await getDocs(q)
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as StockPart))
+    const { data, error } = await supabase
+      .from(STOCK_TABLE)
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('part_name', { ascending: true })
+    if (error) throw error
+    return toCamelList<StockPart>(data)
   },
 
   /**
    * Get single part by ID
    */
   async getPart(partId: string): Promise<StockPart | null> {
-    const docRef = doc(db, STOCK_COLLECTION, partId)
-    const docSnap = await getDoc(docRef)
-    
-    if (!docSnap.exists()) return null
-    
-    return { id: docSnap.id, ...docSnap.data() } as StockPart
+    const { data, error } = await supabase.from(STOCK_TABLE).select('*').eq('id', partId).maybeSingle()
+    if (error) throw error
+    return toCamel<StockPart>(data)
   },
 
   /**
    * Update part
    */
   async updatePart(partId: string, updates: Partial<StockPart>): Promise<void> {
-    // ✅ FIXED: Handle undefined fields properly - delete them from Firestore
+    // Mirror the Firestore deleteField semantics: undefined → clear the column
+    // (null); empty-string supplier/comments → clear too.
     const cleanUpdates: any = {
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     }
-    
-    // Process each update
-    Object.keys(updates).forEach(key => {
+
+    Object.keys(updates).forEach((key) => {
       const value = (updates as any)[key]
-      
-      // If value is undefined, mark field for deletion
+
       if (value === undefined) {
-        cleanUpdates[key] = deleteField()
-      } 
-      // If it's an empty string for optional fields, mark for deletion
-      else if (value === '' && (key === 'supplier' || key === 'comments')) {
-        cleanUpdates[key] = deleteField()
-      }
-      // Otherwise, include the value
-      else {
+        cleanUpdates[key] = null
+      } else if (value === '' && (key === 'supplier' || key === 'comments')) {
+        cleanUpdates[key] = null
+      } else {
         cleanUpdates[key] = value
       }
     })
-    
-    const docRef = doc(db, STOCK_COLLECTION, partId)
-    await updateDoc(docRef, cleanUpdates)
+
+    // toSnake drops undefined; cleanUpdates uses explicit null so the
+    // cleared columns are written, matching deleteField().
+    const row: Record<string, any> = {}
+    for (const [k, v] of Object.entries(cleanUpdates)) {
+      row[k.replace(/[A-Z]/g, (m) => '_' + m.toLowerCase())] = v
+    }
+
+    const { error } = await supabase.from(STOCK_TABLE).update(row).eq('id', partId)
+    if (error) throw error
   },
 
   /**
    * Delete part
    */
   async deletePart(partId: string): Promise<void> {
-    await deleteDoc(doc(db, STOCK_COLLECTION, partId))
+    const { error } = await supabase.from(STOCK_TABLE).delete().eq('id', partId)
+    if (error) throw error
   },
 
   /**
-   * ✅ NEW: Delete ALL stock parts for an organization
+   * Delete ALL stock parts for an organization
    * This completely wipes the stock inventory
    */
   async deleteAllStock(organizationId: string): Promise<number> {
     try {
-      const stockQuery = query(
-        collection(db, STOCK_COLLECTION),
-        where('organizationId', '==', organizationId)
-      )
-      
-      const snapshot = await getDocs(stockQuery)
-      
-      // Firebase has a limit of 500 operations per batch
-      // If you have more than 500 items, we need multiple batches
-      const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref))
-      await Promise.all(deletePromises)
-      
-      logger.log(`✅ Deleted ALL ${snapshot.size} stock items`)
-      return snapshot.size
+      const { data, error } = await supabase
+        .from(STOCK_TABLE)
+        .delete()
+        .eq('organization_id', organizationId)
+        .select('id')
+      if (error) throw error
+      const count = (data ?? []).length
+      logger.log(`✅ Deleted ALL ${count} stock items`)
+      return count
     } catch (error) {
       logger.error('Error deleting all stock:', error)
       throw error
@@ -182,24 +166,25 @@ export const stockService = {
     organizationId: string,
     notes?: string
   ): Promise<void> {
-    const batch = writeBatch(db)
-    
     const part = await this.getPart(partId)
     if (!part) throw new Error('Part not found')
-    
+
     const newQuantity = part.quantity - quantityUsed
     if (newQuantity < 0) {
       throw new Error('Insufficient stock quantity')
     }
-    
-    const partRef = doc(db, STOCK_COLLECTION, partId)
-    batch.update(partRef, {
-      quantity: newQuantity,
-      lastUsedDate: new Date().toISOString(),
-      totalUsageCount: increment(1),
-      updatedAt: new Date().toISOString()
-    })
-    
+
+    const { error: updateError } = await supabase
+      .from(STOCK_TABLE)
+      .update({
+        quantity: newQuantity,
+        last_used_date: new Date().toISOString(),
+        total_usage_count: (part.totalUsageCount ?? 0) + 1,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', partId)
+    if (updateError) throw updateError
+
     const usageRecord: any = {
       partId,
       partName: part.partName,
@@ -217,19 +202,17 @@ export const stockService = {
       usedAt: new Date().toISOString(),
       organizationId,
       netPrice: part.netPrice,
-      totalCost: part.netPrice * quantityUsed
+      totalCost: part.netPrice * quantityUsed,
     }
-    
+
     // Only add notes if provided
     if (notes) {
       usageRecord.notes = notes
     }
-    
-    const usageRef = doc(collection(db, USAGE_COLLECTION))
-    batch.set(usageRef, usageRecord)
-    
-    await batch.commit()
-    
+
+    const { error: usageError } = await supabase.from(USAGE_TABLE).insert(toSnake(usageRecord))
+    if (usageError) throw usageError
+
     logger.log('✅ Part usage logged successfully')
   },
 
@@ -247,36 +230,35 @@ export const stockService = {
     userName: string,
     organizationId: string
   ): Promise<void> {
-    const batch = writeBatch(db)
-    
     logger.log('⚖️ Starting stock adjustment:', {
       partId,
       adjustmentType,
       quantity,
-      reason
+      reason,
     })
-    
+
     // Get part details
     const part = await this.getPart(partId)
     if (!part) throw new Error('Part not found')
-    
+
     // Calculate new quantity
     const previousStock = part.quantity
-    const newQuantity = adjustmentType === 'add' 
-      ? part.quantity + quantity 
-      : part.quantity - quantity
-    
+    const newQuantity = adjustmentType === 'add' ? part.quantity + quantity : part.quantity - quantity
+
     if (newQuantity < 0) {
       throw new Error('Cannot adjust stock below zero')
     }
-    
+
     // Update part quantity
-    const partRef = doc(db, STOCK_COLLECTION, partId)
-    batch.update(partRef, {
-      quantity: newQuantity,
-      updatedAt: new Date().toISOString()
-    })
-    
+    const { error: updateError } = await supabase
+      .from(STOCK_TABLE)
+      .update({
+        quantity: newQuantity,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', partId)
+    if (updateError) throw updateError
+
     // Create adjustment record for audit trail
     const adjustmentRecord: Omit<StockAdjustment, 'id'> = {
       partId,
@@ -292,19 +274,19 @@ export const stockService = {
       adjustedByName: userName,
       adjustedAt: new Date().toISOString(),
       organizationId,
-      unit: part.unit
+      unit: part.unit,
     }
-    
-    const adjustmentRef = doc(collection(db, STOCK_ADJUSTMENTS_COLLECTION))
-    batch.set(adjustmentRef, adjustmentRecord)
-    
-    await batch.commit()
-    
+
+    const { error: adjustError } = await supabase
+      .from(STOCK_ADJUSTMENTS_TABLE)
+      .insert(toSnake(adjustmentRecord))
+    if (adjustError) throw adjustError
+
     logger.log('✅ Stock adjustment complete:', {
       partName: part.partName,
       previousStock,
       newStock: newQuantity,
-      change: adjustmentType === 'add' ? `+${quantity}` : `-${quantity}`
+      change: adjustmentType === 'add' ? `+${quantity}` : `-${quantity}`,
     })
   },
 
@@ -312,18 +294,14 @@ export const stockService = {
    * Get stock adjustments for organization
    */
   async getStockAdjustments(organizationId: string, limit?: number): Promise<StockAdjustment[]> {
-    let q = query(
-      collection(db, STOCK_ADJUSTMENTS_COLLECTION),
-      where('organizationId', '==', organizationId),
-      orderBy('adjustedAt', 'desc')
-    )
-    
-    const snapshot = await getDocs(q)
-    const adjustments = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as StockAdjustment))
-    
+    const { data, error } = await supabase
+      .from(STOCK_ADJUSTMENTS_TABLE)
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('adjusted_at', { ascending: false })
+    if (error) throw error
+    const adjustments = toCamelList<StockAdjustment>(data)
+
     return limit ? adjustments.slice(0, limit) : adjustments
   },
 
@@ -332,11 +310,11 @@ export const stockService = {
    */
   async getLowStockParts(organizationId: string): Promise<StockPart[]> {
     const allParts = await this.getParts(organizationId)
-    return allParts.filter(part => part.quantity < part.restockTarget)
+    return allParts.filter((part) => part.quantity < part.restockTarget)
   },
 
   // ==================== PART USAGE ====================
-  
+
   /**
    * Get usage records for a vehicle
    */
@@ -345,20 +323,14 @@ export const stockService = {
     vehicleId: string,
     afterDate?: string,
   ): Promise<PartUsageRecord[]> {
-    // organizationId + vehicleId are BOTH equality filters → served
-    // without a composite index. The date window + ordering are applied
-    // in JS (a vehicle has few usage rows) so the tenant rules are
-    // satisfied without introducing a new index.
-    const snapshot = await getDocs(
-      query(
-        collection(db, USAGE_COLLECTION),
-        where('organizationId', '==', organizationId),
-        where('vehicleId', '==', vehicleId),
-      ),
-    )
-    return snapshot.docs
-      .map(doc => ({ id: doc.id, ...doc.data() } as PartUsageRecord))
-      .filter(r => !afterDate || (r.usedAt ?? '') >= afterDate)
+    const { data, error } = await supabase
+      .from(USAGE_TABLE)
+      .select('*')
+      .eq('organization_id', organizationId)
+      .eq('vehicle_id', vehicleId)
+    if (error) throw error
+    return toCamelList<PartUsageRecord>(data)
+      .filter((r) => !afterDate || (r.usedAt ?? '') >= afterDate)
       .sort((a, b) => (b.usedAt ?? '').localeCompare(a.usedAt ?? ''))
   },
 
@@ -376,29 +348,15 @@ export const stockService = {
     const key = normalizeReg(registration)
     if (!key) return []
 
-    // SINGLE equality filter only → served by the auto single-field
-    // index, so this NEVER needs a composite index (unlike the id-based
-    // history which has a long-standing one). Org-scoping + the date
-    // window + ordering are applied in JS afterwards. A given reg has a
-    // tiny number of rows so the client-side pass is negligible.
-    // org + reg-key are BOTH equality filters → no composite index. Org
-    // is now enforced in the QUERY (was a post-fetch JS filter) so the
-    // tightened tenant rules accept it.
-    const snapshot = await getDocs(
-      query(
-        collection(db, USAGE_COLLECTION),
-        where('organizationId', '==', organizationId),
-        where('vehicleRegistrationKey', '==', key),
-      ),
-    )
+    const { data, error } = await supabase
+      .from(USAGE_TABLE)
+      .select('*')
+      .eq('organization_id', organizationId)
+      .eq('vehicle_registration_key', key)
+    if (error) throw error
 
-    const rows = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    } as PartUsageRecord))
-
-    return rows
-      .filter(r => !afterDate || (r.usedAt ?? '') >= afterDate)
+    return toCamelList<PartUsageRecord>(data)
+      .filter((r) => !afterDate || (r.usedAt ?? '') >= afterDate)
       .sort((a, b) => (b.usedAt ?? '').localeCompare(a.usedAt ?? ''))
   },
 
@@ -406,39 +364,34 @@ export const stockService = {
    * Get all usage records for organization
    */
   async getAllUsageRecords(organizationId: string): Promise<PartUsageRecord[]> {
-    const q = query(
-      collection(db, USAGE_COLLECTION),
-      where('organizationId', '==', organizationId),
-      orderBy('usedAt', 'desc')
-    )
-    
-    const snapshot = await getDocs(q)
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as PartUsageRecord))
+    const { data, error } = await supabase
+      .from(USAGE_TABLE)
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('used_at', { ascending: false })
+    if (error) throw error
+    return toCamelList<PartUsageRecord>(data)
   },
 
   // ==================== INVOICES ====================
-  
+
   /**
    * Generate next invoice number
    */
   async generateInvoiceNumber(organizationId: string): Promise<string> {
-    const q = query(
-      collection(db, INVOICE_COLLECTION),
-      where('organizationId', '==', organizationId),
-      orderBy('createdAt', 'desc')
-    )
-    
-    const snapshot = await getDocs(q)
-    const lastInvoice = snapshot.docs[0]
-    
+    const { data, error } = await supabase
+      .from(INVOICE_TABLE)
+      .select('invoice_number')
+      .eq('organization_id', organizationId)
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    const lastInvoice = (data ?? [])[0]
+
     if (!lastInvoice) {
       return 'INV-0001'
     }
-    
-    const lastNumber = lastInvoice.data().invoiceNumber
+
+    const lastNumber = lastInvoice.invoice_number
     const numPart = parseInt(lastNumber.split('-')[1]) + 1
     return `INV-${numPart.toString().padStart(4, '0')}`
   },
@@ -449,59 +402,54 @@ export const stockService = {
   async createInvoice(invoice: Omit<Invoice, 'id' | 'createdAt'>): Promise<Invoice> {
     const invoiceData = {
       ...invoice,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     }
-    
-    const docRef = await addDoc(collection(db, INVOICE_COLLECTION), invoiceData)
-    return { id: docRef.id, ...invoiceData }
+
+    const { data, error } = await supabase.from(INVOICE_TABLE).insert(toSnake(invoiceData)).select().single()
+    if (error) throw error
+    return toCamel<Invoice>(data) as Invoice
   },
 
   /**
    * Get invoices for organization
    */
   async getInvoices(organizationId: string): Promise<Invoice[]> {
-    const q = query(
-      collection(db, INVOICE_COLLECTION),
-      where('organizationId', '==', organizationId),
-      orderBy('createdAt', 'desc')
-    )
-    
-    const snapshot = await getDocs(q)
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as Invoice))
+    const { data, error } = await supabase
+      .from(INVOICE_TABLE)
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    return toCamelList<Invoice>(data)
   },
 
   /**
    * Get single invoice
    */
   async getInvoice(invoiceId: string): Promise<Invoice | null> {
-    const docRef = doc(db, INVOICE_COLLECTION, invoiceId)
-    const docSnap = await getDoc(docRef)
-    
-    if (!docSnap.exists()) return null
-    
-    return { id: docSnap.id, ...docSnap.data() } as Invoice
+    const { data, error } = await supabase.from(INVOICE_TABLE).select('*').eq('id', invoiceId).maybeSingle()
+    if (error) throw error
+    return toCamel<Invoice>(data)
   },
 
   /**
    * Update invoice status
    */
   async updateInvoiceStatus(invoiceId: string, status: Invoice['status']): Promise<void> {
-    const docRef = doc(db, INVOICE_COLLECTION, invoiceId)
-    await updateDoc(docRef, { status })
+    const { error } = await supabase.from(INVOICE_TABLE).update({ status }).eq('id', invoiceId)
+    if (error) throw error
   },
 
   /**
    * Delete invoice
    */
   async deleteInvoice(invoiceId: string): Promise<void> {
-    await deleteDoc(doc(db, INVOICE_COLLECTION, invoiceId))
+    const { error } = await supabase.from(INVOICE_TABLE).delete().eq('id', invoiceId)
+    if (error) throw error
   },
 
   // ==================== ORDER HISTORY ====================
-  
+
   /**
    * Add order history record
    */
@@ -530,15 +478,16 @@ export const stockService = {
       orderedByName: userName,
       orderedAt: new Date().toISOString(),
       organizationId,
-      orderType
+      orderType,
     }
-    
+
     // Only add supplier if provided
     if (supplier && supplier.trim()) {
       orderRecord.supplier = supplier.trim()
     }
-    
-    await addDoc(collection(db, ORDER_HISTORY_COLLECTION), orderRecord)
+
+    const { error } = await supabase.from(ORDER_HISTORY_TABLE).insert(toSnake(orderRecord))
+    if (error) throw error
   },
 
   /**
@@ -548,19 +497,15 @@ export const stockService = {
     const threeMonthsAgo = new Date()
     threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
     const threeMonthsAgoISO = threeMonthsAgo.toISOString()
-    
-    const q = query(
-      collection(db, ORDER_HISTORY_COLLECTION),
-      where('organizationId', '==', organizationId),
-      where('orderedAt', '>=', threeMonthsAgoISO),
-      orderBy('orderedAt', 'desc')
-    )
-    
-    const snapshot = await getDocs(q)
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as OrderHistoryRecord))
+
+    const { data, error } = await supabase
+      .from(ORDER_HISTORY_TABLE)
+      .select('*')
+      .eq('organization_id', organizationId)
+      .gte('ordered_at', threeMonthsAgoISO)
+      .order('ordered_at', { ascending: false })
+    if (error) throw error
+    return toCamelList<OrderHistoryRecord>(data)
   },
 
   /**
@@ -568,17 +513,14 @@ export const stockService = {
    */
   async deleteOrderHistory(organizationId: string, partId: string): Promise<void> {
     try {
-      const historyQuery = query(
-        collection(db, ORDER_HISTORY_COLLECTION),
-        where('organizationId', '==', organizationId),
-        where('partId', '==', partId)
-      )
-      
-      const snapshot = await getDocs(historyQuery)
-      const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref))
-      await Promise.all(deletePromises)
-      
-      logger.log(`✅ Deleted ${snapshot.size} order history records for part ${partId}`)
+      const { data, error } = await supabase
+        .from(ORDER_HISTORY_TABLE)
+        .delete()
+        .eq('organization_id', organizationId)
+        .eq('part_id', partId)
+        .select('id')
+      if (error) throw error
+      logger.log(`✅ Deleted ${(data ?? []).length} order history records for part ${partId}`)
     } catch (error) {
       logger.error('Error deleting order history:', error)
       throw error
@@ -590,7 +532,8 @@ export const stockService = {
    */
   async deleteOrderHistoryRecord(orderId: string): Promise<void> {
     try {
-      await deleteDoc(doc(db, ORDER_HISTORY_COLLECTION, orderId))
+      const { error } = await supabase.from(ORDER_HISTORY_TABLE).delete().eq('id', orderId)
+      if (error) throw error
       logger.log('✅ Order history record deleted successfully')
     } catch (error) {
       logger.error('Error deleting order history record:', error)
@@ -603,16 +546,13 @@ export const stockService = {
    */
   async deleteAllOrderHistory(organizationId: string): Promise<void> {
     try {
-      const historyQuery = query(
-        collection(db, ORDER_HISTORY_COLLECTION),
-        where('organizationId', '==', organizationId)
-      )
-      
-      const snapshot = await getDocs(historyQuery)
-      const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref))
-      await Promise.all(deletePromises)
-      
-      logger.log(`✅ Deleted ALL ${snapshot.size} order history records`)
+      const { data, error } = await supabase
+        .from(ORDER_HISTORY_TABLE)
+        .delete()
+        .eq('organization_id', organizationId)
+        .select('id')
+      if (error) throw error
+      logger.log(`✅ Deleted ALL ${(data ?? []).length} order history records`)
     } catch (error) {
       logger.error('Error deleting all order history:', error)
       throw error
@@ -620,7 +560,7 @@ export const stockService = {
   },
   /**
    * Batch use multiple parts on a single vehicle
-   * ✅ NEW: Atomic batch operation - all parts deducted or none
+   * ✅ Atomic-ish batch operation - all parts validated up front, then deducted
    * Used when a mechanic does a full service and uses multiple parts at once
    */
   async batchUseParts(
@@ -632,8 +572,6 @@ export const stockService = {
     organizationId: string,
     notes?: string
   ): Promise<void> {
-    const batch = writeBatch(db)
-    
     // Fetch all parts first to validate
     const partsData: StockPart[] = []
     for (const item of items) {
@@ -646,22 +584,25 @@ export const stockService = {
       }
       partsData.push(part)
     }
-    
-    // Build all batch operations
+
+    // Build all operations
     for (let i = 0; i < items.length; i++) {
       const item = items[i]
       const part = partsData[i]
       const newQuantity = part.quantity - item.quantity
-      
+
       // Update part quantity
-      const partRef = doc(db, STOCK_COLLECTION, item.partId)
-      batch.update(partRef, {
-        quantity: newQuantity,
-        lastUsedDate: new Date().toISOString(),
-        totalUsageCount: increment(1),
-        updatedAt: new Date().toISOString()
-      })
-      
+      const { error: updateError } = await supabase
+        .from(STOCK_TABLE)
+        .update({
+          quantity: newQuantity,
+          last_used_date: new Date().toISOString(),
+          total_usage_count: (part.totalUsageCount ?? 0) + 1,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', item.partId)
+      if (updateError) throw updateError
+
       // Create usage record
       const usageRecord: any = {
         partId: item.partId,
@@ -676,20 +617,18 @@ export const stockService = {
         usedAt: new Date().toISOString(),
         organizationId,
         netPrice: part.netPrice,
-        totalCost: part.netPrice * item.quantity
+        totalCost: part.netPrice * item.quantity,
       }
-      
+
       // Only add notes if provided
       if (notes) {
         usageRecord.notes = notes
       } else {
         usageRecord.notes = `Batch use: ${items.length} parts`
       }
-      
-      const usageRef = doc(collection(db, USAGE_COLLECTION))
-      batch.set(usageRef, usageRecord)
+
+      const { error: usageError } = await supabase.from(USAGE_TABLE).insert(toSnake(usageRecord))
+      if (usageError) throw usageError
     }
-    
-    await batch.commit()
-  }
+  },
 }

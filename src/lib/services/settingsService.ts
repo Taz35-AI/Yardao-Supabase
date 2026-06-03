@@ -1,12 +1,21 @@
-// src/lib/services/settingsService.ts
-// ✅ EXTENDED: Added Insurance Policies management
+// src/lib/services/settingsService.ts — SUPABASE re-implementation.
+//
+// ⚠️ Data-layer swap: every EXPORT, TYPE and method SIGNATURE below is kept
+// identical to the original Firestore version; only the INTERNALS change.
+//
+// The Firestore doc `organizationSettings/{organizationId}` becomes a single
+// row in public.organization_settings keyed by the unique organization_id.
+// suppliers / from_companies / to_companies / insurance_policies /
+// contract_default_statuses are jsonb columns (added in migration 0010); their
+// element shapes (FromCompanyDetails, InsurancePolicy, …) are stored verbatim
+// so the camel-cased contents pass through untouched. RLS scopes every query
+// to the caller's org.
 
-import { db } from '@/lib/firebase'
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore'
+import { supabase } from '@/lib/supabaseClient'
 import { logger } from '@/lib/logger'
 import { VehicleStatus } from '@/types'
 
-const COLLECTION = 'organizationSettings'
+const TABLE = 'organization_settings'
 
 // Map of contractId → default check-in VehicleStatus to apply when a vehicle
 // is checked in under that contract. Contracts not in the map fall back to
@@ -56,20 +65,37 @@ interface OrganizationSettings {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Ensure the settings doc exists before updating it */
+/** Ensure the settings row exists before updating it. */
 async function ensureSettingsDoc(organizationId: string): Promise<void> {
-  const docRef = doc(db, COLLECTION, organizationId)
-  const docSnap = await getDoc(docRef)
-  if (!docSnap.exists()) {
-    await setDoc(docRef, {
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('organization_id')
+    .eq('organization_id', organizationId)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) {
+    const { error: insertError } = await supabase.from(TABLE).insert({
+      organization_id: organizationId,
       suppliers: [],
-      fromCompanies: [],
-      toCompanies: [],
-      insurancePolicies: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      from_companies: [],
+      to_companies: [],
+      insurance_policies: [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     })
+    if (insertError) throw insertError
   }
+}
+
+/** Fetch the single settings row for an org (or null if it doesn't exist). */
+async function getSettingsRow(organizationId: string): Promise<any | null> {
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('*')
+    .eq('organization_id', organizationId)
+    .maybeSingle()
+  if (error) throw error
+  return data
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -80,9 +106,9 @@ export const settingsService = {
 
   async getSuppliers(organizationId: string): Promise<string[]> {
     try {
-      const docSnap = await getDoc(doc(db, COLLECTION, organizationId))
-      if (docSnap.exists()) {
-        return (docSnap.data() as OrganizationSettings).suppliers || []
+      const row = await getSettingsRow(organizationId)
+      if (row) {
+        return (row.suppliers as string[]) || []
       }
       return []
     } catch (error) {
@@ -94,10 +120,11 @@ export const settingsService = {
   async saveSuppliers(organizationId: string, suppliers: string[]): Promise<void> {
     try {
       await ensureSettingsDoc(organizationId)
-      await updateDoc(doc(db, COLLECTION, organizationId), {
-        suppliers,
-        updatedAt: new Date().toISOString(),
-      })
+      const { error } = await supabase
+        .from(TABLE)
+        .update({ suppliers, updated_at: new Date().toISOString() })
+        .eq('organization_id', organizationId)
+      if (error) throw error
     } catch (error) {
       logger.error('Error saving suppliers:', error)
       throw error
@@ -108,9 +135,9 @@ export const settingsService = {
 
   async getFromCompanies(organizationId: string): Promise<FromCompanyDetails[]> {
     try {
-      const docSnap = await getDoc(doc(db, COLLECTION, organizationId))
-      if (docSnap.exists()) {
-        return (docSnap.data() as OrganizationSettings).fromCompanies || []
+      const row = await getSettingsRow(organizationId)
+      if (row) {
+        return (row.from_companies as FromCompanyDetails[]) || []
       }
       return []
     } catch (error) {
@@ -122,10 +149,11 @@ export const settingsService = {
   async saveFromCompanies(organizationId: string, fromCompanies: FromCompanyDetails[]): Promise<void> {
     try {
       await ensureSettingsDoc(organizationId)
-      await updateDoc(doc(db, COLLECTION, organizationId), {
-        fromCompanies,
-        updatedAt: new Date().toISOString(),
-      })
+      const { error } = await supabase
+        .from(TABLE)
+        .update({ from_companies: fromCompanies, updated_at: new Date().toISOString() })
+        .eq('organization_id', organizationId)
+      if (error) throw error
     } catch (error) {
       logger.error('Error saving from companies:', error)
       throw error
@@ -136,9 +164,9 @@ export const settingsService = {
 
   async getToCompanies(organizationId: string): Promise<ToCompanyDetails[]> {
     try {
-      const docSnap = await getDoc(doc(db, COLLECTION, organizationId))
-      if (docSnap.exists()) {
-        return (docSnap.data() as OrganizationSettings).toCompanies || []
+      const row = await getSettingsRow(organizationId)
+      if (row) {
+        return (row.to_companies as ToCompanyDetails[]) || []
       }
       return []
     } catch (error) {
@@ -150,10 +178,11 @@ export const settingsService = {
   async saveToCompanies(organizationId: string, toCompanies: ToCompanyDetails[]): Promise<void> {
     try {
       await ensureSettingsDoc(organizationId)
-      await updateDoc(doc(db, COLLECTION, organizationId), {
-        toCompanies,
-        updatedAt: new Date().toISOString(),
-      })
+      const { error } = await supabase
+        .from(TABLE)
+        .update({ to_companies: toCompanies, updated_at: new Date().toISOString() })
+        .eq('organization_id', organizationId)
+      if (error) throw error
     } catch (error) {
       logger.error('Error saving to companies:', error)
       throw error
@@ -164,9 +193,9 @@ export const settingsService = {
 
   async getInsurancePolicies(organizationId: string): Promise<InsurancePolicy[]> {
     try {
-      const docSnap = await getDoc(doc(db, COLLECTION, organizationId))
-      if (docSnap.exists()) {
-        return (docSnap.data() as OrganizationSettings).insurancePolicies || []
+      const row = await getSettingsRow(organizationId)
+      if (row) {
+        return (row.insurance_policies as InsurancePolicy[]) || []
       }
       return []
     } catch (error) {
@@ -178,10 +207,11 @@ export const settingsService = {
   async saveInsurancePolicies(organizationId: string, insurancePolicies: InsurancePolicy[]): Promise<void> {
     try {
       await ensureSettingsDoc(organizationId)
-      await updateDoc(doc(db, COLLECTION, organizationId), {
-        insurancePolicies,
-        updatedAt: new Date().toISOString(),
-      })
+      const { error } = await supabase
+        .from(TABLE)
+        .update({ insurance_policies: insurancePolicies, updated_at: new Date().toISOString() })
+        .eq('organization_id', organizationId)
+      if (error) throw error
     } catch (error) {
       logger.error('Error saving insurance policies:', error)
       throw error
@@ -192,9 +222,9 @@ export const settingsService = {
 
   async getContractDefaultStatuses(organizationId: string): Promise<ContractDefaultStatuses> {
     try {
-      const docSnap = await getDoc(doc(db, COLLECTION, organizationId))
-      if (docSnap.exists()) {
-        return (docSnap.data() as OrganizationSettings).contractDefaultStatuses || {}
+      const row = await getSettingsRow(organizationId)
+      if (row) {
+        return (row.contract_default_statuses as ContractDefaultStatuses) || {}
       }
       return {}
     } catch (error) {
@@ -209,10 +239,11 @@ export const settingsService = {
   ): Promise<void> {
     try {
       await ensureSettingsDoc(organizationId)
-      await updateDoc(doc(db, COLLECTION, organizationId), {
-        contractDefaultStatuses,
-        updatedAt: new Date().toISOString(),
-      })
+      const { error } = await supabase
+        .from(TABLE)
+        .update({ contract_default_statuses: contractDefaultStatuses, updated_at: new Date().toISOString() })
+        .eq('organization_id', organizationId)
+      if (error) throw error
     } catch (error) {
       logger.error('Error saving contract default statuses:', error)
       throw error

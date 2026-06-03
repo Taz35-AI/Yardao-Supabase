@@ -1,14 +1,11 @@
-// src/services/bulkInsuranceService.ts
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs,
-  writeBatch,
-  serverTimestamp,
-  doc
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+// src/services/bulkInsuranceService.ts — SUPABASE re-implementation.
+// Duplicate of src/lib/services/bulkInsuranceService.ts (kept at this path for
+// existing imports). Public class, method signatures, result shapes and
+// throw/return semantics are unchanged from the Firestore version — only the
+// data-access internals are swapped to Supabase.
+
+import { supabase } from '@/lib/supabaseClient'
+import { toCamelList } from '@/lib/dbMap'
 import { InsuranceStatus, FleetVehicle } from '@/types'
 import { InsuranceSyncService } from '@/services/insuranceSyncService'
 import { logger } from '@/lib/logger'
@@ -31,12 +28,14 @@ export interface BulkInsuranceOptions {
   syncToYard?: boolean // Default true
 }
 
+const VEHICLES = 'vehicles'
+
 /**
  * Bulk Insurance Service
  * Handles bulk insurance operations for fleet vehicles
  */
 export class BulkInsuranceService {
-  
+
   /**
    * Mark multiple vehicles as insured in bulk
    */
@@ -68,23 +67,24 @@ export class BulkInsuranceService {
 
     try {
       // 1. Query fleet vehicles
-      let fleetQuery = query(
-        collection(db, 'vehicles'),
-        where('organizationId', '==', organizationId)
-      )
+      const { data: fleetRows, error: fleetError } = await supabase
+        .from(VEHICLES)
+        .select('*')
+        .eq('organization_id', organizationId)
+      if (fleetError) throw fleetError
 
-      const fleetSnapshot = await getDocs(fleetQuery)
-      
-      if (fleetSnapshot.empty) {
+      const fleetVehicles = toCamelList<FleetVehicle>(fleetRows)
+
+      if (fleetVehicles.length === 0) {
         throw new Error('No vehicles found in fleet inventory')
       }
 
       // 2. Filter vehicles if specific IDs provided
-      const vehiclesToUpdate = fleetSnapshot.docs.filter(doc => {
+      const vehiclesToUpdate = fleetVehicles.filter((vehicle) => {
         if (!vehicleIds || vehicleIds.length === 0) {
           return true // Update all vehicles
         }
-        return vehicleIds.includes(doc.id)
+        return vehicleIds.includes(vehicle.id)
       })
 
       if (vehiclesToUpdate.length === 0) {
@@ -93,42 +93,36 @@ export class BulkInsuranceService {
 
       result.totalProcessed = vehiclesToUpdate.length
 
-      // 3. Prepare batch update for fleet
-      const batch = writeBatch(db)
-      const timestamp = serverTimestamp()
-      
-      const updateData = {
-        insuranceStatus,
-        updatedAt: timestamp,
-        lastInsuranceUpdate: {
-          updatedBy: userId,
-          updatedByName: userDisplayName,
-          updatedAt: new Date(),
-          source: 'bulk_update',
-          bulkOperation: true,
-          previousInsuranceStatus: null // Will be set individually if needed
-        }
+      // 3. Build the per-vehicle update. The lastInsuranceUpdate audit blob is an
+      // opaque jsonb column (last_insurance_update) — its camelCase keys are
+      // preserved verbatim. previousInsuranceStatus is captured per vehicle.
+      const baseInsuranceUpdate = {
+        updatedBy: userId,
+        updatedByName: userDisplayName,
+        updatedAt: new Date().toISOString(),
+        source: 'bulk_update',
+        bulkOperation: true,
+        previousInsuranceStatus: null as InsuranceStatus | null
       }
 
-      // 4. Queue all fleet updates
-      vehiclesToUpdate.forEach(vehicleDoc => {
-        const vehicleRef = doc(db, 'vehicles', vehicleDoc.id)
-        const vehicleData = vehicleDoc.data() as FleetVehicle
-        
+      // 4. Apply each fleet update. Supabase has no client-side write batch, so
+      // we issue the per-row updates in parallel (one per selected vehicle).
+      const updatePromises = vehiclesToUpdate.map((vehicle) => {
         const vehicleUpdateData = {
-          ...updateData,
-          lastInsuranceUpdate: {
-            ...updateData.lastInsuranceUpdate,
-            previousInsuranceStatus: vehicleData.insuranceStatus || null
+          insurance_status: insuranceStatus,
+          last_insurance_update: {
+            ...baseInsuranceUpdate,
+            previousInsuranceStatus: vehicle.insuranceStatus || null
           }
         }
-        
-        batch.update(vehicleRef, vehicleUpdateData)
-        result.processedVehicles.push(vehicleData.registration)
+        result.processedVehicles.push(vehicle.registration)
+        return supabase.from(VEHICLES).update(vehicleUpdateData).eq('id', vehicle.id)
       })
 
-      // 5. Execute fleet batch update
-      await batch.commit()
+      const updateResults = await Promise.all(updatePromises)
+      const failed = updateResults.find((r) => r.error)
+      if (failed?.error) throw failed.error
+
       result.fleetUpdated = vehiclesToUpdate.length
 
       logger.log(`✅ Fleet bulk insurance update completed: ${result.fleetUpdated} vehicles updated`)
@@ -136,13 +130,12 @@ export class BulkInsuranceService {
       // 6. Sync to yard if enabled
       if (syncToYard) {
         logger.log('🔄 Starting yard sync for bulk insurance update...')
-        
+
         let totalYardSynced = 0
-        
+
         // Process each vehicle for yard sync
-        for (const vehicleDoc of vehiclesToUpdate) {
-          const vehicleData = vehicleDoc.data() as FleetVehicle
-          
+        for (const vehicleData of vehiclesToUpdate) {
+
           try {
             const syncResult = await InsuranceSyncService.syncInsuranceFromFleetToYard(
               vehicleData.registration,
@@ -151,7 +144,7 @@ export class BulkInsuranceService {
               userId,
               userDisplayName
             )
-            
+
             if (syncResult.success) {
               totalYardSynced += syncResult.updatedYardRecords
             } else {
@@ -163,13 +156,13 @@ export class BulkInsuranceService {
             logger.error('❌', errorMsg)
           }
         }
-        
+
         result.yardSynced = totalYardSynced
         logger.log(`✅ Yard sync completed: ${totalYardSynced} yard records updated`)
       }
 
       result.success = true
-      
+
       logger.log('🎉 Bulk insurance update completed successfully:', {
         totalProcessed: result.totalProcessed,
         fleetUpdated: result.fleetUpdated,
@@ -183,7 +176,7 @@ export class BulkInsuranceService {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
       result.errors.push(errorMessage)
       logger.error('❌ Bulk insurance update failed:', errorMessage)
-      
+
       return result
     }
   }
@@ -199,25 +192,25 @@ export class BulkInsuranceService {
     breakdown: Record<string, number>
   }> {
     try {
-      const fleetQuery = query(
-        collection(db, 'vehicles'),
-        where('organizationId', '==', organizationId)
-      )
-      
-      const snapshot = await getDocs(fleetQuery)
+      const { data, error } = await supabase
+        .from(VEHICLES)
+        .select('*')
+        .eq('organization_id', organizationId)
+      if (error) throw error
+
+      const vehicles = toCamelList<FleetVehicle>(data)
       const breakdown: Record<string, number> = {}
       let total = 0
       let insured = 0
       let uninsured = 0
       let unknown = 0
-      
-      snapshot.docs.forEach(doc => {
-        const data = doc.data() as FleetVehicle
-        const status = data.insuranceStatus || 'Unknown'
-        
+
+      vehicles.forEach((vehicle) => {
+        const status = vehicle.insuranceStatus || 'Unknown'
+
         breakdown[status] = (breakdown[status] || 0) + 1
         total++
-        
+
         switch (status) {
           case 'Insured':
             insured++
@@ -229,7 +222,7 @@ export class BulkInsuranceService {
             unknown++
         }
       })
-      
+
       return {
         total,
         insured,
@@ -237,7 +230,7 @@ export class BulkInsuranceService {
         unknown,
         breakdown
       }
-      
+
     } catch (error) {
       logger.error('Error getting insurance summary:', error)
       return {
@@ -255,17 +248,15 @@ export class BulkInsuranceService {
    */
   static async getVehiclesNeedingInsurance(organizationId: string): Promise<FleetVehicle[]> {
     try {
-      const fleetQuery = query(
-        collection(db, 'vehicles'),
-        where('organizationId', '==', organizationId)
-      )
-      
-      const snapshot = await getDocs(fleetQuery)
-      
-      return snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() } as FleetVehicle))
-        .filter(vehicle => !vehicle.insuranceStatus || vehicle.insuranceStatus !== 'Insured')
-      
+      const { data, error } = await supabase
+        .from(VEHICLES)
+        .select('*')
+        .eq('organization_id', organizationId)
+      if (error) throw error
+
+      return toCamelList<FleetVehicle>(data)
+        .filter((vehicle) => !vehicle.insuranceStatus || vehicle.insuranceStatus !== 'Insured')
+
     } catch (error) {
       logger.error('Error getting vehicles needing insurance:', error)
       return []

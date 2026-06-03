@@ -1,16 +1,10 @@
-// src/lib/contractService.ts - Complete Contract Management Service
-import { 
-  collection, 
-  addDoc, 
-  getDocs, 
-  deleteDoc, 
-  doc, 
-  updateDoc,
-  query,
-  where,
-  orderBy 
-} from 'firebase/firestore'
-import { db } from './firebase'
+// src/lib/contractService.ts — SUPABASE re-implementation.
+// Standalone contractService (distinct from the contractService inside
+// firestore.ts). Public interface + method signatures + the per-org read cache
+// are kept identical; only the internals swap Firestore → Supabase.
+
+import { supabase } from '@/lib/supabaseClient'
+import { toCamel, toCamelList, toSnake } from '@/lib/dbMap'
 import { Contract } from '@/types'
 import { logger } from '@/lib/logger'
 
@@ -53,17 +47,14 @@ export const contractService = {
     try {
       logger.log('📋 Getting contracts for organization:', organizationId)
 
-      const q = query(
-        collection(db, CONTRACTS_COLLECTION),
-        where('organizationId', '==', organizationId),
-        orderBy('name', 'asc')
-      )
+      const { data, error } = await supabase
+        .from(CONTRACTS_COLLECTION)
+        .select('*')
+        .eq('organization_id', organizationId)
+        .order('name', { ascending: true })
+      if (error) throw error
 
-      const querySnapshot = await getDocs(q)
-      const contracts = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Contract))
+      const contracts = toCamelList<Contract>(data)
 
       logger.log('✅ Retrieved contracts:', contracts.length)
       contractsCache.set(organizationId, { data: contracts, ts: Date.now() })
@@ -100,13 +91,17 @@ export const contractService = {
       const contractData = {
         ...contract,
         name: cleanName,
-        createdAt: new Date().toISOString(),
         isDefault: contract.isDefault || false,
-        color: contract.color || '#025940' // Default to brand green if no color provided
+        color: contract.color || '#025940', // Default to brand green if no color provided
       }
-      
-      const docRef = await addDoc(collection(db, CONTRACTS_COLLECTION), contractData)
-      const newContract = { id: docRef.id, ...contractData }
+
+      const { data, error } = await supabase
+        .from(CONTRACTS_COLLECTION)
+        .insert(toSnake(contractData))
+        .select()
+        .single()
+      if (error) throw error
+      const newContract = toCamel<Contract>(data) as Contract
       clearContractsCache(contract.organizationId)
 
       logger.log('✅ Contract added successfully:', newContract.id)
@@ -121,16 +116,17 @@ export const contractService = {
    * Update an existing contract
    */
   async updateContract(
-    contractId: string, 
+    contractId: string,
     updates: Partial<Pick<Contract, 'name' | 'color'>>
   ): Promise<void> {
     try {
       logger.log('📝 Updating contract:', contractId, updates)
-      
-      await updateDoc(doc(db, CONTRACTS_COLLECTION, contractId), {
-        ...updates,
-        updatedAt: new Date().toISOString()
-      })
+
+      const { error } = await supabase
+        .from(CONTRACTS_COLLECTION)
+        .update(toSnake({ ...updates, updatedAt: new Date().toISOString() }))
+        .eq('id', contractId)
+      if (error) throw error
       clearContractsCache()
 
       logger.log('✅ Contract updated successfully')
@@ -146,8 +142,9 @@ export const contractService = {
   async deleteContract(contractId: string): Promise<void> {
     try {
       logger.log('🗑️ Deleting contract:', contractId)
-      
-      await deleteDoc(doc(db, CONTRACTS_COLLECTION, contractId))
+
+      const { error } = await supabase.from(CONTRACTS_COLLECTION).delete().eq('id', contractId)
+      if (error) throw error
       clearContractsCache()
 
       logger.log('✅ Contract deleted successfully')
@@ -162,33 +159,33 @@ export const contractService = {
    */
   async initializeDefaultContracts(organizationId: string, createdBy: string): Promise<Contract[]> {
     logger.log('🚀 Creating default contracts for organization:', organizationId)
-    
+
     const defaultContracts = [
       {
         name: 'Standard Contract',
         color: '#025940', // Brand green
         organizationId,
         isDefault: true,
-        createdBy
+        createdBy,
       },
       {
         name: 'Premium Contract',
         color: '#10b981', // Green
         organizationId,
         isDefault: false,
-        createdBy
+        createdBy,
       },
       {
         name: 'Emergency Contract',
         color: '#ef4444', // Red
         organizationId,
         isDefault: false,
-        createdBy
-      }
+        createdBy,
+      },
     ]
 
     const createdContracts: Contract[] = []
-    
+
     for (const contractData of defaultContracts) {
       try {
         const contract = await this.addContract(contractData)
@@ -227,7 +224,7 @@ export const contractService = {
       logger.error('Error getting default contract:', error)
       return null
     }
-  }
+  },
 }
 
 export default contractService

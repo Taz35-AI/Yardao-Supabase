@@ -1,18 +1,19 @@
-// src/lib/services/transferService.ts
-// Business logic for vehicle transfers and external garage checkouts
+// src/lib/services/transferService.ts — SUPABASE re-implementation.
+// Business logic for vehicle transfers and external garage checkouts.
+//
+// ⚠️ Data-layer swap: every EXPORT and method SIGNATURE below is kept identical
+// to the original Firestore version — only the INTERNALS change. Firestore
+// doc()/getDoc()/updateDoc() calls become Supabase queries against
+// `checked_in_vehicles` (the table already carries every transfer / garage
+// column — see 0001_core_schema.sql). RLS scopes every query to the caller's
+// org. The try/catch + TransferResult shape and logger.error behaviour mirror
+// the original exactly.
 
-import { 
-  doc, 
-  updateDoc, 
-  serverTimestamp,
-  Timestamp,
-  getDoc
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
 import { TransferStatus, TransferResult } from '@/types/transfer'
 import { logger } from '@/lib/logger'
 
-const CHECKED_IN_VEHICLES_COLLECTION = 'checkedInVehicles'
+const CHECKED_IN_VEHICLES_TABLE = 'checked_in_vehicles'
 
 export const transferService = {
   /**
@@ -27,32 +28,37 @@ export const transferService = {
     userName: string
   ): Promise<TransferResult> {
     try {
-      const vehicleRef = doc(db, CHECKED_IN_VEHICLES_COLLECTION, vehicleId)
-      
-      // Verify vehicle exists
-      const vehicleSnap = await getDoc(vehicleRef)
-      if (!vehicleSnap.exists()) {
+      // Verify vehicle exists (and read its registration for the message)
+      const { data: vehicleData, error: fetchError } = await supabase
+        .from(CHECKED_IN_VEHICLES_TABLE)
+        .select('registration')
+        .eq('id', vehicleId)
+        .maybeSingle()
+      if (fetchError) throw fetchError
+      if (!vehicleData) {
         throw new Error('Vehicle not found')
       }
 
-      const vehicleData = vehicleSnap.data()
       const registration = vehicleData.registration
 
-      await updateDoc(vehicleRef, {
-        transferStatus: 'in_transit' as TransferStatus,
-        targetBranchId,
-        targetBranchName,
-        transferInitiatedAt: serverTimestamp(),
-        transferInitiatedBy: userId,
-        transferInitiatedByName: userName,
-        updatedAt: serverTimestamp(),
-        lastEditLog: {
-          action: `Vehicle marked for transfer to ${targetBranchName}`,
-          editedBy: userId,
-          editedByName: userName,
-          editedAt: new Date()
-        }
-      })
+      const { error: updateError } = await supabase
+        .from(CHECKED_IN_VEHICLES_TABLE)
+        .update({
+          transfer_status: 'in_transit' as TransferStatus,
+          target_branch_id: targetBranchId,
+          target_branch_name: targetBranchName,
+          transfer_initiated_at: new Date().toISOString(),
+          transfer_initiated_by: userId,
+          transfer_initiated_by_name: userName,
+          last_edit_log: {
+            action: `Vehicle marked for transfer to ${targetBranchName}`,
+            editedBy: userId,
+            editedByName: userName,
+            editedAt: new Date().toISOString()
+          }
+        })
+        .eq('id', vehicleId)
+      if (updateError) throw updateError
 
       return {
         success: true,
@@ -80,31 +86,36 @@ export const transferService = {
     userName: string
   ): Promise<TransferResult> {
     try {
-      const vehicleRef = doc(db, CHECKED_IN_VEHICLES_COLLECTION, vehicleId)
-      
-      const vehicleSnap = await getDoc(vehicleRef)
-      if (!vehicleSnap.exists()) {
+      const { data: vehicleData, error: fetchError } = await supabase
+        .from(CHECKED_IN_VEHICLES_TABLE)
+        .select('registration')
+        .eq('id', vehicleId)
+        .maybeSingle()
+      if (fetchError) throw fetchError
+      if (!vehicleData) {
         throw new Error('Vehicle not found')
       }
 
-      const vehicleData = vehicleSnap.data()
       const registration = vehicleData.registration
 
-      await updateDoc(vehicleRef, {
-        transferStatus: null,
-        targetBranchId: null,
-        targetBranchName: null,
-        transferInitiatedAt: null,
-        transferInitiatedBy: null,
-        transferInitiatedByName: null,
-        updatedAt: serverTimestamp(),
-        lastEditLog: {
-          action: `Transfer cancelled - vehicle returned to yard`,
-          editedBy: userId,
-          editedByName: userName,
-          editedAt: new Date()
-        }
-      })
+      const { error: updateError } = await supabase
+        .from(CHECKED_IN_VEHICLES_TABLE)
+        .update({
+          transfer_status: null,
+          target_branch_id: null,
+          target_branch_name: null,
+          transfer_initiated_at: null,
+          transfer_initiated_by: null,
+          transfer_initiated_by_name: null,
+          last_edit_log: {
+            action: `Transfer cancelled - vehicle returned to yard`,
+            editedBy: userId,
+            editedByName: userName,
+            editedAt: new Date().toISOString()
+          }
+        })
+        .eq('id', vehicleId)
+      if (updateError) throw updateError
 
       return {
         success: true,
@@ -133,33 +144,38 @@ export const transferService = {
     userName: string
   ): Promise<TransferResult> {
     try {
-      const vehicleRef = doc(db, CHECKED_IN_VEHICLES_COLLECTION, vehicleId)
-      
-      const vehicleSnap = await getDoc(vehicleRef)
-      if (!vehicleSnap.exists()) {
+      const { data: vehicleData, error: fetchError } = await supabase
+        .from(CHECKED_IN_VEHICLES_TABLE)
+        .select('registration, branch_id')
+        .eq('id', vehicleId)
+        .maybeSingle()
+      if (fetchError) throw fetchError
+      if (!vehicleData) {
         throw new Error('Vehicle not found')
       }
 
-      const vehicleData = vehicleSnap.data()
       const registration = vehicleData.registration
-      const sourceBranchId = vehicleData.branchId
+      const sourceBranchId = vehicleData.branch_id
 
-      await updateDoc(vehicleRef, {
-        branchId: newBranchId,
-        transferStatus: null,
-        targetBranchId: null,
-        targetBranchName: null,
-        transferInitiatedAt: null,
-        transferInitiatedBy: null,
-        transferInitiatedByName: null,
-        updatedAt: serverTimestamp(),
-        lastEditLog: {
-          action: `Vehicle received from branch ${sourceBranchId}`,
-          editedBy: userId,
-          editedByName: userName,
-          editedAt: new Date()
-        }
-      })
+      const { error: updateError } = await supabase
+        .from(CHECKED_IN_VEHICLES_TABLE)
+        .update({
+          branch_id: newBranchId,
+          transfer_status: null,
+          target_branch_id: null,
+          target_branch_name: null,
+          transfer_initiated_at: null,
+          transfer_initiated_by: null,
+          transfer_initiated_by_name: null,
+          last_edit_log: {
+            action: `Vehicle received from branch ${sourceBranchId}`,
+            editedBy: userId,
+            editedByName: userName,
+            editedAt: new Date().toISOString()
+          }
+        })
+        .eq('id', vehicleId)
+      if (updateError) throw updateError
 
       return {
         success: true,
@@ -189,31 +205,36 @@ export const transferService = {
     userName: string
   ): Promise<TransferResult> {
     try {
-      const vehicleRef = doc(db, CHECKED_IN_VEHICLES_COLLECTION, vehicleId)
-      
-      const vehicleSnap = await getDoc(vehicleRef)
-      if (!vehicleSnap.exists()) {
+      const { data: vehicleData, error: fetchError } = await supabase
+        .from(CHECKED_IN_VEHICLES_TABLE)
+        .select('registration')
+        .eq('id', vehicleId)
+        .maybeSingle()
+      if (fetchError) throw fetchError
+      if (!vehicleData) {
         throw new Error('Vehicle not found')
       }
 
-      const vehicleData = vehicleSnap.data()
       const registration = vehicleData.registration
 
-      await updateDoc(vehicleRef, {
-        transferStatus: 'at_external_garage' as TransferStatus,
-        externalGarageName: garageName,
-        serviceBookingId,
-        checkedOutToGarageAt: serverTimestamp(),
-        checkedOutToGarageBy: userId,
-        checkedOutToGarageByName: userName,
-        updatedAt: serverTimestamp(),
-        lastEditLog: {
-          action: `Vehicle checked out to ${garageName}`,
-          editedBy: userId,
-          editedByName: userName,
-          editedAt: new Date()
-        }
-      })
+      const { error: updateError } = await supabase
+        .from(CHECKED_IN_VEHICLES_TABLE)
+        .update({
+          transfer_status: 'at_external_garage' as TransferStatus,
+          external_garage_name: garageName,
+          service_booking_id: serviceBookingId,
+          checked_out_to_garage_at: new Date().toISOString(),
+          checked_out_to_garage_by: userId,
+          checked_out_to_garage_by_name: userName,
+          last_edit_log: {
+            action: `Vehicle checked out to ${garageName}`,
+            editedBy: userId,
+            editedByName: userName,
+            editedAt: new Date().toISOString()
+          }
+        })
+        .eq('id', vehicleId)
+      if (updateError) throw updateError
 
       return {
         success: true,
@@ -241,32 +262,37 @@ export const transferService = {
     userName: string
   ): Promise<TransferResult> {
     try {
-      const vehicleRef = doc(db, CHECKED_IN_VEHICLES_COLLECTION, vehicleId)
-      
-      const vehicleSnap = await getDoc(vehicleRef)
-      if (!vehicleSnap.exists()) {
+      const { data: vehicleData, error: fetchError } = await supabase
+        .from(CHECKED_IN_VEHICLES_TABLE)
+        .select('registration, external_garage_name')
+        .eq('id', vehicleId)
+        .maybeSingle()
+      if (fetchError) throw fetchError
+      if (!vehicleData) {
         throw new Error('Vehicle not found')
       }
 
-      const vehicleData = vehicleSnap.data()
       const registration = vehicleData.registration
-      const garageName = vehicleData.externalGarageName || 'external garage'
+      const garageName = vehicleData.external_garage_name || 'external garage'
 
-      await updateDoc(vehicleRef, {
-        transferStatus: null,
-        externalGarageName: null,
-        serviceBookingId: null,
-        checkedOutToGarageAt: null,
-        checkedOutToGarageBy: null,
-        checkedOutToGarageByName: null,
-        updatedAt: serverTimestamp(),
-        lastEditLog: {
-          action: `Vehicle returned from ${garageName}`,
-          editedBy: userId,
-          editedByName: userName,
-          editedAt: new Date()
-        }
-      })
+      const { error: updateError } = await supabase
+        .from(CHECKED_IN_VEHICLES_TABLE)
+        .update({
+          transfer_status: null,
+          external_garage_name: null,
+          service_booking_id: null,
+          checked_out_to_garage_at: null,
+          checked_out_to_garage_by: null,
+          checked_out_to_garage_by_name: null,
+          last_edit_log: {
+            action: `Vehicle returned from ${garageName}`,
+            editedBy: userId,
+            editedByName: userName,
+            editedAt: new Date().toISOString()
+          }
+        })
+        .eq('id', vehicleId)
+      if (updateError) throw updateError
 
       return {
         success: true,

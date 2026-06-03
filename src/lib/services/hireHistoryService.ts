@@ -1,22 +1,23 @@
-// src/lib/services/hireHistoryService.ts
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  orderBy,
-  Timestamp 
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
-import { 
-  HireHistoryRecord, 
-  HireHistoryQueryResult, 
-  PeriodSelection 
+// src/lib/services/hireHistoryService.ts — SUPABASE re-implementation.
+//
+// ⚠️ Data-layer swap: class shape + every static method signature are kept
+// identical to the Firestore version. Only getVehicleHireHistory's data source
+// changes (Firestore query → Supabase select on `hire_history`); all the
+// period/utilisation math + helpers are pure and untouched. Timestamps come
+// back from Supabase as ISO strings and convertToDate revives them to Dates,
+// so HireHistoryRecord stays byte-for-byte identical for consumers.
+
+import { supabase } from '@/lib/supabaseClient'
+import { toCamel } from '@/lib/dbMap'
+import {
+  HireHistoryRecord,
+  HireHistoryQueryResult,
+  PeriodSelection
 } from '@/types/hireHistory'
 import { logger } from '@/lib/logger'
 
 export class HireHistoryService {
-  private static readonly COLLECTION = 'hireHistory'
+  private static readonly TABLE = 'hire_history'
 
   /**
    * Get hire history for a specific vehicle within a date range
@@ -34,32 +35,33 @@ export class HireHistoryService {
       })
 
       const cleanReg = registration.trim().toUpperCase().replace(/\s+/g, '')
-      
+
       // Query all hire records for this vehicle
       // We'll filter dates client-side to handle overlapping periods correctly
-      const q = query(
-        collection(db, this.COLLECTION),
-        where('organizationId', '==', organizationId),
-        where('registration', '==', cleanReg),
-        orderBy('hireStartDate', 'desc')
-      )
+      const { data, error } = await supabase
+        .from(this.TABLE)
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('registration', cleanReg)
+        .order('hire_start_date', { ascending: false })
 
-      const snapshot = await getDocs(q)
-      logger.log(`Found ${snapshot.size} total hire records for ${registration}`)
+      if (error) throw error
+
+      const rows = data ?? []
+      logger.log(`Found ${rows.length} total hire records for ${registration}`)
 
       // Convert to HireHistoryRecord objects
-      const allRecords: HireHistoryRecord[] = snapshot.docs.map(doc => {
-        const data = doc.data()
+      const allRecords: HireHistoryRecord[] = rows.map(row => {
+        const data = toCamel<any>(row)!
         const convertedRecord = {
-          id: doc.id,
           ...data,
           hireStartDate: this.convertToDate(data.hireStartDate),
           hireEndDate: data.hireEndDate ? this.convertToDate(data.hireEndDate) : null,
           createdAt: this.convertToDate(data.createdAt),
           updatedAt: data.updatedAt ? this.convertToDate(data.updatedAt) : undefined
         } as HireHistoryRecord
-        
-        logger.log(`Record ${doc.id} dates:`, {
+
+        logger.log(`Record ${data.id} dates:`, {
           hireStartDate: convertedRecord.hireStartDate,
           hireEndDate: convertedRecord.hireEndDate,
           raw: {
@@ -67,12 +69,12 @@ export class HireHistoryService {
             end: data.hireEndDate
           }
         })
-        
+
         return convertedRecord
       })
 
       // Filter records that overlap with our period
-      const relevantRecords = allRecords.filter(record => 
+      const relevantRecords = allRecords.filter(record =>
         this.recordOverlapsPeriod(record, periodSelection.startDate, periodSelection.endDate)
       )
 
@@ -80,7 +82,7 @@ export class HireHistoryService {
 
       // Calculate total days on hire within the period
       let totalDaysOnHire = 0
-      
+
       for (const record of relevantRecords) {
         const daysInPeriod = this.calculateDaysInPeriod(
           record,
@@ -92,8 +94,8 @@ export class HireHistoryService {
 
       // Calculate utilization rate for this vehicle
       const totalDaysInPeriod = this.daysBetween(periodSelection.startDate, periodSelection.endDate)
-      const utilizationRate = totalDaysInPeriod > 0 
-        ? (totalDaysOnHire / totalDaysInPeriod) * 100 
+      const utilizationRate = totalDaysInPeriod > 0
+        ? (totalDaysOnHire / totalDaysInPeriod) * 100
         : 0
 
       return {
@@ -115,13 +117,13 @@ export class HireHistoryService {
    * Check if a hire record overlaps with the selected period
    */
   private static recordOverlapsPeriod(
-    record: HireHistoryRecord, 
-    periodStart: Date, 
+    record: HireHistoryRecord,
+    periodStart: Date,
     periodEnd: Date
   ): boolean {
     const hireStart = this.convertToDate(record.hireStartDate)
     const hireEnd = record.hireEndDate ? this.convertToDate(record.hireEndDate) : new Date() // Use today if still out
-    
+
     // Hire overlaps if:
     // - It started before/during period AND ended during/after period
     return hireStart <= periodEnd && hireEnd >= periodStart
@@ -144,7 +146,7 @@ export class HireHistoryService {
 
     // Calculate days between (inclusive)
     const days = this.daysBetween(actualStart, actualEnd)
-    
+
     logger.log(`Hire ${record.id}: ${days} days in period`, {
       hireStart: hireStart.toISOString().split('T')[0],
       hireEnd: record.hireEndDate ? hireEnd.toISOString().split('T')[0] : 'Still Out',
@@ -167,12 +169,9 @@ export class HireHistoryService {
   }
 
   /**
-   * Convert Firestore Timestamp to Date
+   * Convert a stored timestamp (ISO string from Supabase) or Date to a Date.
    */
   private static convertToDate(value: any): Date {
-    if (value instanceof Timestamp) {
-      return value.toDate()
-    }
     if (value instanceof Date) {
       return value
     }
@@ -188,7 +187,7 @@ export class HireHistoryService {
   static getPeriodSelection(option: string): PeriodSelection {
     const now = new Date()
     now.setHours(23, 59, 59, 999) // End of today
-    
+
     const startDate = new Date()
     startDate.setHours(0, 0, 0, 0) // Start of day
 
@@ -201,7 +200,7 @@ export class HireHistoryService {
           endDate: now,
           label: 'Last 7 Days'
         }
-      
+
       case '14days':
         startDate.setDate(now.getDate() - 13)
         return {
@@ -210,7 +209,7 @@ export class HireHistoryService {
           endDate: now,
           label: 'Last 14 Days'
         }
-      
+
       case '30days':
         startDate.setDate(now.getDate() - 29)
         return {
@@ -219,7 +218,7 @@ export class HireHistoryService {
           endDate: now,
           label: 'Last 30 Days'
         }
-      
+
       case '3months':
         startDate.setMonth(now.getMonth() - 3)
         return {
@@ -228,7 +227,7 @@ export class HireHistoryService {
           endDate: now,
           label: 'Last 3 Months'
         }
-      
+
       case '6months':
         startDate.setMonth(now.getMonth() - 6)
         return {
@@ -237,7 +236,7 @@ export class HireHistoryService {
           endDate: now,
           label: 'Last 6 Months'
         }
-      
+
       case '1year':
         startDate.setFullYear(now.getFullYear() - 1)
         return {
@@ -246,7 +245,7 @@ export class HireHistoryService {
           endDate: now,
           label: 'Last 1 Year'
         }
-      
+
       default:
         // Default to last 30 days
         startDate.setDate(now.getDate() - 29)
