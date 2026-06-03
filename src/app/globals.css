@@ -1,0 +1,739 @@
+@import "tailwindcss";
+
+/* 📱 iOS Safari auto-zoom guard ─────────────────────────────────────────
+   When you focus an input whose font-size is below 16px, iOS Safari
+   helpfully zooms the page in (and never zooms back out). Every Tailwind
+   `text-xs` (~12px) / `text-[11px]` input in the app triggers it.
+   Force a 16px minimum on TOUCH devices only (pointer:coarse), so desktop
+   styling is untouched but iPhone stops zooming on focus.
+   ─────────────────────────────────────────────────────────────────────── */
+@media (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']):not([type='submit']):not([type='button']):not([type='reset']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* 🔧 CRITICAL: STATUS BAR SPACING CLASSES */
+.pt-status-bar {
+  padding-top: env(safe-area-inset-top, 24px);
+}
+
+.pb-nav-bar {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* 🔧 NEW: Edge-to-edge support for navigation and headers */
+.app-header {
+  padding-top: env(safe-area-inset-top);
+}
+
+.app-footer {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Generic utility for full-screen overlays that need to clear the notch */
+.safe-area-inset {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Android specific fallback */
+@media screen and (max-width: 768px) {
+  .pt-status-bar {
+    padding-top: 24px; /* Android status bar height */
+  }
+  
+  .app-header {
+    padding-top: env(safe-area-inset-top, 24px);
+  }
+}
+
+/* 🔧 RESPECT PHONE'S SYSTEM BARS AS PHYSICAL BARRIERS */
+html {
+  scroll-behavior: smooth;
+  font-feature-settings: 'cv01', 'cv02', 'cv03', 'cv04';
+  /* Prevent overscroll on mobile */
+  overscroll-behavior: none;
+  /* Let system handle the bars */
+  height: 100%;
+  overflow-x: hidden;
+}
+
+/* ✅ Ensure full-height layout without using 100vh on Android */
+html, body, #__next {
+  height: 100%;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'kern', 'liga', 'clig', 'calt';
+  
+  /* 🔧 CRITICAL: NO PADDING - LET ANDROID HANDLE SYSTEM BARS */
+  margin: 0;
+  padding: 0;
+  
+  /* Prevent rubber band scrolling on iOS */
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+  
+  /* Fill available space between system bars */
+  /* removed: min-height: 100vh; */
+  min-height: 100dvh;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+/* 🔧 MOBILE: LET SYSTEM BARS ACT AS PHYSICAL BARRIERS */
+@media screen and (max-width: 768px) {
+  html {
+    /* No custom padding - system handles it */
+    padding: 0;
+    margin: 0;
+    height: 100%;
+  }
+  
+  body {
+    /* 🔧 ZERO PADDING - ANDROID SYSTEM HANDLES BAR SPACING */
+    padding: 0 !important;
+    margin: 0 !important;
+    
+    /* Fill the available space between system bars */
+    /* removed: height: 100vh; */
+    height: 100dvh;
+    width: 100vw;
+    overflow-x: hidden;
+    position: relative;
+  }
+  
+  /* 🔧 MAIN APP CONTAINER */
+  #__next,
+  main,
+  .app-container {
+    /* Fill available space between system bars */
+    /* removed: min-height: 100vh; */
+    min-height: 100dvh;
+    width: 100%;
+    overflow-x: hidden;
+    /* Android will automatically provide spacing for system bars */
+  }
+
+  /* 🔧 NEW: HIDE SCROLLBARS ON MOBILE/CAPACITOR APP */
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  ::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  /* Hide scrollbar for IE, Edge and Firefox */
+  * {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+
+  /* Ensure smooth scrolling still works */
+  html, body {
+    -webkit-overflow-scrolling: touch;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+}
+
+/* 🔧 REMOVE SAFE AREA HANDLING - LET ANDROID SYSTEM HANDLE IT */
+@supports(padding: max(0px)) {
+  body {
+    /* DO NOT use safe-area-inset - let system handle bars */
+    padding: 0 !important;
+  }
+}
+
+/* Enhanced Professional Color Scheme */
+@theme {
+  /* ─── Fonts ──────────────────────────────────────────────────────────────
+     --font-sans → Geist  (set via next/font in layout.tsx)
+     --font-mono → DM Mono (set via next/font in layout.tsx)
+     Tailwind v4 picks these up automatically — no tailwind.config.js needed.
+  ──────────────────────────────────────────────────────────────────────── */
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  /* ─── Brand colours ───────────────────────────────────────────────────── */
+  --color-brand-darkest: #012619;
+  --color-brand-dark:    #025940;
+  --color-brand-mid:     #72A68E;
+  --color-brand-light:   #C5D9D0;
+  --color-brand-accent:  #b3f243;
+
+  /* Primary — Brand FOREST GREEN scale (anchored on #025940 / #012619).
+     This is the single source of truth for the app's main accent. The
+     legacy blue/indigo/sky/cyan utilities are re-pointed at this ramp below. */
+  --color-primary-50:  #edf6f1;
+  --color-primary-100: #d2e9de;
+  --color-primary-200: #a8d4c2;
+  --color-primary-300: #79bda3;
+  --color-primary-400: #46a585;
+  --color-primary-500: #0e7a58;
+  --color-primary-600: #025940;  /* brand dark — primary action */
+  --color-primary-700: #024a36;
+  --color-primary-800: #013a2a;
+  --color-primary-900: #012619;  /* brand darkest */
+  --color-primary-950: #01160e;
+
+  /* Secondary — Brand SAGE scale (anchored on #72A68E / #C5D9D0).
+     Used as the calm secondary accent; purple/violet/teal re-point here. */
+  --color-secondary-50:  #f1f7f4;
+  --color-secondary-100: #ddeae3;
+  --color-secondary-200: #C5D9D0;  /* brand light */
+  --color-secondary-300: #a3c4b5;
+  --color-secondary-400: #72A68E;  /* brand mid */
+  --color-secondary-500: #538a72;
+  --color-secondary-600: #41705c;
+  --color-secondary-700: #355a4a;
+  --color-secondary-800: #2c483c;
+  --color-secondary-900: #243a30;
+  --color-secondary-950: #13201a;
+  
+  /* Neutral Gray Scale - Enhanced */
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1f2937;
+  --color-gray-900: #111827;
+  --color-gray-950: #030712;
+  
+  /* Accent Colors — semantic (success/warning/error kept meaningful).
+     'info' is pure chrome, so it follows the brand; 'purple' → sage. */
+  --color-accent-success: #10b981;
+  --color-accent-warning: #f59e0b;
+  --color-accent-error: #ef4444;
+  --color-accent-info: #025940;
+  --color-accent-purple: #538a72;
+
+  /* ─── Cool palette → Brand green (SINGULAR THEME) ────────────────────────
+     The original starter template scattered blue/indigo/sky/cyan and
+     purple/violet/teal across 100+ files. Instead of editing every file, we
+     re-point Tailwind's built-in scales at the brand ramps, so the entire UI
+     renders on-brand from one place. All 11 stops are overridden per scale
+     (an unspecified stop would silently keep the original blue).
+     Semantic scales (red / amber / orange / emerald / green / gray) are left
+     untouched on purpose — they carry meaning (error/warning/success). */
+
+  /* blue → FOREST (primary). Literal hex (not var()) so Tailwind always
+     emits the override regardless of which primary stops are used elsewhere. */
+  --color-blue-50:  #edf6f1;
+  --color-blue-100: #d2e9de;
+  --color-blue-200: #a8d4c2;
+  --color-blue-300: #79bda3;
+  --color-blue-400: #46a585;
+  --color-blue-500: #0e7a58;
+  --color-blue-600: #025940;
+  --color-blue-700: #024a36;
+  --color-blue-800: #013a2a;
+  --color-blue-900: #012619;
+  --color-blue-950: #01160e;
+
+  /* indigo → FOREST (primary) */
+  --color-indigo-50:  #edf6f1;
+  --color-indigo-100: #d2e9de;
+  --color-indigo-200: #a8d4c2;
+  --color-indigo-300: #79bda3;
+  --color-indigo-400: #46a585;
+  --color-indigo-500: #0e7a58;
+  --color-indigo-600: #025940;
+  --color-indigo-700: #024a36;
+  --color-indigo-800: #013a2a;
+  --color-indigo-900: #012619;
+  --color-indigo-950: #01160e;
+
+  /* sky → FOREST (primary) */
+  --color-sky-50:  #edf6f1;
+  --color-sky-100: #d2e9de;
+  --color-sky-200: #a8d4c2;
+  --color-sky-300: #79bda3;
+  --color-sky-400: #46a585;
+  --color-sky-500: #0e7a58;
+  --color-sky-600: #025940;
+  --color-sky-700: #024a36;
+  --color-sky-800: #013a2a;
+  --color-sky-900: #012619;
+  --color-sky-950: #01160e;
+
+  /* cyan → FOREST (primary) */
+  --color-cyan-50:  #edf6f1;
+  --color-cyan-100: #d2e9de;
+  --color-cyan-200: #a8d4c2;
+  --color-cyan-300: #79bda3;
+  --color-cyan-400: #46a585;
+  --color-cyan-500: #0e7a58;
+  --color-cyan-600: #025940;
+  --color-cyan-700: #024a36;
+  --color-cyan-800: #013a2a;
+  --color-cyan-900: #012619;
+  --color-cyan-950: #01160e;
+
+  /* purple → SAGE (secondary) */
+  --color-purple-50:  #f1f7f4;
+  --color-purple-100: #ddeae3;
+  --color-purple-200: #C5D9D0;
+  --color-purple-300: #a3c4b5;
+  --color-purple-400: #72A68E;
+  --color-purple-500: #538a72;
+  --color-purple-600: #41705c;
+  --color-purple-700: #355a4a;
+  --color-purple-800: #2c483c;
+  --color-purple-900: #243a30;
+  --color-purple-950: #13201a;
+
+  /* violet → SAGE (secondary) */
+  --color-violet-50:  #f1f7f4;
+  --color-violet-100: #ddeae3;
+  --color-violet-200: #C5D9D0;
+  --color-violet-300: #a3c4b5;
+  --color-violet-400: #72A68E;
+  --color-violet-500: #538a72;
+  --color-violet-600: #41705c;
+  --color-violet-700: #355a4a;
+  --color-violet-800: #2c483c;
+  --color-violet-900: #243a30;
+  --color-violet-950: #13201a;
+
+  /* teal → SAGE (secondary) */
+  --color-teal-50:  #f1f7f4;
+  --color-teal-100: #ddeae3;
+  --color-teal-200: #C5D9D0;
+  --color-teal-300: #a3c4b5;
+  --color-teal-400: #72A68E;
+  --color-teal-500: #538a72;
+  --color-teal-600: #41705c;
+  --color-teal-700: #355a4a;
+  --color-teal-800: #2c483c;
+  --color-teal-900: #243a30;
+  --color-teal-950: #13201a;
+
+  /* fuchsia + rose-leaning pinks left as-is (rare, semantic). */
+  
+  /* Professional Shadows */
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  
+  /* Glass Morphism */
+  --backdrop-blur: blur(16px);
+  --backdrop-saturate: saturate(180%);
+  
+  /* Enhanced Spacing Scale */
+  --spacing-18: 4.5rem;
+  --spacing-72: 18rem;
+  --spacing-84: 21rem;
+  --spacing-96: 24rem;
+  
+  /* Professional Border Radius */
+  --radius-xs: 0.125rem;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.5rem;
+  
+  /* Custom breakpoint for extra large screens */
+  --breakpoint-3xl: 1920px;
+  
+  /* Professional typography */
+  --font-display: var(--font-sans);
+  --letter-spacing-tighter: -0.05em;
+  --letter-spacing-tight: -0.025em;
+  --letter-spacing-normal: 0em;
+  --letter-spacing-wide: 0.025em;
+  --letter-spacing-wider: 0.05em;
+  --letter-spacing-widest: 0.1em;
+}
+
+/* Dark mode utilities */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Professional Typography Enhancements */
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: var(--letter-spacing-tight);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+p {
+  line-height: 1.6;
+}
+
+/* Enhanced Scrollbar Styling - DESKTOP ONLY */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(248 250 252);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgb(148 163 184), rgb(100 116 139));
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgb(100 116 139), rgb(71 85 105));
+}
+
+::-webkit-scrollbar-corner {
+  background: rgb(248 250 252);
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-track {
+  background: rgb(15 23 42);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgb(71 85 105), rgb(51 65 85));
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgb(100 116 139), rgb(71 85 105));
+}
+
+.dark ::-webkit-scrollbar-corner {
+  background: rgb(15 23 42);
+}
+
+/* Professional Focus Styles */
+*:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+
+/* Glass Morphism Utility Classes */
+.glass {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: var(--backdrop-blur) var(--backdrop-saturate);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.glass-dark {
+  background: rgba(0, 0, 0, 0.1);
+  backdrop-filter: var(--backdrop-blur) var(--backdrop-saturate);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Professional Animation Classes */
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* External-bookings ticker (NASDAQ-style marquee above workshop grid).
+   Track contents are duplicated in JSX; translateX(-50%) loops seamlessly. */
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.ticker-track {
+  animation: ticker-scroll 40s linear infinite;
+  will-change: transform;
+}
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track {
+    animation: none;
+  }
+}
+
+/* Enhanced Selection Styling */
+::selection {
+  background-color: var(--color-primary-200);
+  color: var(--color-primary-900);
+}
+
+.dark ::selection {
+  background-color: var(--color-primary-800);
+  color: var(--color-primary-100);
+}
+
+/* Professional Button Hover States */
+.btn-hover-lift {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-hover-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Enhanced Card Styles */
+.card-elevated {
+  box-shadow: var(--shadow-sm);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-elevated:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+/* Professional Input Styles */
+.input-focus {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.input-focus:focus {
+  transform: scale(1.02);
+  box-shadow: var(--shadow-md);
+}
+
+/* Gradient Utilities */
+.gradient-primary {
+  background: linear-gradient(135deg, var(--color-primary-500), var(--color-primary-600));
+}
+
+.gradient-secondary {
+  background: linear-gradient(135deg, var(--color-secondary-500), var(--color-secondary-600));
+}
+
+.gradient-success {
+  background: linear-gradient(135deg, var(--color-accent-success), #059669);
+}
+
+.gradient-brand {
+  background: linear-gradient(135deg, var(--color-primary-500), var(--color-secondary-500));
+}
+
+/* Print Styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  
+  a, a:visited {
+    text-decoration: underline;
+  }
+  
+  .print-break {
+    page-break-before: always;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Removed: duplicate `@media (max-width: 768px) { nav { padding-top: 0
+   !important } ... main { padding-top: 48px !important } ... }` block.
+   Commit 8b83d70 ("Respect iPhone notch + home indicator") deleted the
+   first copy of these rules but missed this one at the bottom of the
+   file, so the new `padding-top: env(safe-area-inset-top)` on the mobile
+   nav (Navigation.tsx) and the matching offset on DynamicMainContent
+   were silently overridden by `!important`. Deleting this block lets the
+   notch fix actually take effect on iPhone with no impact on Android
+   (env() returns 0 there).
+────────────────────────────────────────────────────────────────────────── */
+
+/* ──────────────────────────────────────────────────────────────────────────
+   PREMIUM SETTINGS POLISH — scoped to .settings-content only.
+
+   Tightens spacing, typography, borders, shadows uniformly across all
+   org settings sub-components (Branches, Conditions, Contracts, Suppliers,
+   Invoice Companies, Insurance, External Garages, Users) without touching
+   their TSX. Brand palette preserved (#012619 / #025940 / #72A68E).
+
+   Selectors use attribute-substring matching ([class*="..."]) so they
+   work regardless of Tailwind's responsive prefixes (sm:p-8, lg:grid-cols-12).
+────────────────────────────────────────────────────────────────────────── */
+
+.settings-content { font-size: 14px; color: #0f172a; }
+.dark .settings-content { color: #e5e7eb; }
+
+/* Heading hierarchy — refined, not shouty */
+.settings-content h3 {
+  font-size: 1rem;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+@media (min-width: 640px) {
+  .settings-content h3 { font-size: 1.0625rem; }
+}
+.settings-content h4 { font-size: 0.9375rem; font-weight: 600; }
+
+/* Cap oversized Tailwind text utilities (including responsive variants) */
+.settings-content [class*="text-3xl"] { font-size: 1.25rem !important; line-height: 1.35 !important; letter-spacing: -0.01em !important; }
+.settings-content [class*="text-2xl"] { font-size: 1.0625rem !important; line-height: 1.35 !important; letter-spacing: -0.005em !important; }
+.settings-content [class*="text-xl"]  { font-size: 1rem !important; line-height: 1.4 !important; }
+.settings-content [class*="text-lg"]  { font-size: 0.9375rem !important; line-height: 1.4 !important; }
+
+/* Card paddings — generous but not bloated */
+.settings-content [class*="p-8"]:not([class*="px-"]):not([class*="py-"]) { padding: 1rem !important; }
+.settings-content [class*="p-6"]:not([class*="px-"]):not([class*="py-"]) { padding: 0.875rem !important; }
+@media (min-width: 640px) {
+  .settings-content [class*="p-8"]:not([class*="px-"]):not([class*="py-"]) { padding: 1.25rem !important; }
+  .settings-content [class*="p-6"]:not([class*="px-"]):not([class*="py-"]) { padding: 1rem !important; }
+}
+
+/* Section vertical rhythm */
+.settings-content [class*="space-y-8"] > * + * { margin-top: 1rem !important; }
+.settings-content [class*="space-y-6"] > * + * { margin-top: 0.875rem !important; }
+.settings-content [class*="space-y-5"] > * + * { margin-top: 0.75rem !important; }
+
+/* Borders — single weight */
+.settings-content [class*="border-3"] { border-width: 1px !important; }
+.settings-content [class*="border-2"] { border-width: 1px !important; }
+
+/* Shadows — subtle, premium */
+.settings-content [class*="shadow-2xl"],
+.settings-content [class*="shadow-xl"],
+.settings-content [class*="shadow-lg"],
+.settings-content [class*="shadow-md"] {
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.04), 0 0 0 1px rgba(15, 23, 42, 0.04) !important;
+}
+.dark .settings-content [class*="shadow-2xl"],
+.dark .settings-content [class*="shadow-xl"],
+.dark .settings-content [class*="shadow-lg"],
+.dark .settings-content [class*="shadow-md"] {
+  box-shadow: 0 1px 2px 0 rgba(0,0,0,0.25) !important;
+}
+
+/* Rounded corners — calmer */
+.settings-content [class*="rounded-2xl"] { border-radius: 0.625rem !important; }
+.settings-content [class*="rounded-xl"]  { border-radius: 0.5rem !important; }
+
+/* Heights — friendlier */
+.settings-content [class*="h-14"] { height: 2.5rem !important; }
+.settings-content [class*="h-12"] { height: 2.375rem !important; }
+.settings-content [class*="h-11"] { height: 2.25rem !important; }
+
+/* Pill icon containers in section headers — all tinted brand green */
+.settings-content [class*="p-2"][class*="bg-blue-100"],
+.settings-content [class*="p-2"][class*="bg-green-100"],
+.settings-content [class*="p-2"][class*="bg-purple-100"],
+.settings-content [class*="p-2"][class*="bg-amber-100"],
+.settings-content [class*="p-2"][class*="bg-indigo-100"],
+.settings-content [class*="p-2"][class*="bg-emerald-100"],
+.settings-content [class*="p-2"][class*="bg-pink-100"] {
+  padding: 0.375rem !important;
+  border-radius: 0.5rem !important;
+  background-color: rgba(2, 89, 64, 0.08) !important;
+}
+.settings-content [class*="p-2"][class*="bg-blue-100"] svg,
+.settings-content [class*="p-2"][class*="bg-green-100"] svg,
+.settings-content [class*="p-2"][class*="bg-purple-100"] svg,
+.settings-content [class*="p-2"][class*="bg-amber-100"] svg,
+.settings-content [class*="p-2"][class*="bg-indigo-100"] svg,
+.settings-content [class*="p-2"][class*="bg-emerald-100"] svg,
+.settings-content [class*="p-2"][class*="bg-pink-100"] svg {
+  color: #025940 !important;
+  width: 1rem !important;
+  height: 1rem !important;
+}
+
+/* Cap oversized icon containers (lg avatar-style blocks like w-12 h-12) */
+.settings-content [class*="w-14"][class*="h-14"],
+.settings-content [class*="w-12"][class*="h-12"] {
+  width: 2.25rem !important;
+  height: 2.25rem !important;
+}
+
+/* Colour swatch grids — premium = compact 28×28.
+   Targets any aspect-square button inside .settings-content regardless
+   of the grid responsive variants. */
+.settings-content button[class*="aspect-square"] {
+  width: 1.75rem !important;
+  height: 1.75rem !important;
+  min-width: 0 !important;
+  max-width: 1.75rem !important;
+  aspect-ratio: 1 / 1 !important;
+  border-width: 1px !important;
+}
+.settings-content button[class*="aspect-square"] svg {
+  width: 0.75rem !important;
+  height: 0.75rem !important;
+}
+
+/* Tighten the colour-picker grid gaps */
+.settings-content [class*="grid-cols-6"][class*="gap-3"],
+.settings-content [class*="grid-cols-6"][class*="gap-4"] {
+  gap: 0.5rem !important;
+  justify-content: start;
+}
+
+/* "Add X" hero buttons — calmer */
+.settings-content button[class*="min-w-"] { min-width: 0 !important; }
+.settings-content button[class*="shadow-md"],
+.settings-content button[class*="shadow-lg"] { font-weight: 600 !important; }
+
+/* Input focus ring — brand colour */
+.settings-content input:focus,
+.settings-content select:focus,
+.settings-content textarea:focus {
+  outline: none !important;
+  border-color: #025940 !important;
+  box-shadow: 0 0 0 3px rgba(2, 89, 64, 0.15) !important;
+}
+
+/* Sub-tab pills row (Branches / Vehicle Conditions / etc.) — tighten */
+.settings-content [class*="border-b"][class*="border-gray-200"] [class*="space-x-8"] > button {
+  padding-top: 0.75rem !important;
+  padding-bottom: 0.75rem !important;
+  font-size: 0.8125rem !important;
+}
