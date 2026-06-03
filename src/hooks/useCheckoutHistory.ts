@@ -7,12 +7,9 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { checkoutHistoryService } from '@/lib/checkoutHistoryService'
 import { userProfileService } from '@/lib/firestore'
-import { 
-  collection, getDocs, query, where, limit, orderBy
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
+import { toCamelList } from '@/lib/dbMap'
 import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
 
@@ -122,19 +119,19 @@ export function useCheckoutHistory(): UseCheckoutHistoryReturn {
     try {
       const results: UnifiedActivityRecord[] = []
 
-      // ── 1. Direct checkouts (checkoutHistory collection) ─────────────────
+      // ── 1. Direct checkouts (checkout_history table) ─────────────────────
       try {
-        const coSnap = await getDocs(query(
-          collection(db, 'checkoutHistory'),
-          where('organizationId', '==', orgId),
-          limit(500)
-        ))
-        coSnap.docs.forEach(doc => {
-          const d = doc.data()
+        const { data: coRows, error: coError } = await supabase
+          .from('checkout_history')
+          .select('*')
+          .eq('organization_id', orgId)
+          .limit(500)
+        if (coError) throw coError
+        toCamelList<any>(coRows).forEach(d => {
           const date = safeDate(d.checkedOutDate)
           if (date < cutoff) return
           results.push({
-            id: `co_${doc.id}`,
+            id: `co_${d.id}`,
             registration: d.registration || '',
             make: d.make || '',
             model: d.model || '',
@@ -167,24 +164,24 @@ export function useCheckoutHistory(): UseCheckoutHistoryReturn {
             organizationId: orgId
           })
         })
-        logger.log(`✅ checkoutHistory: ${coSnap.docs.length} docs`)
+        logger.log(`✅ checkout_history: ${(coRows ?? []).length} docs`)
       } catch (e) {
-        logger.log('checkoutHistory query failed:', e)
+        logger.log('checkout_history query failed:', e)
       }
 
-      // ── 2. Hire events (hireHistory collection) ───────────────────────────
+      // ── 2. Hire events (hire_history table) ───────────────────────────────
       try {
-        const hireSnap = await getDocs(query(
-          collection(db, 'hireHistory'),
-          where('organizationId', '==', orgId),
-          limit(500)
-        ))
-        hireSnap.docs.forEach(doc => {
-          const d = doc.data()
+        const { data: hireRows, error: hireError } = await supabase
+          .from('hire_history')
+          .select('*')
+          .eq('organization_id', orgId)
+          .limit(500)
+        if (hireError) throw hireError
+        toCamelList<any>(hireRows).forEach(d => {
           const date = safeDate(d.hireStartDate)
           if (date < cutoff) return
           results.push({
-            id: `hire_${doc.id}`,
+            id: `hire_${d.id}`,
             registration: d.registration || '',
             make: d.make || '',
             model: d.model || '',
@@ -198,22 +195,22 @@ export function useCheckoutHistory(): UseCheckoutHistoryReturn {
             organizationId: orgId
           })
         })
-        logger.log(`✅ hireHistory: ${hireSnap.docs.length} docs`)
+        logger.log(`✅ hire_history: ${(hireRows ?? []).length} docs`)
       } catch (e) {
-        logger.log('hireHistory query failed:', e)
+        logger.log('hire_history query failed:', e)
       }
 
       // ── 3. Active transfers & external garage (checkedInVehicles) ─────────
       // These are vehicles currently in_transit or at_external_garage
       // They haven't completed yet so they don't have a checkoutHistory entry
       try {
-        const transferSnap = await getDocs(query(
-          collection(db, 'checkedInVehicles'),
-          where('organizationId', '==', orgId),
-          limit(500)
-        ))
-        transferSnap.docs.forEach(doc => {
-          const d = doc.data()
+        const { data: transferRows, error: transferError } = await supabase
+          .from('checked_in_vehicles')
+          .select('*')
+          .eq('organization_id', orgId)
+          .limit(500)
+        if (transferError) throw transferError
+        toCamelList<any>(transferRows).forEach(d => {
           const status = d.transferStatus
           if (status !== 'in_transit' && status !== 'at_external_garage') return
 
@@ -226,7 +223,7 @@ export function useCheckoutHistory(): UseCheckoutHistoryReturn {
 
           const isGarage = status === 'at_external_garage'
           results.push({
-            id: `transfer_${doc.id}`,
+            id: `transfer_${d.id}`,
             registration: d.registration || '',
             make: d.make || '',
             model: d.model || '',

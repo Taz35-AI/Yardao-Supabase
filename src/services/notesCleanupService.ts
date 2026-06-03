@@ -1,20 +1,22 @@
-// src/services/notesCleanupService.ts - FIXED: Proper field clearing and deletion
-import { db } from '@/lib/firebase'
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  updateDoc, 
-  doc, 
-  writeBatch,
-  serverTimestamp,
-  deleteField
-} from 'firebase/firestore'
+// src/services/notesCleanupService.ts — SUPABASE re-implementation.
+//
+// Bulk prunes stale text from checked_in_vehicles notes/comments. Public class
+// instance, exported singleton, method signatures and result/operation shapes
+// are kept identical to the Firestore version; only the internals change.
+//
+//   checkedInVehicles → checked_in_vehicles  (notes, comments, last_edit_log)
+//   deleteField()     → set column to null   (Postgres has no field-delete)
+//   serverTimestamp() → handled by the BEFORE UPDATE trigger (set_updated_at)
+//   writeBatch        → Promise.all of single-row updates
+//   lastEditLog AuditLog object is stored verbatim in the last_edit_log jsonb
+//   column (camelCase keys pass through, per dbMap conventions).
+import { supabase } from '@/lib/supabaseClient'
 import { AuditLog } from '@/types'
 import { logger } from '@/lib/logger'
 
 logger.log('🔧 NotesCleanupService loading...')
+
+const CHECKED_IN_VEHICLES = 'checked_in_vehicles'
 
 export interface NotesCleanupOperation {
   targetText: string
@@ -52,13 +54,13 @@ class NotesCleanupService {
   }
 
   private processTextRemoval(
-    text: string, 
-    targetText: string, 
+    text: string,
+    targetText: string,
     mode: NotesCleanupOperation['mode'],
     action: NotesCleanupOperation['action']
   ): { modified: boolean; newText: string } {
     logger.log('🔍 Processing text removal:', { text: text?.substring(0, 50), targetText, mode, action })
-    
+
     if (!text || !targetText) {
       return { modified: false, newText: text }
     }
@@ -113,8 +115,8 @@ class NotesCleanupService {
   }
 
   private textContainsTarget(
-    text: string, 
-    targetText: string, 
+    text: string,
+    targetText: string,
     mode: NotesCleanupOperation['mode']
   ): boolean {
     if (!text || !targetText) return false
@@ -123,13 +125,13 @@ class NotesCleanupService {
       case 'word':
         const wordRegex = new RegExp(`\\b${this.escapeRegex(targetText)}\\b`, 'i')
         return wordRegex.test(text)
-      
+
       case 'phrase':
         return text.toLowerCase().includes(targetText.toLowerCase())
-      
+
       case 'contains':
         return text.toLowerCase().includes(targetText.toLowerCase())
-      
+
       default:
         return false
     }
@@ -145,11 +147,11 @@ class NotesCleanupService {
     userDisplayName: string,
     userId: string
   ): Promise<NotesCleanupResult> {
-    logger.log('🚀 Starting notes cleanup operation:', { 
-      organizationId, 
-      operation, 
-      userDisplayName, 
-      userId 
+    logger.log('🚀 Starting notes cleanup operation:', {
+      organizationId,
+      operation,
+      userDisplayName,
+      userId
     })
 
     const result: NotesCleanupResult = {
@@ -162,13 +164,13 @@ class NotesCleanupService {
     try {
       // Get all checked-in vehicles for the organization
       logger.log('📊 Querying vehicles for organization:', organizationId)
-      const vehiclesQuery = query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', organizationId)
-      )
+      const { data: vehicles, error: vehiclesError } = await supabase
+        .from(CHECKED_IN_VEHICLES)
+        .select('id, registration, notes, comments')
+        .eq('organization_id', organizationId)
+      if (vehiclesError) throw vehiclesError
 
-      const vehiclesSnapshot = await getDocs(vehiclesQuery)
-      result.totalVehicles = vehiclesSnapshot.docs.length
+      result.totalVehicles = (vehicles ?? []).length
       logger.log(`📋 Found ${result.totalVehicles} vehicles to check`)
 
       if (result.totalVehicles === 0) {
@@ -176,106 +178,98 @@ class NotesCleanupService {
         return result
       }
 
-      // Process vehicles in batches (Firestore batch limit is 500)
-      const batchSize = 500
-      const vehicles = vehiclesSnapshot.docs
       const auditLog = this.createAuditLog(userDisplayName, userId, operation)
 
-      for (let i = 0; i < vehicles.length; i += batchSize) {
-        const batch = writeBatch(db)
-        const batchVehicles = vehicles.slice(i, i + batchSize)
-        let batchModifiedCount = 0
+      // Collect single-row updates (replaces writeBatch); commit together.
+      const pendingUpdates: { id: string; updateData: Record<string, any> }[] = []
 
-        logger.log(`🔄 Processing batch ${Math.floor(i/batchSize) + 1}, vehicles ${i + 1}-${Math.min(i + batchSize, vehicles.length)}`)
+      for (const vehicleData of vehicles ?? []) {
+        try {
+          const vehicleId = vehicleData.id
+          const registration = vehicleData.registration || 'Unknown'
 
-        for (const vehicleDoc of batchVehicles) {
-          try {
-            const vehicleData = vehicleDoc.data()
-            const vehicleId = vehicleDoc.id
-            const registration = vehicleData.registration || 'Unknown'
+          logger.log(`🚗 Processing vehicle: ${registration} (${vehicleId})`)
 
-            logger.log(`🚗 Processing vehicle: ${registration} (${vehicleId})`)
+          const updateData: any = {}
+          const fieldsModified: string[] = []
+          const originalValues: Record<string, string> = {}
+          const newValues: Record<string, string> = {}
+          let vehicleModified = false
 
-            const updateData: any = {}
-            const fieldsModified: string[] = []
-            const originalValues: Record<string, string> = {}
-            const newValues: Record<string, string> = {}
-            let vehicleModified = false
+          // Process each specified field
+          for (const field of operation.fields) {
+            const currentValue = (vehicleData as any)[field] || ''
+            originalValues[field] = currentValue
 
-            // Process each specified field
-            for (const field of operation.fields) {
-              const currentValue = vehicleData[field] || ''
-              originalValues[field] = currentValue
+            logger.log(`🔍 Checking field '${field}' for vehicle ${registration}:`, currentValue?.substring(0, 100))
 
-              logger.log(`🔍 Checking field '${field}' for vehicle ${registration}:`, currentValue?.substring(0, 100))
+            const { modified, newText } = this.processTextRemoval(
+              currentValue,
+              operation.targetText,
+              operation.mode,
+              operation.action
+            )
 
-              const { modified, newText } = this.processTextRemoval(
-                currentValue,
-                operation.targetText,
-                operation.mode,
-                operation.action
-              )
-
-              if (modified) {
-                // CRITICAL FIX: Handle empty field clearing properly
-                if (newText === '' || newText.trim() === '') {
-                  // Use deleteField() to completely remove the field from Firestore
-                  // This ensures the field is truly empty and not cached
-                  updateData[field] = deleteField()
-                  newValues[field] = '(empty - field deleted)'
-                  logger.log(`🗑️ Field '${field}' will be DELETED for ${registration}`)
-                } else {
-                  updateData[field] = newText
-                  newValues[field] = newText
-                  logger.log(`✏️ Field '${field}' will be UPDATED for ${registration}`)
-                }
-                
-                fieldsModified.push(field)
-                vehicleModified = true
+            if (modified) {
+              // Handle empty field clearing properly. Postgres has no field
+              // delete, so we null the column (equivalent to deleteField()).
+              if (newText === '' || newText.trim() === '') {
+                updateData[field] = null
+                newValues[field] = '(empty - field deleted)'
+                logger.log(`🗑️ Field '${field}' will be DELETED for ${registration}`)
               } else {
-                newValues[field] = currentValue
-                logger.log(`⏭️ Field '${field}' unchanged for ${registration}`)
+                updateData[field] = newText
+                newValues[field] = newText
+                logger.log(`✏️ Field '${field}' will be UPDATED for ${registration}`)
               }
+
+              fieldsModified.push(field)
+              vehicleModified = true
+            } else {
+              newValues[field] = currentValue
+              logger.log(`⏭️ Field '${field}' unchanged for ${registration}`)
             }
-
-            // If any field was modified, add to batch
-            if (vehicleModified) {
-              // CRITICAL: Always update these fields to ensure fresh data
-              updateData.lastEditLog = auditLog
-              updateData.updatedAt = serverTimestamp()
-
-              batch.update(doc(db, 'checkedInVehicles', vehicleId), updateData)
-              
-              result.operationDetails.push({
-                vehicleId,
-                registration,
-                fieldsModified,
-                originalValues,
-                newValues
-              })
-
-              batchModifiedCount++
-              logger.log(`📝 Vehicle ${registration} queued for update`)
-            }
-          } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : 'Unknown error'
-            logger.error(`❌ Error processing vehicle ${vehicleDoc.id}:`, error)
-            result.errors.push(`Vehicle ${vehicleDoc.id}: ${errorMsg}`)
           }
-        }
 
-        // Commit the batch if there are modifications
-        if (batchModifiedCount > 0) {
-          logger.log(`💾 Committing batch with ${batchModifiedCount} modifications`)
-          await batch.commit()
-          result.modifiedVehicles += batchModifiedCount
-          logger.log(`✅ Batch committed successfully`)
-          
-          // CRITICAL: Add a small delay to ensure Firestore consistency
-          await new Promise(resolve => setTimeout(resolve, 250))
-        } else {
-          logger.log(`⏭️ No modifications in this batch, skipping commit`)
+          // If any field was modified, queue the update
+          if (vehicleModified) {
+            // Stamp the audit log. updated_at is set by the table's trigger.
+            updateData.last_edit_log = auditLog
+
+            pendingUpdates.push({ id: vehicleId, updateData })
+
+            result.operationDetails.push({
+              vehicleId,
+              registration,
+              fieldsModified,
+              originalValues,
+              newValues
+            })
+
+            logger.log(`📝 Vehicle ${registration} queued for update`)
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+          logger.error(`❌ Error processing vehicle ${vehicleData.id}:`, error)
+          result.errors.push(`Vehicle ${vehicleData.id}: ${errorMsg}`)
         }
+      }
+
+      // Commit all queued updates together
+      if (pendingUpdates.length > 0) {
+        logger.log(`💾 Committing ${pendingUpdates.length} modifications`)
+        const settled = await Promise.all(
+          pendingUpdates.map(({ id, updateData }) =>
+            supabase.from(CHECKED_IN_VEHICLES).update(updateData).eq('id', id)
+          )
+        )
+        for (const res of settled) {
+          if (res?.error) throw res.error
+        }
+        result.modifiedVehicles = pendingUpdates.length
+        logger.log(`✅ Updates committed successfully`)
+      } else {
+        logger.log(`⏭️ No modifications, skipping commit`)
       }
 
       logger.log('🎉 Notes cleanup operation completed:', {
@@ -310,24 +304,23 @@ class NotesCleanupService {
     logger.log('👀 Starting preview for notes cleanup:', { organizationId, operation })
 
     try {
-      const vehiclesQuery = query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', organizationId)
-      )
+      const { data: vehicles, error } = await supabase
+        .from(CHECKED_IN_VEHICLES)
+        .select('id, registration, notes, comments')
+        .eq('organization_id', organizationId)
+      if (error) throw error
 
-      const vehiclesSnapshot = await getDocs(vehiclesQuery)
       const affectedVehicles: any[] = []
 
-      logger.log(`📊 Preview: Found ${vehiclesSnapshot.docs.length} vehicles to analyze`)
+      logger.log(`📊 Preview: Found ${(vehicles ?? []).length} vehicles to analyze`)
 
-      for (const vehicleDoc of vehiclesSnapshot.docs) {
-        const vehicleData = vehicleDoc.data()
+      for (const vehicleData of vehicles ?? []) {
         const registration = vehicleData.registration || 'Unknown'
         const fieldsAffected: string[] = []
         const changes: Record<string, { from: string; to: string }> = {}
 
         for (const field of operation.fields) {
-          const currentValue = vehicleData[field] || ''
+          const currentValue = (vehicleData as any)[field] || ''
           const { modified, newText } = this.processTextRemoval(
             currentValue,
             operation.targetText,
@@ -346,7 +339,7 @@ class NotesCleanupService {
 
         if (fieldsAffected.length > 0) {
           affectedVehicles.push({
-            id: vehicleDoc.id,
+            id: vehicleData.id,
             registration,
             fieldsAffected,
             changes
@@ -358,7 +351,7 @@ class NotesCleanupService {
       logger.log(`👀 Preview complete: ${affectedVehicles.length} vehicles will be affected`)
 
       return {
-        totalVehicles: vehiclesSnapshot.docs.length,
+        totalVehicles: (vehicles ?? []).length,
         affectedVehicles
       }
     } catch (error) {

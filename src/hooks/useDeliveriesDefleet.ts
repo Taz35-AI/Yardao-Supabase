@@ -1,27 +1,30 @@
-// src/hooks/useDeliveriesDefleet.ts
-// ✅ BATTERY FIX: PROPERLY PAUSES/RESUMES LISTENERS WHEN APP GOES TO BACKGROUND
+// src/hooks/useDeliveriesDefleet.ts — SUPABASE re-implementation.
+// Owns the org's delivery/defleet planning log. Despite the "defleet" name this
+// is a STANDALONE log (its own table — see 0020_deliveries.sql), NOT a view of
+// defleeted vehicles. Data-layer swap only: the public
+// UseDeliveriesDefleetReturn API (entries, loading, error, createEntry,
+// updateEntry, deleteEntry, refreshEntries) and the DeliveryDefleelEntry shape
+// are kept identical.
+//
+// Firestore onSnapshot → initial select (ordered date desc, created_at desc)
+// then refetch on any postgres_changes for the org's deliveries_defleet rows.
+// CRUD: addDoc/updateDoc/deleteDoc → insert/update/delete. serverTimestamp() →
+// now()/server default. The keep-the-listener-alive-across-app-state-churn
+// optimization (activeOrgRef) and the dedicated unmount-only cleanup are
+// preserved 1:1.
+// ✅ BATTERY FIX preserved: listener still pauses/resumes with app state.
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAppState } from '@/hooks/common/useAppState'
-import { 
-  collection, 
-  addDoc, 
-  updateDoc,
-  deleteDoc, 
-  doc, 
-  onSnapshot, 
-  query, 
-  where, 
-  orderBy, 
-  serverTimestamp,
-  getDocs
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
 import { userProfileService } from '@/lib/firestore'
+import { toCamel } from '@/lib/dbMap'
 import type { DeliveryDefleelEntry } from '@/components/features/deliveries-defleet/DeliveriesDefleetContent'
 import { logger } from '@/lib/logger'
+
+const DELIVERIES_DEFLEET = 'deliveries_defleet'
 
 interface UseDeliveriesDefleetReturn {
   entries: DeliveryDefleelEntry[]
@@ -33,8 +36,47 @@ interface UseDeliveriesDefleetReturn {
   refreshEntries: () => void
 }
 
+// timestamptz columns arrive as ISO strings — revive to Date to match the
+// Firestore .toDate() behaviour the original used.
+const toDate = (v: any) => (v ? new Date(v) : v)
+
+// snake_case row → DeliveryDefleelEntry. toCamel maps every top-level key (so
+// new columns flow through automatically, mirroring the original `...data`
+// spread), then createdAt/updatedAt are revived to Date.
+function mapRow(row: any): DeliveryDefleelEntry {
+  const e = toCamel<any>(row)!
+  e.createdAt = toDate(e.createdAt)
+  e.updatedAt = toDate(e.updatedAt)
+  return e as DeliveryDefleelEntry
+}
+
+// DeliveryDefleelEntry (camelCase) → deliveries_defleet row (snake_case).
+// Explicit so we never write id/createdAt and the operationType/isCompleted/
+// isFleetVehicle/defleet* keys map to the right columns.
+function entryToRow(
+  entryData: Omit<DeliveryDefleelEntry, 'id' | 'createdAt' | 'updatedAt' | 'organizationId' | 'createdBy' | 'createdByName'>
+): Record<string, any> {
+  const out: Record<string, any> = {
+    date: entryData.date,
+    operation_type: entryData.operationType,
+    registration: entryData.registration,
+    make: entryData.make,
+    model: entryData.model,
+  }
+  if (entryData.notes !== undefined) out.notes = entryData.notes
+  if (entryData.isCompleted !== undefined) out.is_completed = entryData.isCompleted
+  if (entryData.completedAt !== undefined) out.completed_at = entryData.completedAt
+  if (entryData.completedBy !== undefined) out.completed_by = entryData.completedBy
+  if (entryData.expectedArrival !== undefined) out.expected_arrival = entryData.expectedArrival
+  if (entryData.supplier !== undefined) out.supplier = entryData.supplier
+  if (entryData.isFleetVehicle !== undefined) out.is_fleet_vehicle = entryData.isFleetVehicle
+  if (entryData.defleetReason !== undefined) out.defleet_reason = entryData.defleetReason
+  if (entryData.defleetDestination !== undefined) out.defleet_destination = entryData.defleetDestination
+  return out
+}
+
 // ⚠️ Implementation hook. Do NOT call this directly from components —
-// every call mounts its own Firestore listener. Consume the shared
+// every call mounts its own realtime listener. Consume the shared
 // instance via `useDeliveriesDefleet()` from
 // '@/contexts/DeliveriesDefleetContext', which calls this exactly once
 // inside DeliveriesDefleetProvider.
@@ -46,12 +88,12 @@ export function useDeliveriesDefleetInternal(): UseDeliveriesDefleetReturn {
   const [error, setError] = useState<string | null>(null)
   const [userProfile, setUserProfile] = useState<any>(null)
 
-  // Ref for managing subscription
+  // Ref for managing subscription (the realtime channel cleanup fn)
   const unsubscribeRef = useRef<(() => void) | null>(null)
   // Org the live listener is currently bound to. Lets us KEEP an active
   // listener across re-renders (app-state/visibility churn) and only
   // re-subscribe when the organization actually changes — instead of
-  // tearing it down and re-reading the whole collection every time.
+  // tearing it down and re-reading the whole table every time.
   const activeOrgRef = useRef<string | null>(null)
 
   // Get user profile
@@ -101,50 +143,63 @@ export function useDeliveriesDefleetInternal(): UseDeliveriesDefleetReturn {
         return
       }
 
+      const orgId = userProfile.organizationId
       logger.log('🔥 CREATING new deliveries/defleet listener')
       setLoading(true)
       setError(null)
 
-      const entriesQuery = query(
-        collection(db, 'deliveriesDefleet'),
-        where('organizationId', '==', userProfile.organizationId),
-        orderBy('date', 'desc'),
-        orderBy('createdAt', 'desc')
-      )
+      const fetchEntries = async () => {
+        try {
+          const { data, error: fetchError } = await supabase
+            .from(DELIVERIES_DEFLEET)
+            .select('*')
+            .eq('organization_id', orgId)
+            .order('date', { ascending: false })
+            .order('created_at', { ascending: false })
+          if (fetchError) throw fetchError
 
-      const unsubscribe = onSnapshot(
-        entriesQuery,
-        (snapshot) => {
-          logger.log(`📦 Deliveries/defleet snapshot: ${snapshot.docs.length} entries`)
-          
-          const entriesData: DeliveryDefleelEntry[] = []
-          snapshot.forEach((doc) => {
-            const data = doc.data()
-            entriesData.push({
-              id: doc.id,
-              ...data,
-              createdAt: data.createdAt?.toDate?.() || data.createdAt,
-              updatedAt: data.updatedAt?.toDate?.() || data.updatedAt,
-            } as DeliveryDefleelEntry)
-          })
-          
+          logger.log(`📦 Deliveries/defleet snapshot: ${(data ?? []).length} entries`)
+
+          const entriesData: DeliveryDefleelEntry[] = (data ?? []).map(mapRow)
+
           setEntries(entriesData)
           setLoading(false)
           setError(null)
-        },
-        (error) => {
-          logger.error('❌ Error in deliveries/defleet subscription:', error)
+        } catch (err) {
+          logger.error('❌ Error in deliveries/defleet subscription:', err)
           setError('Failed to load entries. Please try again.')
           setLoading(false)
         }
-      )
+      }
 
-      unsubscribeRef.current = unsubscribe
+      // initial fetch
+      fetchEntries()
+
+      // refetch on any change to this org's deliveries_defleet rows
+      const channel = supabase
+        .channel(`deliveries_defleet:${orgId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: DELIVERIES_DEFLEET,
+            filter: `organization_id=eq.${orgId}`,
+          },
+          () => {
+            fetchEntries()
+          }
+        )
+        .subscribe()
+
+      unsubscribeRef.current = () => {
+        supabase.removeChannel(channel)
+      }
     }
 
     // MAIN LOGIC: Decide whether to have a listener or not
     const shouldListen = shouldHaveActiveListener()
-    
+
     logger.log('🎯 Deliveries/defleet listener decision:', {
       shouldListen,
       hasUser: !!user,
@@ -196,7 +251,7 @@ export function useDeliveriesDefleetInternal(): UseDeliveriesDefleetReturn {
     // NOTE: deliberately NO per-run cleanup return here. Tearing the
     // listener down on every dependency change (shouldHaveActiveListener
     // changes identity on every isAppActive toggle) is exactly what
-    // caused a full collection re-read on every app-state event. Genuine
+    // caused a full table re-read on every app-state event. Genuine
     // teardown is handled above (shouldListen === false) and on true
     // unmount by the dedicated effect below.
   }, [shouldHaveActiveListener, userProfile?.organizationId])
@@ -230,21 +285,26 @@ export function useDeliveriesDefleetInternal(): UseDeliveriesDefleetReturn {
 
     try {
       setError(null)
-      
+
       const newEntry = {
-        ...entryData,
-        organizationId: userProfile.organizationId,
-        createdBy: user.uid,
-        createdByName: user.displayName || user.email || 'Unknown User',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+        ...entryToRow(entryData),
+        organization_id: userProfile.organizationId,
+        created_by: user.uid,
+        created_by_name: user.displayName || user.email || 'Unknown User',
+        // created_at / updated_at default to now() server-side
       }
 
-      logger.log('📤 Creating Firestore document with:', newEntry)
+      logger.log('📤 Creating deliveries_defleet row with:', newEntry)
 
-      const docRef = await addDoc(collection(db, 'deliveriesDefleet'), newEntry)
-      logger.log('✅ Document created with ID:', docRef.id)
-      
+      const { data, error: insertError } = await supabase
+        .from(DELIVERIES_DEFLEET)
+        .insert(newEntry)
+        .select('id')
+        .single()
+      if (insertError) throw insertError
+
+      logger.log('✅ Document created with ID:', data.id)
+
       return true
     } catch (error) {
       logger.error('💥 Error creating delivery/defleet entry:', error)
@@ -264,13 +324,17 @@ export function useDeliveriesDefleetInternal(): UseDeliveriesDefleetReturn {
 
     try {
       setError(null)
-      
+
       const updateData = {
-        ...entryData,
-        updatedAt: serverTimestamp()
+        ...entryToRow(entryData),
+        updated_at: new Date().toISOString()
       }
 
-      await updateDoc(doc(db, 'deliveriesDefleet', entryId), updateData)
+      const { error: updateError } = await supabase
+        .from(DELIVERIES_DEFLEET)
+        .update(updateData)
+        .eq('id', entryId)
+      if (updateError) throw updateError
       return true
     } catch (error) {
       logger.error('Error updating delivery/defleet entry:', error)
@@ -287,7 +351,11 @@ export function useDeliveriesDefleetInternal(): UseDeliveriesDefleetReturn {
 
     try {
       setError(null)
-      await deleteDoc(doc(db, 'deliveriesDefleet', entryId))
+      const { error: deleteError } = await supabase
+        .from(DELIVERIES_DEFLEET)
+        .delete()
+        .eq('id', entryId)
+      if (deleteError) throw deleteError
       return true
     } catch (error) {
       logger.error('Error deleting delivery/defleet entry:', error)
@@ -298,7 +366,7 @@ export function useDeliveriesDefleetInternal(): UseDeliveriesDefleetReturn {
 
   const refreshEntries = async () => {
     logger.log('🔄 Manual refresh requested')
-    
+
     if (!user || !userProfile?.organizationId) {
       logger.log('❌ Cannot refresh - no user or organization')
       return
@@ -312,32 +380,22 @@ export function useDeliveriesDefleetInternal(): UseDeliveriesDefleetReturn {
 
     // Temporarily show loading state for user feedback
     setLoading(true)
-    
-    try {
-      // Force a fresh query to Firestore (bypasses cache)
-      const entriesQuery = query(
-        collection(db, 'deliveriesDefleet'),
-        where('organizationId', '==', userProfile.organizationId),
-        orderBy('date', 'desc'),
-        orderBy('createdAt', 'desc')
-      )
 
-      const snapshot = await getDocs(entriesQuery)
-      const entriesData: DeliveryDefleelEntry[] = []
-      
-      snapshot.forEach((doc) => {
-        const data = doc.data()
-        entriesData.push({
-          id: doc.id,
-          ...data,
-          createdAt: data.createdAt?.toDate?.() || data.createdAt,
-          updatedAt: data.updatedAt?.toDate?.() || data.updatedAt,
-        } as DeliveryDefleelEntry)
-      })
-      
+    try {
+      // Force a fresh query (initial-select equivalent of the live listener)
+      const { data, error: fetchError } = await supabase
+        .from(DELIVERIES_DEFLEET)
+        .select('*')
+        .eq('organization_id', userProfile.organizationId)
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false })
+      if (fetchError) throw fetchError
+
+      const entriesData: DeliveryDefleelEntry[] = (data ?? []).map(mapRow)
+
       setEntries(entriesData)
       logger.log('✅ Manual refresh completed:', entriesData.length, 'entries loaded')
-      
+
     } catch (error) {
       logger.error('💥 Error during manual refresh:', error)
       setError('Failed to refresh entries. Please try again.')

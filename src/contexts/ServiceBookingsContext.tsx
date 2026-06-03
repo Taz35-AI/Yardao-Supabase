@@ -1,15 +1,22 @@
-// src/contexts/ServiceBookingsContext.tsx
-// 💸 COST OPTIMIZATION: Single shared onSnapshot listener for service bookings.
+// src/contexts/ServiceBookingsContext.tsx — SUPABASE re-implementation.
+// 💸 COST OPTIMIZATION: Single shared realtime listener for service bookings.
 //
 // Before: useServiceBookings was called from 5 places (DashboardDataLayer,
 // DashboardBusinessLogic, useNotifications, ServiceBookingsContent,
-// ServiceBookingModal). Each call mounted its own onSnapshot, so on the
-// dashboard page 2-3 identical listeners ran in parallel — each billed
-// separately by Firestore.
+// ServiceBookingModal). Each call mounted its own listener; this provider owns
+// the only one and all consumers read it via context.
 //
-// After: this provider owns the only listener. All consumers read from it via
-// context. Real-time behaviour, lifecycle gating, and the public API of
-// useServiceBookings are preserved 1:1.
+// Data-layer swap only — the public ServiceBookingsContextValue API and the
+// mapped ServiceBooking shape are preserved 1:1. Firestore semantics mapped:
+//   * onSnapshot(window query)  → initial select(date>=cutoff, ordered) then
+//     refetch on any postgres_changes for the org's service_bookings.
+//   * addDoc/updateDoc/deleteDoc → insert/update/delete
+//   * serverTimestamp()          → new Date().toISOString() / server default
+//   * deleteField()              → null (snake_case column cleared)
+//   * writeBatch                 → sequential updates (no client-side multi-row
+//                                  txn in supabase-js; same end state)
+// Rows are snake_case; toCamel maps top-level keys and jsonb columns
+// (work_required, external_provider, last_edit_log) pass through verbatim.
 'use client'
 
 import {
@@ -25,41 +32,31 @@ import { useAuth } from '@/contexts/AuthContext'
 import { usePathname } from 'next/navigation'
 import { useTabVisibility } from '@/hooks/common/useTabVisibility'
 import { useAppState } from '@/hooks/common/useAppState'
-import {
-  collection,
-  addDoc,
-  getDocs,
-  updateDoc,
-  deleteDoc,
-  doc,
-  query,
-  where,
-  orderBy,
-  onSnapshot,
-  serverTimestamp,
-  writeBatch,
-  deleteField,
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
 import { userProfileService } from '@/lib/firestore'
+import { toCamel } from '@/lib/dbMap'
 import { logger } from '@/lib/logger'
 
 import type { ServiceBooking } from '@/types/serviceBookings'
 
-const SERVICE_BOOKINGS_COLLECTION = 'serviceBookings'
+const SERVICE_BOOKINGS_TABLE = 'service_bookings'
+const CHECKED_IN_VEHICLES_TABLE = 'checked_in_vehicles'
+const VEHICLES_TABLE = 'vehicles'
+const CHECKOUT_HISTORY_TABLE = 'checkout_history'
 
-// Single source of truth for Firestore doc → ServiceBooking.
+const nowIso = () => new Date().toISOString()
+const toDate = (v: any) => (v ? new Date(v) : undefined)
+
+// Single source of truth for service_bookings row → ServiceBooking.
 //
-// Spreads the raw doc FIRST (`...v`) so every field — including ones added
-// to the schema later — flows through automatically. Only the fields that
-// need a type/default fix or a Firestore Timestamp → Date coercion are
-// overridden afterwards. This intentionally replaces the old hand-listed
-// "allowlist" mappers: under the allowlist, any new booking field was
-// silently dropped on read (it bit customerName/Phone/Email and the
-// mechanic fields). Used by BOTH the live listener and refreshBookings so
-// they can never drift apart again.
-function mapBookingDoc(id: string, raw: any): ServiceBooking {
-  const v = raw || {}
+// toCamel maps every top-level snake_case key to camelCase (so any column added
+// to the schema later flows through automatically — replacing the old
+// hand-listed allowlist that silently dropped new fields). Only the fields that
+// need a type/default fix or a timestamptz → Date coercion are overridden
+// afterwards. Used by BOTH the live listener and refreshBookings so they can
+// never drift apart.
+function mapBookingRow(row: any): ServiceBooking {
+  const v = toCamel<any>(row) || {}
   const workRequired: string | string[] = Array.isArray(v.workRequired)
     ? v.workRequired
     : typeof v.workRequired === 'string'
@@ -67,7 +64,7 @@ function mapBookingDoc(id: string, raw: any): ServiceBooking {
       : 'Service'
   return {
     ...v,
-    id,
+    id: v.id,
     date: v.date || '',
     timeSlot: v.timeSlot || '',
     registration: v.registration || '',
@@ -80,13 +77,13 @@ function mapBookingDoc(id: string, raw: any): ServiceBooking {
     createdBy: v.createdBy || '',
     createdByName: v.createdByName || '',
     status: v.status || 'scheduled',
-    createdAt: v.createdAt?.toDate?.() ?? new Date(),
-    updatedAt: v.updatedAt?.toDate?.() ?? undefined,
+    createdAt: toDate(v.createdAt) ?? new Date(),
+    updatedAt: toDate(v.updatedAt),
     isExternalProvider: v.isExternalProvider || false,
     externalProvider: v.externalProvider || undefined,
     serviceBay: v.serviceBay || 1,
-    checkedInToGarageAt: v.checkedInToGarageAt?.toDate?.() ?? undefined,
-    completedAt: v.completedAt?.toDate?.() ?? undefined,
+    checkedInToGarageAt: toDate(v.checkedInToGarageAt),
+    completedAt: toDate(v.completedAt),
     originalBranchId: v.originalBranchId || null,
     originalBranchName: v.originalBranchName || null,
     vehicleRemovedFromBranch: v.vehicleRemovedFromBranch || false,
@@ -158,6 +155,58 @@ export function useServiceBookingsContext(): ServiceBookingsContextValue {
     )
   }
   return ctx
+}
+
+// camelCase ServiceBooking write payload → snake_case service_bookings row.
+// Explicit so id/createdAt are never written and the jsonb columns
+// (work_required, external_provider) map correctly. undefined keys are dropped
+// so an update never blanks a column it didn't mean to touch.
+function bookingToRow(obj: Record<string, any>): Record<string, any> {
+  const map: Record<string, string> = {
+    date: 'date',
+    timeSlot: 'time_slot',
+    registration: 'registration',
+    make: 'make',
+    model: 'model',
+    workRequired: 'work_required',
+    isCustomVehicle: 'is_custom_vehicle',
+    notes: 'notes',
+    status: 'status',
+    serviceBay: 'service_bay',
+    slotCount: 'slot_count',
+    isExternalProvider: 'is_external_provider',
+    externalProvider: 'external_provider',
+    partsStatus: 'parts_status',
+    mileage: 'mileage',
+    assignedMechanicId: 'assigned_mechanic_id',
+    assignedMechanicName: 'assigned_mechanic_name',
+    customerName: 'customer_name',
+    customerPhone: 'customer_phone',
+    customerEmail: 'customer_email',
+    originalBranchId: 'original_branch_id',
+    originalBranchName: 'original_branch_name',
+    vehicleRemovedFromBranch: 'vehicle_removed_from_branch',
+    checkedInToGarageAt: 'checked_in_to_garage_at',
+    checkedInToGarageBy: 'checked_in_to_garage_by',
+    checkedInToGarageByName: 'checked_in_to_garage_by_name',
+    completedFromDashboard: 'completed_from_dashboard',
+    completedAt: 'completed_at',
+    completedBy: 'completed_by',
+    completedByName: 'completed_by_name',
+    createdBy: 'created_by',
+    createdByName: 'created_by_name',
+    lastModifiedBy: 'last_modified_by',
+    lastModifiedByName: 'last_modified_by_name',
+    cancelledBy: 'cancelled_by',
+    cancelledByName: 'cancelled_by_name',
+  }
+  const out: Record<string, any> = {}
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === undefined) continue
+    const col = map[k]
+    if (col) out[col] = v
+  }
+  return out
 }
 
 export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
@@ -238,18 +287,15 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
         return
       }
 
+      const orgId = organizationId
       logger.log('🔥 CREATING new service bookings listener (single shared subscription)')
       setLoading(true)
       setError(null)
 
       // 💸 Bound the live listener to a recent window instead of dragging
-      // every historical completed booking into memory. As completed
-      // bookings accumulate (years), the unbounded listener would balloon
-      // the JS heap (real culprit for iOS Safari freezes on weak devices)
-      // and re-cost the full collection on every cold attach. Older
-      // completed jobs are still fully accessible — the per-vehicle and
-      // per-customer history features already query Firestore on demand
-      // with their own composite indexes, so no UI loses data.
+      // every historical completed booking into memory. Older completed jobs
+      // are still fully accessible — the per-vehicle and per-customer history
+      // features query on demand, so no UI loses data.
       const SB_WINDOW_DAYS = 90
       const cutoffDate = new Date(Date.now() - SB_WINDOW_DAYS * 86400000)
       const yyyy = cutoffDate.getFullYear()
@@ -258,34 +304,53 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
       const cutoff = `${yyyy}-${mm}-${dd}`
       logger.log(`📅 Service bookings window: from ${cutoff} (last ${SB_WINDOW_DAYS} days + all future)`)
 
-      const q = query(
-        collection(db, SERVICE_BOOKINGS_COLLECTION),
-        where('organizationId', '==', organizationId),
-        where('date', '>=', cutoff),
-        orderBy('date', 'asc'),
-        orderBy('timeSlot', 'asc'),
-      )
+      const fetchBookings = async () => {
+        try {
+          const { data, error: fetchError } = await supabase
+            .from(SERVICE_BOOKINGS_TABLE)
+            .select('*')
+            .eq('organization_id', orgId)
+            .gte('date', cutoff)
+            .order('date', { ascending: true })
+            .order('time_slot', { ascending: true })
+          if (fetchError) throw fetchError
 
-      const unsubscribe = onSnapshot(
-        q,
-        snap => {
-          logger.log(`📦 Service bookings snapshot: ${snap.docs.length} documents`)
-
-          const data = snap.docs.map(d => mapBookingDoc(d.id, d.data()))
-
-          logger.log(`🔄 Service bookings updated: ${data.length} bookings`)
-          setBookings(data)
+          logger.log(`📦 Service bookings snapshot: ${(data ?? []).length} documents`)
+          const mapped = (data ?? []).map(mapBookingRow)
+          logger.log(`🔄 Service bookings updated: ${mapped.length} bookings`)
+          setBookings(mapped)
           setLoading(false)
           setError(null)
-        },
-        err => {
+        } catch (err) {
           logger.error('❌ Error in service bookings subscription:', err)
           setError('Failed to load service bookings')
           setLoading(false)
-        },
-      )
+        }
+      }
 
-      unsubscribeRef.current = unsubscribe
+      // initial fetch
+      fetchBookings()
+
+      // refetch on any change to this org's service_bookings
+      const channel = supabase
+        .channel(`service_bookings:${orgId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: SERVICE_BOOKINGS_TABLE,
+            filter: `organization_id=eq.${orgId}`,
+          },
+          () => {
+            fetchBookings()
+          }
+        )
+        .subscribe()
+
+      unsubscribeRef.current = () => {
+        supabase.removeChannel(channel)
+      }
     }
 
     const shouldListen = shouldHaveActiveListener()
@@ -336,19 +401,25 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
   const createBooking = async (bookingData: Omit<ServiceBooking, 'id'>) => {
     if (!user || !organizationId) throw new Error('Not authenticated')
 
-    const firestoreData = {
-      ...bookingData,
-      organizationId,
-      createdAt: serverTimestamp(),
-      workRequired: bookingData.workRequired,
-      serviceBay: bookingData.serviceBay || 1,
+    const row = {
+      ...bookingToRow(bookingData as Record<string, any>),
+      organization_id: organizationId,
+      work_required: bookingData.workRequired,
+      service_bay: bookingData.serviceBay || 1,
+      // created_at defaults to now() server-side
     }
 
-    const ref = await addDoc(collection(db, SERVICE_BOOKINGS_COLLECTION), firestoreData)
+    const { data, error: insertError } = await supabase
+      .from(SERVICE_BOOKINGS_TABLE)
+      .insert(row)
+      .select('id')
+      .single()
+    if (insertError) throw insertError
+    const newId = data.id as string
 
-    // 👥 Upsert the customer record so the contact details are reusable
-    // across future bookings. Fire-and-forget — a transient Firestore
-    // hiccup here must NOT roll back a successful booking save.
+    // 👥 Upsert the customer record so the contact details are reusable across
+    // future bookings. Fire-and-forget — a transient hiccup here must NOT roll
+    // back a successful booking save.
     if (bookingData.customerName && bookingData.customerPhone) {
       try {
         const { customerService } = await import('@/lib/customerService')
@@ -357,8 +428,6 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
           name: bookingData.customerName,
           phone: bookingData.customerPhone,
           email: bookingData.customerEmail,
-          // Append this vehicle to the customer's registration history.
-          // Skipped for lunch-break sentinel bookings.
           registration:
             bookingData.registration && bookingData.registration !== 'LUNCH'
               ? bookingData.registration
@@ -372,7 +441,7 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    return ref.id
+    return newId
   }
 
   const createBookingWithGarageCheckout = async (
@@ -416,20 +485,21 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
     >,
   ) => {
     if (!user) throw new Error('Not authenticated')
-    const ref = doc(db, SERVICE_BOOKINGS_COLLECTION, bookingId)
     const actorName = user.displayName || user.email || 'Unknown User'
-    await updateDoc(ref, {
-      ...updates,
-      updatedAt: serverTimestamp(),
-      lastModifiedBy: user.uid,
-      lastModifiedByName: actorName,
-    })
+    const { error: updateError } = await supabase
+      .from(SERVICE_BOOKINGS_TABLE)
+      .update({
+        ...bookingToRow(updates as Record<string, any>),
+        updated_at: nowIso(),
+        last_modified_by: user.uid,
+        last_modified_by_name: actorName,
+      })
+      .eq('id', bookingId)
+    if (updateError) throw updateError
 
-    // 👥 Re-upsert customer when an edit changed contact details. We don't
-    // bump bookingCount here (the booking already counted on create) — but
-    // we do want name/email corrections to flow back to the customer record
-    // so the autocomplete stays accurate. Skipped if no contact fields in
-    // the patch (e.g. drag-resize updates only timeSlot / serviceBay).
+    // 👥 Re-upsert customer when an edit changed contact details. We don't bump
+    // bookingCount here — but name/email corrections should flow back to the
+    // customer record. Skipped if no contact fields in the patch.
     if (organizationId && (updates.customerName || updates.customerPhone || updates.customerEmail)) {
       try {
         const { customerService } = await import('@/lib/customerService')
@@ -457,42 +527,48 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
 
   const deleteBooking = async (bookingId: string) => {
     if (!user) throw new Error('Not authenticated')
-    const ref = doc(db, SERVICE_BOOKINGS_COLLECTION, bookingId)
     const actorName = user.displayName || user.email || 'Unknown User'
-    // Stamp attribution before delete so the onServiceBookingDeleted trigger
-    // can read who cancelled it from the deleted snapshot's data.
+    // Stamp attribution before delete so any delete-side handling can read who
+    // cancelled it from the row before it's gone.
     try {
-      await updateDoc(ref, {
-        cancelledBy: user.uid,
-        cancelledByName: actorName,
-        updatedAt: serverTimestamp(),
-      })
+      const { error: stampError } = await supabase
+        .from(SERVICE_BOOKINGS_TABLE)
+        .update({
+          cancelled_by: user.uid,
+          cancelled_by_name: actorName,
+          updated_at: nowIso(),
+        })
+        .eq('id', bookingId)
+      if (stampError) throw stampError
     } catch (err) {
       logger.warn('Could not stamp cancelledBy before delete:', err)
     }
-    await deleteDoc(ref)
+    const { error: deleteError } = await supabase
+      .from(SERVICE_BOOKINGS_TABLE)
+      .delete()
+      .eq('id', bookingId)
+    if (deleteError) throw deleteError
   }
 
-  // Find vehicle's original branch before service
+  // Find vehicle's original branch before service. Returns the matched row + its
+  // id (replaces the Firestore vehicleDocRef) plus the resolved branch.
   const findVehicleOriginalBranch = async (registration: string) => {
     if (!organizationId) return null
 
     const cleanReg = registration.trim().toUpperCase().replace(/\s+/g, '')
 
     try {
-      const vehiclesQuery = query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', organizationId),
-      )
+      const { data: vehicles, error: vehiclesError } = await supabase
+        .from(CHECKED_IN_VEHICLES_TABLE)
+        .select('*')
+        .eq('organization_id', organizationId)
+      if (vehiclesError) throw vehiclesError
 
-      const vehicleSnapshot = await getDocs(vehiclesQuery)
-
-      for (const vehicleDoc of vehicleSnapshot.docs) {
-        const vehicleData = vehicleDoc.data()
+      for (const vehicleData of vehicles ?? []) {
         const vehicleReg = vehicleData.registration?.toUpperCase().replace(/\s+/g, '')
 
         if (vehicleReg === cleanReg) {
-          const branchId = vehicleData.branchId || 'main'
+          const branchId = vehicleData.branch_id || 'main'
 
           const { branchService } = await import('@/lib/services/branchService')
           const branches = await branchService.getBranches(organizationId)
@@ -502,7 +578,7 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
             branchId,
             branchName: branch?.name || (branchId === 'main' ? 'Main Branch' : branchId),
             vehicleData,
-            vehicleDocRef: vehicleDoc.ref,
+            vehicleId: vehicleData.id as string,
           }
         }
       }
@@ -514,7 +590,8 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Look up original vehicle data from various sources
+  // Look up original vehicle data from various sources (checkout_history /
+  // vehicles), preserving the original's fallback order + alternative-format try.
   const lookupOriginalVehicleData = async (registration: string) => {
     if (!organizationId) return null
 
@@ -522,115 +599,114 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
       const cleanReg = registration.toUpperCase().replace(/\s+/g, '')
       logger.log(`Looking up original data for vehicle: ${registration} (cleaned: ${cleanReg})`)
 
-      const externalGarageQuery = query(
-        collection(db, 'checkoutHistory'),
-        where('organizationId', '==', organizationId),
-        where('registration', '==', cleanReg),
-        where('isExternalGarageCheckout', '==', true),
-        orderBy('checkedOutDate', 'desc'),
-      )
-
-      const externalGarageSnapshot = await getDocs(externalGarageQuery)
-      if (!externalGarageSnapshot.empty) {
-        const externalGarageRecord = externalGarageSnapshot.docs[0].data()
+      // 1) external garage checkout record
+      const { data: externalRows } = await supabase
+        .from(CHECKOUT_HISTORY_TABLE)
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('registration', cleanReg)
+        .eq('is_external_garage_checkout', true)
+        .order('checked_out_date', { ascending: false })
+        .limit(1)
+      if (externalRows && externalRows.length > 0) {
+        const r = externalRows[0]
         logger.log(`Found external garage checkout record for ${registration}`)
         return {
-          make: externalGarageRecord.make || '',
-          model: externalGarageRecord.model || '',
-          colour: externalGarageRecord.colour || '',
-          size: externalGarageRecord.size || '',
-          condition: externalGarageRecord.condition || 'Good',
-          motExpiry: externalGarageRecord.motExpiry || '',
-          taxExpiry: externalGarageRecord.taxExpiry || '',
-          contract: externalGarageRecord.contract || null,
-          contractColor: externalGarageRecord.contractColor || null,
-          insuranceStatus: externalGarageRecord.insuranceStatus || null,
-          mileage: externalGarageRecord.mileage || '',
-          comments: externalGarageRecord.comments || '',
-          originalBranchId: externalGarageRecord.originalBranchId,
-          originalBranchName: externalGarageRecord.originalBranchName,
+          make: r.make || '',
+          model: r.model || '',
+          colour: r.colour || '',
+          size: r.size || '',
+          condition: r.condition || 'Good',
+          motExpiry: r.mot_expiry || '',
+          taxExpiry: r.tax_expiry || '',
+          contract: r.contract || null,
+          contractColor: r.contract_color || null,
+          insuranceStatus: r.insurance_status || null,
+          mileage: r.mileage || '',
+          comments: r.comments || '',
+          originalBranchId: r.original_branch_id,
+          originalBranchName: r.original_branch_name,
         }
       }
 
-      const fleetQuery = query(
-        collection(db, 'vehicles'),
-        where('organizationId', '==', organizationId),
-        where('registration', '==', cleanReg),
-      )
-
-      const fleetSnapshot = await getDocs(fleetQuery)
-      if (!fleetSnapshot.empty) {
-        const fleetVehicle = fleetSnapshot.docs[0].data()
+      // 2) fleet vehicle
+      const { data: fleetRows } = await supabase
+        .from(VEHICLES_TABLE)
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('registration', cleanReg)
+        .limit(1)
+      if (fleetRows && fleetRows.length > 0) {
+        const r = fleetRows[0]
         logger.log(`Found vehicle data in fleet for ${registration}`)
         return {
-          make: fleetVehicle.make || '',
-          model: fleetVehicle.model || '',
-          colour: fleetVehicle.colour || '',
-          size: fleetVehicle.size || '',
-          condition: fleetVehicle.condition || 'Good',
-          motExpiry: fleetVehicle.motExpiry || '',
-          taxExpiry: fleetVehicle.taxExpiry || '',
-          contract: fleetVehicle.contract || null,
-          contractColor: fleetVehicle.contractColor || null,
-          insuranceStatus: fleetVehicle.insuranceStatus || null,
-          mileage: fleetVehicle.mileage || '',
-          comments: fleetVehicle.comments || '',
+          make: r.make || '',
+          model: r.model || '',
+          colour: r.colour || '',
+          size: r.size || '',
+          condition: r.condition || 'Good',
+          motExpiry: r.mot_expiry || '',
+          taxExpiry: r.tax_expiry || '',
+          contract: r.contract || null,
+          contractColor: r.contract_color || null,
+          insuranceStatus: r.insurance_status || null,
+          mileage: r.mileage || '',
+          comments: r.comments || '',
         }
       }
 
-      const checkoutQuery = query(
-        collection(db, 'checkoutHistory'),
-        where('organizationId', '==', organizationId),
-        where('registration', '==', cleanReg),
-        orderBy('checkedOutDate', 'desc'),
-      )
-
-      const checkoutSnapshot = await getDocs(checkoutQuery)
-      if (!checkoutSnapshot.empty) {
-        const lastCheckout = checkoutSnapshot.docs[0].data()
+      // 3) most recent checkout (any)
+      const { data: checkoutRows } = await supabase
+        .from(CHECKOUT_HISTORY_TABLE)
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('registration', cleanReg)
+        .order('checked_out_date', { ascending: false })
+        .limit(1)
+      if (checkoutRows && checkoutRows.length > 0) {
+        const r = checkoutRows[0]
         logger.log(`Found vehicle data in checkout history for ${registration}`)
         return {
-          make: lastCheckout.make || '',
-          model: lastCheckout.model || '',
-          colour: lastCheckout.colour || '',
-          size: lastCheckout.size || '',
-          condition: lastCheckout.condition || 'Good',
-          motExpiry: lastCheckout.motExpiry || '',
-          taxExpiry: lastCheckout.taxExpiry || '',
-          contract: lastCheckout.contract || null,
-          contractColor: lastCheckout.contractColor || null,
-          insuranceStatus: lastCheckout.insuranceStatus || null,
-          mileage: lastCheckout.mileage || '',
-          comments: lastCheckout.comments || '',
+          make: r.make || '',
+          model: r.model || '',
+          colour: r.colour || '',
+          size: r.size || '',
+          condition: r.condition || 'Good',
+          motExpiry: r.mot_expiry || '',
+          taxExpiry: r.tax_expiry || '',
+          contract: r.contract || null,
+          contractColor: r.contract_color || null,
+          insuranceStatus: r.insurance_status || null,
+          mileage: r.mileage || '',
+          comments: r.comments || '',
         }
       }
 
+      // 4) alternative spaced format against the fleet
       const regWithSpaces = cleanReg.replace(/^(.{2})(.{2})(.+)$/, '$1 $2 $3')
       if (regWithSpaces !== cleanReg) {
         logger.log(`Trying alternative format: ${regWithSpaces}`)
-
-        const altFleetQuery = query(
-          collection(db, 'vehicles'),
-          where('organizationId', '==', organizationId),
-          where('registration', '==', regWithSpaces),
-        )
-
-        const altFleetSnapshot = await getDocs(altFleetQuery)
-        if (!altFleetSnapshot.empty) {
-          const fleetVehicle = altFleetSnapshot.docs[0].data()
+        const { data: altFleetRows } = await supabase
+          .from(VEHICLES_TABLE)
+          .select('*')
+          .eq('organization_id', organizationId)
+          .eq('registration', regWithSpaces)
+          .limit(1)
+        if (altFleetRows && altFleetRows.length > 0) {
+          const r = altFleetRows[0]
           logger.log(`Found vehicle data in fleet with alternative format for ${registration}`)
           return {
-            make: fleetVehicle.make || '',
-            model: fleetVehicle.model || '',
-            colour: fleetVehicle.colour || '',
-            size: fleetVehicle.size || '',
-            condition: fleetVehicle.condition || 'Good',
-            motExpiry: fleetVehicle.motExpiry || '',
-            taxExpiry: fleetVehicle.taxExpiry || '',
-            contract: fleetVehicle.contract || null,
-            contractColor: fleetVehicle.contractColor || null,
-            mileage: fleetVehicle.mileage || '',
-            comments: fleetVehicle.comments || '',
+            make: r.make || '',
+            model: r.model || '',
+            colour: r.colour || '',
+            size: r.size || '',
+            condition: r.condition || 'Good',
+            motExpiry: r.mot_expiry || '',
+            taxExpiry: r.tax_expiry || '',
+            contract: r.contract || null,
+            contractColor: r.contract_color || null,
+            mileage: r.mileage || '',
+            comments: r.comments || '',
           }
         }
       }
@@ -643,14 +719,13 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Check-in vehicle to garage with branch tracking
+  // Check-in vehicle to garage with branch tracking.
+  // Firestore writeBatch → two sequential updates (vehicle then booking).
   const checkInToGarage = async (booking: ServiceBooking): Promise<void> => {
     if (!user || !organizationId) throw new Error('User not authenticated')
     if (!booking.id) throw new Error('Booking ID is required')
 
     try {
-      const batch = writeBatch(db)
-
       const branchInfo = await findVehicleOriginalBranch(booking.registration)
 
       if (branchInfo) {
@@ -660,34 +735,34 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
 
         const vehicleData = branchInfo.vehicleData
 
-        const preservedHireFields: any = {}
-        if (vehicleData.hireStatus === 'Out on Hire') {
+        // Hire fields are preserved by simply not overwriting them — the update
+        // below only touches transfer/garage columns, so 'Out on Hire' state
+        // and its attribution stay intact on the row.
+        const hirePreserved = vehicleData.hire_status === 'Out on Hire'
+        if (hirePreserved) {
           logger.log(`📌 Preserving hire status for ${booking.registration}`)
-          preservedHireFields.hireStatus = vehicleData.hireStatus
-          preservedHireFields.originalStatus = vehicleData.originalStatus
-          preservedHireFields.hiredAt = vehicleData.hiredAt
-          preservedHireFields.hiredBy = vehicleData.hiredBy
-          preservedHireFields.hiredByName = vehicleData.hiredByName
-          preservedHireFields.hireNotes = vehicleData.hireNotes
         }
 
-        batch.update(branchInfo.vehicleDocRef, {
-          transferStatus: 'at_external_garage',
-          externalGarageId: '',
-          externalGarageName: booking.externalProvider?.garageName || 'External Garage',
-          serviceBookingId: booking.id,
-          checkedOutToGarageAt: serverTimestamp(),
-          checkedOutToGarageBy: user.uid,
-          checkedOutToGarageByName: user.displayName || user.email || 'Unknown User',
-          ...preservedHireFields,
-          updatedAt: serverTimestamp(),
-          lastEditLog: {
-            action: `Vehicle checked in to ${booking.externalProvider?.garageName || 'external garage'} via service booking${vehicleData.hireStatus === 'Out on Hire' ? ' (hire status preserved)' : ''}`,
-            editedBy: user.uid,
-            editedByName: user.displayName || user.email || 'Unknown User',
-            editedAt: new Date(),
-          },
-        })
+        const { error: vehUpdateError } = await supabase
+          .from(CHECKED_IN_VEHICLES_TABLE)
+          .update({
+            transfer_status: 'at_external_garage',
+            external_garage_id: null,
+            external_garage_name: booking.externalProvider?.garageName || 'External Garage',
+            service_booking_id: booking.id,
+            checked_out_to_garage_at: nowIso(),
+            checked_out_to_garage_by: user.uid,
+            checked_out_to_garage_by_name: user.displayName || user.email || 'Unknown User',
+            updated_at: nowIso(),
+            last_edit_log: {
+              action: `Vehicle checked in to ${booking.externalProvider?.garageName || 'external garage'} via service booking${hirePreserved ? ' (hire status preserved)' : ''}`,
+              editedBy: user.uid,
+              editedByName: user.displayName || user.email || 'Unknown User',
+              editedAt: new Date().toISOString(),
+            },
+          })
+          .eq('id', branchInfo.vehicleId)
+        if (vehUpdateError) throw vehUpdateError
 
         logger.log(
           `✅ Vehicle ${booking.registration} marked as at external garage (will appear in Dashboard External Garage section)`,
@@ -698,19 +773,20 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
         )
       }
 
-      const bookingRef = doc(db, SERVICE_BOOKINGS_COLLECTION, booking.id)
-      batch.update(bookingRef, {
-        status: 'checked_in_to_garage',
-        checkedInToGarageAt: serverTimestamp(),
-        checkedInToGarageBy: user.uid,
-        checkedInToGarageByName: user.displayName || user.email || 'Unknown User',
-        updatedAt: serverTimestamp(),
-        originalBranchId: branchInfo?.branchId || 'main',
-        originalBranchName: branchInfo?.branchName || 'Main Branch',
-        vehicleRemovedFromBranch: !!branchInfo,
-      })
-
-      await batch.commit()
+      const { error: bookingUpdateError } = await supabase
+        .from(SERVICE_BOOKINGS_TABLE)
+        .update({
+          status: 'checked_in_to_garage',
+          checked_in_to_garage_at: nowIso(),
+          checked_in_to_garage_by: user.uid,
+          checked_in_to_garage_by_name: user.displayName || user.email || 'Unknown User',
+          updated_at: nowIso(),
+          original_branch_id: branchInfo?.branchId || 'main',
+          original_branch_name: branchInfo?.branchName || 'Main Branch',
+          vehicle_removed_from_branch: !!branchInfo,
+        })
+        .eq('id', booking.id)
+      if (bookingUpdateError) throw bookingUpdateError
 
       if (branchInfo) {
         logger.log(
@@ -727,7 +803,8 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Mark as completed with branch return prompt
+  // Mark as completed with branch return prompt.
+  // Firestore writeBatch → sequential updates/inserts.
   const markAsCompleted = async (booking: ServiceBooking, mileage?: number): Promise<void> => {
     if (!user || !organizationId) throw new Error('User not authenticated')
     if (!booking.id) throw new Error('Booking ID is required')
@@ -741,30 +818,32 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
 
     const executeCompletion = async (shouldCheckBackIn: boolean = false) => {
       try {
-        const batch = writeBatch(db)
-
-        const bookingRef = doc(db, SERVICE_BOOKINGS_COLLECTION, booking.id)
-        batch.update(bookingRef, {
-          status: 'completed',
-          updatedAt: serverTimestamp(),
-          // Stamp completion attribution so per-vehicle service history has a
-          // trustworthy date + actor going forward (these fields existed in
-          // the type but were never written).
-          completedAt: serverTimestamp(),
-          completedBy: user.uid,
-          completedByName: user.displayName || user.email || 'Unknown User',
-          // Internal-only odometer reading (optional). Only the internal
-          // completion path passes this; external/garage never does.
-          ...(typeof mileage === 'number' && !Number.isNaN(mileage)
-            ? { mileage }
-            : {}),
-        })
+        const { error: bookingUpdateError } = await supabase
+          .from(SERVICE_BOOKINGS_TABLE)
+          .update({
+            status: 'completed',
+            updated_at: nowIso(),
+            // Stamp completion attribution so per-vehicle service history has a
+            // trustworthy date + actor.
+            completed_at: nowIso(),
+            completed_by: user.uid,
+            completed_by_name: user.displayName || user.email || 'Unknown User',
+            // Internal-only odometer reading (optional). Only the internal
+            // completion path passes this; external/garage never does.
+            ...(typeof mileage === 'number' && !Number.isNaN(mileage)
+              ? { mileage }
+              : {}),
+          })
+          .eq('id', booking.id)
+        if (bookingUpdateError) throw bookingUpdateError
 
         if (shouldCheckBackIn) {
           const originalBranch = booking.originalBranchName || 'Main Branch'
           const originalVehicleData = await lookupOriginalVehicleData(booking.registration)
 
-          const checkInData = {
+          // checked_in_vehicles row payload (snake_case). Cleared transfer/garage
+          // columns use null (Firestore deleteField equivalent).
+          const checkInData: Record<string, any> = {
             registration: booking.registration,
             make: originalVehicleData?.make || booking.make || '',
             model: originalVehicleData?.model || booking.model || '',
@@ -776,44 +855,48 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
             notes: `Returned from service at ${booking.externalProvider?.garageName || 'external garage'}`,
             comments: originalVehicleData?.comments || '',
             contract: originalVehicleData?.contract || null,
-            contractColor: originalVehicleData?.contractColor || null,
-            insuranceStatus: originalVehicleData?.insuranceStatus || null,
-            motExpiry: originalVehicleData?.motExpiry || '',
-            taxExpiry: originalVehicleData?.taxExpiry || '',
-            branchId: booking.originalBranchId || 'main',
-            userId: user.uid,
-            organizationId,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-            checkInTime: serverTimestamp(),
-            transferStatus: deleteField(),
-            externalGarageId: deleteField(),
-            externalGarageName: deleteField(),
-            serviceBookingId: deleteField(),
-            checkedOutToGarageAt: deleteField(),
-            checkedOutToGarageBy: deleteField(),
-            checkedOutToGarageByName: deleteField(),
-            lastEditLog: {
+            contract_color: originalVehicleData?.contractColor || null,
+            insurance_status: originalVehicleData?.insuranceStatus || null,
+            mot_expiry: originalVehicleData?.motExpiry || null,
+            tax_expiry: originalVehicleData?.taxExpiry || null,
+            branch_id: booking.originalBranchId || 'main',
+            user_id: user.uid,
+            organization_id: organizationId,
+            created_at: nowIso(),
+            updated_at: nowIso(),
+            check_in_time: nowIso(),
+            transfer_status: null,
+            external_garage_id: null,
+            external_garage_name: null,
+            service_booking_id: null,
+            checked_out_to_garage_at: null,
+            checked_out_to_garage_by: null,
+            checked_out_to_garage_by_name: null,
+            last_edit_log: {
               action: `Vehicle returned from service at ${booking.externalProvider?.garageName || 'external garage'} to ${originalBranch}`,
               editedBy: user.uid,
               editedByName: user.displayName || user.email || 'Unknown User',
-              editedAt: new Date(),
+              editedAt: new Date().toISOString(),
             },
           }
 
-          // 🛠️ Use space-insensitive registration matching to avoid creating
-          // a duplicate when the booking's `registration` differs only in
-          // whitespace from the existing yard doc (e.g. "AB12CDE" vs
-          // "AB12 CDE"). findVehicleOriginalBranch already walks the org's
-          // checkedInVehicles and matches on normalized reg.
+          // 🛠️ Space-insensitive registration matching to avoid creating a
+          // duplicate when the booking's reg differs only in whitespace from
+          // the existing yard row. findVehicleOriginalBranch normalizes reg.
           const existingBranchInfo = await findVehicleOriginalBranch(booking.registration)
 
           if (existingBranchInfo) {
-            batch.update(existingBranchInfo.vehicleDocRef, checkInData)
+            const { error: updErr } = await supabase
+              .from(CHECKED_IN_VEHICLES_TABLE)
+              .update(checkInData)
+              .eq('id', existingBranchInfo.vehicleId)
+            if (updErr) throw updErr
             logger.log(`✅ Updating existing vehicle doc for ${booking.registration}`)
           } else {
-            const newRef = doc(collection(db, 'checkedInVehicles'))
-            batch.set(newRef, checkInData)
+            const { error: insErr } = await supabase
+              .from(CHECKED_IN_VEHICLES_TABLE)
+              .insert(checkInData)
+            if (insErr) throw insErr
             logger.log(`⚠️ No existing doc found — creating new for ${booking.registration}`)
           }
         }
@@ -821,41 +904,42 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
         if (booking.isExternalProvider && booking.status === 'scheduled' && !shouldCheckBackIn) {
           logger.log(`🔧 External garage booking - looking for vehicle to clear garage status...`)
 
-          // 🛠️ Search by serviceBookingId — set on the vehicle doc when
-          // checkInToGarage ran. This is a precise reference (no registration
-          // normalization issues) and guarantees we touch only the vehicle
-          // tied to THIS booking.
-          const vehiclesQuery = query(
-            collection(db, 'checkedInVehicles'),
-            where('organizationId', '==', organizationId),
-            where('serviceBookingId', '==', booking.id),
-          )
+          // 🛠️ Search by serviceBookingId — set on the vehicle row when
+          // checkInToGarage ran. Precise reference, touches only THIS booking's
+          // vehicle.
+          const { data: vehicleRows } = await supabase
+            .from(CHECKED_IN_VEHICLES_TABLE)
+            .select('*')
+            .eq('organization_id', organizationId)
+            .eq('service_booking_id', booking.id)
+            .limit(1)
 
-          const vehiclesSnapshot = await getDocs(vehiclesQuery)
-
-          if (!vehiclesSnapshot.empty) {
-            const vehicleDoc = vehiclesSnapshot.docs[0]
-            const vehicleData = vehicleDoc.data()
+          if (vehicleRows && vehicleRows.length > 0) {
+            const vehicleData = vehicleRows[0]
 
             if (
-              vehicleData.transferStatus === 'at_external_garage' &&
-              vehicleData.serviceBookingId === booking.id
+              vehicleData.transfer_status === 'at_external_garage' &&
+              vehicleData.service_booking_id === booking.id
             ) {
               logger.log(`✅ Found vehicle ${booking.registration} at external garage, clearing status...`)
 
-              batch.update(vehicleDoc.ref, {
-                transferStatus: deleteField(),
-                externalGarageId: deleteField(),
-                externalGarageName: deleteField(),
-                serviceBookingId: deleteField(),
-                checkedOutToGarageAt: deleteField(),
-                checkedOutToGarageBy: deleteField(),
-                checkedOutToGarageByName: deleteField(),
-                returnedFromGarageAt: serverTimestamp(),
-                returnedFromGarageBy: user.uid,
-                returnedFromGarageByName: user.displayName || user.email || 'Unknown User',
-                updatedAt: serverTimestamp(),
-              })
+              const { error: clearErr } = await supabase
+                .from(CHECKED_IN_VEHICLES_TABLE)
+                .update({
+                  transfer_status: null,
+                  external_garage_id: null,
+                  external_garage_name: null,
+                  service_booking_id: null,
+                  checked_out_to_garage_at: null,
+                  checked_out_to_garage_by: null,
+                  checked_out_to_garage_by_name: null,
+                  returned_from_garage_at: nowIso(),
+                  returned_from_garage_by: user.uid,
+                  returned_from_garage_by_name: user.displayName || user.email || 'Unknown User',
+                  updated_at: nowIso(),
+                })
+                .eq('id', vehicleData.id)
+              if (clearErr) throw clearErr
 
               logger.log(`✅ Vehicle ${booking.registration} returned from external garage`)
             } else {
@@ -868,7 +952,6 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        await batch.commit()
         logger.log(`Service booking ${booking.id} marked as completed`)
       } catch (err) {
         logger.error('Error marking booking as completed:', err)
@@ -926,19 +1009,18 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
     setError(null)
 
     try {
-      const snap = await getDocs(
-        query(
-          collection(db, SERVICE_BOOKINGS_COLLECTION),
-          where('organizationId', '==', organizationId),
-          orderBy('date', 'asc'),
-          orderBy('timeSlot', 'asc'),
-        ),
-      )
-      const data = snap.docs.map(d => mapBookingDoc(d.id, d.data()))
+      const { data, error: fetchError } = await supabase
+        .from(SERVICE_BOOKINGS_TABLE)
+        .select('*')
+        .eq('organization_id', organizationId)
+        .order('date', { ascending: true })
+        .order('time_slot', { ascending: true })
+      if (fetchError) throw fetchError
 
-      setBookings(data)
+      const mapped = (data ?? []).map(mapBookingRow)
+      setBookings(mapped)
       setError(null)
-      logger.log(`✅ Service bookings manual refresh completed: ${data.length} bookings`)
+      logger.log(`✅ Service bookings manual refresh completed: ${mapped.length} bookings`)
     } catch (err) {
       logger.error('❌ Error refreshing service bookings:', err)
       setError('Failed to refresh bookings')

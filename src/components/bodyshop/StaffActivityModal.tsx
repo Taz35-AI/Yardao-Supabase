@@ -7,8 +7,7 @@
 
 import { useState, useEffect } from 'react'
 import { X, Users, Clock, Loader2, ChevronDown, ChevronUp, Calendar } from 'lucide-react'
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
 import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
 
@@ -218,46 +217,43 @@ export function StaffActivityModal({ organizationId, onClose }: StaffActivityMod
       try {
         setLoading(true)
 
-        // 1. Get all jobs for this org
-        const jobsSnap = await getDocs(
-          query(
-            collection(db, 'bodyshopJobs'),
-            where('organizationId', '==', organizationId)
-          )
-        )
+        // 1. Get all jobs for this org (used to map job_id → registration)
+        const { data: jobsData, error: jobsError } = await supabase
+          .from('bodyshop_jobs')
+          .select('id, vehicle_registration')
+          .eq('organization_id', organizationId)
+        if (jobsError) throw jobsError
+
+        const regByJobId = new Map<string, string>()
+        for (const job of jobsData ?? []) {
+          regByJobId.set(job.id as string, (job.vehicle_registration as string) || '—')
+        }
 
         // 2. Cutoff = 10 days ago
         const cutoff = new Date()
         cutoff.setDate(cutoff.getDate() - 10)
         const cutoffISO = cutoff.toISOString().split('T')[0]
 
-        // 3. Fetch timeEntries for every job in parallel
-        const perJobEntries = await Promise.all(
-          jobsSnap.docs.map(async jobDoc => {
-            const job = jobDoc.data()
-            const snap = await getDocs(
-              query(
-                collection(db, 'bodyshopJobs', jobDoc.id, 'timeEntries'),
-                where('date', '>=', cutoffISO),
-                orderBy('date', 'asc')
-              )
-            )
-            return snap.docs.map(d => {
-              const e = d.data()
-              return {
-                date: e.date as string,
-                hours: (e.hours as number) || 0,
-                registration: (job.vehicleRegistration as string) || '—',
-                notes: (e.notes as string) || '',
-                loggedBy: (e.loggedBy as string) || 'unknown',
-                loggedByName: (e.loggedByName as string) || 'Unknown',
-              } satisfies LogEntry
-            })
-          })
-        )
+        // 3. Fetch all time entries for this org since the cutoff in one query
+        //    (the timeEntries sub-collection is now the org-scoped
+        //    bodyshop_time_entries table; registration comes from the job map).
+        const { data: entriesData, error: entriesError } = await supabase
+          .from('bodyshop_time_entries')
+          .select('job_id, date, hours, notes, logged_by, logged_by_name')
+          .eq('organization_id', organizationId)
+          .gte('date', cutoffISO)
+          .order('date', { ascending: true })
+        if (entriesError) throw entriesError
 
-        // 4. Flatten
-        const allEntries = perJobEntries.flat()
+        // 4. Map rows → LogEntry (resolving registration from the job map)
+        const allEntries: LogEntry[] = (entriesData ?? []).map(e => ({
+          date: e.date as string,
+          hours: (e.hours as number) || 0,
+          registration: regByJobId.get(e.job_id as string) || '—',
+          notes: (e.notes as string) || '',
+          loggedBy: (e.logged_by as string) || 'unknown',
+          loggedByName: (e.logged_by_name as string) || 'Unknown',
+        }))
 
         // 5. Group by date → user → vehicles
         const byDate = new Map<string, Map<string, UserDaySummary>>()

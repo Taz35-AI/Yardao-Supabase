@@ -14,8 +14,7 @@
 // real main branch is called).
 
 import { useState, useEffect, useCallback } from 'react'
-import { doc, onSnapshot, collection, query, where, getDocs, limit } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { yardLayoutService } from '@/lib/services/yardLayoutService'
@@ -84,17 +83,17 @@ export function useYardLayout(branchId: string | null): UseYardLayoutResult {
       let cancelled = false
       const resolveSlugOrId = async () => {
         try {
-          const slugQ = query(
-            collection(db, 'branches'),
-            where('organizationId', '==', organizationId),
-            where('slug', '==', branchId),
-            limit(1),
-          )
-          const slugSnap = await getDocs(slugQ)
+          const { data: slugRows, error: slugError } = await supabase
+            .from('branches')
+            .select('id')
+            .eq('organization_id', organizationId)
+            .eq('slug', branchId)
+            .limit(1)
+          if (slugError) throw slugError
           if (cancelled) return
-          if (!slugSnap.empty) {
+          if (slugRows && slugRows.length > 0) {
             // Found a branch with this slug — use its real doc id
-            setResolvedBranchId(slugSnap.docs[0].id)
+            setResolvedBranchId(slugRows[0].id)
             return
           }
           // No slug match — assume it's already a doc id (Settings path)
@@ -109,58 +108,44 @@ export function useYardLayout(branchId: string | null): UseYardLayoutResult {
       return () => { cancelled = true }
     }
 
-    // Resolve 'main' → real branch id by querying the branches collection
+    // Resolve 'main' → real branch id by querying the branches table.
     let cancelled = false
     const resolveMain = async () => {
       try {
-        const branchesRef = collection(db, 'branches')
-        // Strategy: prefer isDefault === true, then isMain === true,
-        // then a branch named 'main'/'Main', then the first branch we find.
-        // Each query scoped by organizationId for safety.
+        // Strategy: prefer is_main === true, then the first branch we find.
+        // Each query scoped by organization_id for safety. (The Firestore
+        // version also tried an isDefault flag first, but the Supabase
+        // branches schema has no such column — is_main is the canonical flag.)
 
-        // 1. isDefault flag
-        const defaultQ = query(
-          branchesRef,
-          where('organizationId', '==', organizationId),
-          where('isDefault', '==', true),
-          limit(1),
-        )
-        const defaultSnap = await getDocs(defaultQ)
+        // 1. is_main flag
+        const { data: mainRows, error: mainError } = await supabase
+          .from('branches')
+          .select('id')
+          .eq('organization_id', organizationId)
+          .eq('is_main', true)
+          .limit(1)
+        if (mainError) throw mainError
         if (cancelled) return
-        if (!defaultSnap.empty) {
-          setResolvedBranchId(defaultSnap.docs[0].id)
+        if (mainRows && mainRows.length > 0) {
+          setResolvedBranchId(mainRows[0].id)
           return
         }
 
-        // 2. isMain flag
-        const mainFlagQ = query(
-          branchesRef,
-          where('organizationId', '==', organizationId),
-          where('isMain', '==', true),
-          limit(1),
-        )
-        const mainFlagSnap = await getDocs(mainFlagQ)
+        // 2. Fallback: any branch in this organization
+        const { data: anyRows, error: anyError } = await supabase
+          .from('branches')
+          .select('id')
+          .eq('organization_id', organizationId)
+          .limit(1)
+        if (anyError) throw anyError
         if (cancelled) return
-        if (!mainFlagSnap.empty) {
-          setResolvedBranchId(mainFlagSnap.docs[0].id)
+        if (anyRows && anyRows.length > 0) {
+          setResolvedBranchId(anyRows[0].id)
+          logger.log('⚠ useYardLayout: no is_main branch flagged, using first branch')
           return
         }
 
-        // 3. Fallback: any branch in this organization (alphabetical-ish via Firestore default)
-        const anyQ = query(
-          branchesRef,
-          where('organizationId', '==', organizationId),
-          limit(1),
-        )
-        const anySnap = await getDocs(anyQ)
-        if (cancelled) return
-        if (!anySnap.empty) {
-          setResolvedBranchId(anySnap.docs[0].id)
-          logger.log('⚠ useYardLayout: no isDefault/isMain branch flagged, using first branch')
-          return
-        }
-
-        // 4. No branches at all — keep null so the layout view shows empty state
+        // 3. No branches at all — keep null so the layout view shows empty state
         setResolvedBranchId(null)
         logger.log('⚠ useYardLayout: no branches found for organization', organizationId)
       } catch (err) {
@@ -185,44 +170,48 @@ export function useYardLayout(branchId: string | null): UseYardLayoutResult {
     setLoading(true)
     setError(null)
 
-    const ref = doc(db, 'yardLayouts', resolvedBranchId)
-    const unsub = onSnapshot(
-      ref,
-      (snap) => {
-        if (!snap.exists()) {
-          // Layout hasn't been created yet — that's fine, dashboard renders empty
-          setLayout(null)
-          setLoading(false)
-          return
-        }
-        const data = snap.data()
-        if (data.organizationId !== organizationId) {
-          // Defensive: refuse data from another org (rules should already prevent this)
-          logger.error('❌ yardLayout doc organizationId mismatch')
-          setLayout(null)
-          setLoading(false)
-          return
-        }
-        setLayout({
-          branchId: data.branchId || resolvedBranchId,
-          organizationId: data.organizationId,
-          spaces: data.spaces || {},
-          blocks: Array.isArray(data.blocks) ? data.blocks : [],
-          updatedAt: data.updatedAt,
-          updatedBy: data.updatedBy,
-          updatedByName: data.updatedByName,
-        })
+    const branch = resolvedBranchId
+    const org = organizationId
+
+    // Initial fetch + re-fetch on any change to this org's yard layouts.
+    // yardLayoutService.getLayout is already org-scoped (queries by
+    // organization_id + branch_id), so the org-mismatch defensive check the
+    // Firestore version did is handled by the query itself.
+    const refresh = async () => {
+      try {
+        const result = await yardLayoutService.getLayout(branch, org)
+        // Layout may not exist yet — that's fine, dashboard renders empty.
+        setLayout(result)
         setLoading(false)
-      },
-      (err) => {
+      } catch (err) {
         const msg = err instanceof Error ? err.message : 'Failed to load yard layout'
         setError(msg)
         setLoading(false)
-        logger.error('❌ useYardLayout onSnapshot error:', err)
-      },
-    )
+        logger.error('❌ useYardLayout layout fetch error:', err)
+      }
+    }
 
-    return () => unsub()
+    refresh()
+
+    const channel = supabase
+      .channel(`yard_layouts:${org}:${branch}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'yard_layouts',
+          filter: `organization_id=eq.${org}`,
+        },
+        () => {
+          refresh()
+        },
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [resolvedBranchId, organizationId])
 
   // ── Manual refresh (rarely needed with live subscription, kept for API compat) ──

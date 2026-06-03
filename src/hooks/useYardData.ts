@@ -10,22 +10,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import { usePathname } from 'next/navigation'
 import { useTabVisibility } from '@/hooks/common/useTabVisibility'
 import { useAppState } from '@/hooks/common/useAppState'
-import { 
-  collection, 
-  addDoc, 
-  deleteDoc, 
-  doc, 
-  updateDoc, 
-  onSnapshot, 
-  query, 
-  where, 
-  serverTimestamp,
-  writeBatch,
-  orderBy,
-  getDocs,
-  getDoc
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
+import { toCamel, toCamelList, toSnake } from '@/lib/dbMap'
 import { userProfileService, vehicleService } from '@/lib/firestore'
 import { checkoutHistoryService } from '@/lib/checkoutHistoryService'
 import { contractService } from '@/lib/contractService'
@@ -71,6 +57,16 @@ interface SyncNotification {
 // Props for the hook with branch support
 interface UseYardDataProps {
   branchId?: string
+}
+
+// timestamptz string | Date → Date. The Firestore version revived Timestamps
+// to Date via .toDate(); Supabase returns ISO strings, so coerce them here so
+// CheckedInVehicle date fields keep the same (Date) shape consumers rely on.
+const toDate = (v: any): any => {
+  if (!v) return v
+  if (v instanceof Date) return v
+  const d = new Date(v)
+  return isNaN(d.getTime()) ? v : d
 }
 
 // Helper functions
@@ -248,119 +244,134 @@ export function useYardDataInternal(props?: UseYardDataProps) {
       logger.log(`🔥 CREATING new yard data listener for branch: ${branchId}`)
       setLoading(true)
       setError(null)
-      
-      // Query vehicles for the CURRENT BRANCH
-      const vehiclesQuery = query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', userOrganizationId),
-        where('branchId', '==', branchId),
-        orderBy('createdAt', 'desc')
-      )
 
-      // Set up real-time listener for branch-specific vehicles
-      const unsubscribe = onSnapshot(
-        vehiclesQuery,
-        (snapshot) => {
-          logger.log(`📦 Branch [${branchId}] snapshot: ${snapshot.docs.length} vehicles`)
-          
-          const vehicles = snapshot.docs.map(doc => {
-  const data = doc.data()
-  
-  // Map vehicle with branch support, hire status, insurance, AND TRANSFER FIELDS
-  const vehicle: CheckedInVehicle = ensureHireStatus({
-    id: doc.id,
-    
-    // Store reference to fleet vehicle
-    vehicleId: data.vehicleId || null,
-    
-    // Required fields
-    registration: safeString(data.registration),
-    make: safeString(data.make),
-    model: safeString(data.model),
-    size: safeString(data.size),
-    condition: safeString(data.condition),
-    status: normalizeStatus(data.status),
-    userId: safeString(data.userId),
-    organizationId: safeString(data.organizationId),
-    branchId: data.branchId || 'main',
-    
-    // Optional fields
-    colour: data.colour ? safeString(data.colour) : undefined,
-    mileage: data.mileage ? safeString(data.mileage) : undefined,
-    notes: data.notes ? safeString(data.notes) : undefined,
-    comments: data.comments ? safeString(data.comments) : undefined,
-    contract: data.contract && data.contract.trim() !== '' ? safeString(data.contract) : null,
-    // Resolve badge colour from the live contracts index (source of truth);
-    // falls back to the stored copy when nothing matches.
-    contractColor: resolveVehicleContractColor(
-      { contract: data.contract, contractColor: data.contractColor, contractId: data.contractId },
-      contractIndexRef.current,
-    ) || null,
-    insuranceStatus: data.insuranceStatus || null,
-    insurancePolicyId:     data.insurancePolicyId     || null,  // ✅ NEW
-    insurancePolicyName:   data.insurancePolicyName   || null,  // ✅ NEW
-    insurancePolicyExpiry: data.insurancePolicyExpiry || null,  // ✅ NEW
-    motExpiry: data.motExpiry ? safeString(data.motExpiry) : undefined,
-    taxExpiry: data.taxExpiry ? safeString(data.taxExpiry) : undefined,
-    location: data.location ? safeString(data.location) : undefined,
-    bay: data.bay ? safeString(data.bay) : undefined,
-    
-    // Date fields
-    updatedAt: data.updatedAt?.toDate?.() || data.updatedAt,
-    createdAt: data.createdAt?.toDate?.() || data.createdAt,
-    checkInTime: data.checkInTime,
-    lastEditLog: data.lastEditLog,
-    
-    // Hire fields
-    hireStatus: data.hireStatus || 'In Yard',
-    originalStatus: data.originalStatus,
-    hiredAt: data.hiredAt?.toDate?.() || data.hiredAt,
-    hiredBy: data.hiredBy,
-    hiredByName: data.hiredByName,
-    hireNotes: data.hireNotes,
-    
-    // ✅ NEW: Transfer status fields for CheckedOutVehiclesSection
-    transferStatus: data.transferStatus || null,
-    targetBranchId: data.targetBranchId || null,
-    targetBranchName: data.targetBranchName || null,
-    transferInitiatedAt: data.transferInitiatedAt?.toDate?.() || data.transferInitiatedAt,
-    transferInitiatedBy: data.transferInitiatedBy,
-    transferInitiatedByName: data.transferInitiatedByName,
-    
-    // ✅ NEW: External garage fields for CheckedOutVehiclesSection
-    externalGarageId: data.externalGarageId || null,
-    externalGarageName: data.externalGarageName || null,
-    serviceBookingId: data.serviceBookingId || null,
-    checkedOutToGarageAt: data.checkedOutToGarageAt?.toDate?.() || data.checkedOutToGarageAt,
-    checkedOutToGarageBy: data.checkedOutToGarageBy,
-    checkedOutToGarageByName: data.checkedOutToGarageByName,
-    vehicleDiagramType: data.vehicleDiagramType || null,
-    damagePins: data.damagePins || [],
- 
-    // ✨ PHASE 2: Yard layout — which parking space (if any) this vehicle is parked on
-    parkingSpaceId: data.parkingSpaceId || null,
-    // 👤 Parking attribution — who last changed this vehicle's parking state
-    parkedBy: data.parkedBy,
-    parkedByName: data.parkedByName,
-    parkedAt: data.parkedAt?.toDate?.() || data.parkedAt,
-  })
-  
-  return vehicle
-})
+      const orgId = userOrganizationId
+      const listenBranchId = branchId
 
-logger.log(`✅ Yard data updated: ${vehicles.length} vehicles`)
-setCheckedInVehicles(vehicles)
-setLoading(false)
-setError(null)
-        },
-        (error) => {
-          logger.error('❌ Error in yard data subscription:', error)
+      // Map a (camelCased) row → CheckedInVehicle, preserving the exact shape
+      // the Firestore snapshot mapper produced before.
+      const mapRow = (data: any): CheckedInVehicle => ensureHireStatus({
+        id: data.id,
+
+        // Store reference to fleet vehicle
+        vehicleId: data.vehicleId || null,
+
+        // Required fields
+        registration: safeString(data.registration),
+        make: safeString(data.make),
+        model: safeString(data.model),
+        size: safeString(data.size),
+        condition: safeString(data.condition),
+        status: normalizeStatus(data.status),
+        userId: safeString(data.userId),
+        organizationId: safeString(data.organizationId),
+        branchId: data.branchId || 'main',
+
+        // Optional fields
+        colour: data.colour ? safeString(data.colour) : undefined,
+        mileage: data.mileage ? safeString(data.mileage) : undefined,
+        notes: data.notes ? safeString(data.notes) : undefined,
+        comments: data.comments ? safeString(data.comments) : undefined,
+        contract: data.contract && data.contract.trim() !== '' ? safeString(data.contract) : null,
+        // Resolve badge colour from the live contracts index (source of truth);
+        // falls back to the stored copy when nothing matches.
+        contractColor: resolveVehicleContractColor(
+          { contract: data.contract, contractColor: data.contractColor, contractId: data.contractId },
+          contractIndexRef.current,
+        ) || null,
+        insuranceStatus: data.insuranceStatus || null,
+        insurancePolicyId:     data.insurancePolicyId     || null,  // ✅ NEW
+        insurancePolicyName:   data.insurancePolicyName   || null,  // ✅ NEW
+        insurancePolicyExpiry: data.insurancePolicyExpiry || null,  // ✅ NEW
+        motExpiry: data.motExpiry ? safeString(data.motExpiry) : undefined,
+        taxExpiry: data.taxExpiry ? safeString(data.taxExpiry) : undefined,
+        location: data.location ? safeString(data.location) : undefined,
+        bay: data.bay ? safeString(data.bay) : undefined,
+
+        // Date fields
+        updatedAt: toDate(data.updatedAt),
+        createdAt: toDate(data.createdAt),
+        checkInTime: toDate(data.checkInTime),
+        lastEditLog: data.lastEditLog,
+
+        // Hire fields
+        hireStatus: data.hireStatus || 'In Yard',
+        originalStatus: data.originalStatus,
+        hiredAt: toDate(data.hiredAt),
+        hiredBy: data.hiredBy,
+        hiredByName: data.hiredByName,
+        hireNotes: data.hireNotes,
+
+        // ✅ NEW: Transfer status fields for CheckedOutVehiclesSection
+        transferStatus: data.transferStatus || null,
+        targetBranchId: data.targetBranchId || null,
+        targetBranchName: data.targetBranchName || null,
+        transferInitiatedAt: toDate(data.transferInitiatedAt),
+        transferInitiatedBy: data.transferInitiatedBy,
+        transferInitiatedByName: data.transferInitiatedByName,
+
+        // ✅ NEW: External garage fields for CheckedOutVehiclesSection
+        externalGarageId: data.externalGarageId || null,
+        externalGarageName: data.externalGarageName || null,
+        serviceBookingId: data.serviceBookingId || null,
+        checkedOutToGarageAt: toDate(data.checkedOutToGarageAt),
+        checkedOutToGarageBy: data.checkedOutToGarageBy,
+        checkedOutToGarageByName: data.checkedOutToGarageByName,
+        vehicleDiagramType: data.vehicleDiagramType || null,
+        damagePins: data.damagePins || [],
+
+        // ✨ PHASE 2: Yard layout — which parking space (if any) this vehicle is parked on
+        parkingSpaceId: data.parkingSpaceId || null,
+        // 👤 Parking attribution — who last changed this vehicle's parking state
+        parkedBy: data.parkedBy,
+        parkedByName: data.parkedByName,
+        parkedAt: toDate(data.parkedAt),
+      })
+
+      // Initial fetch + re-fetch on any change to this branch's vehicles.
+      const refresh = async () => {
+        try {
+          const { data, error } = await supabase
+            .from('checked_in_vehicles')
+            .select('*')
+            .eq('organization_id', orgId)
+            .eq('branch_id', listenBranchId)
+            .order('created_at', { ascending: false })
+          if (error) throw error
+
+          const vehicles = toCamelList<any>(data).map(mapRow)
+          logger.log(`✅ Yard data updated: ${vehicles.length} vehicles`)
+          setCheckedInVehicles(vehicles)
+          setLoading(false)
+          setError(null)
+        } catch (err) {
+          logger.error('❌ Error in yard data subscription:', err)
           setError('Failed to load vehicles')
           setLoading(false)
         }
-      )
+      }
 
-      unsubscribeRef.current = unsubscribe
+      refresh()
+
+      const channel = supabase
+        .channel(`checked_in_vehicles:${orgId}:${listenBranchId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'checked_in_vehicles',
+            filter: `organization_id=eq.${orgId}`,
+          },
+          () => {
+            refresh()
+          },
+        )
+        .subscribe()
+
+      unsubscribeRef.current = () => {
+        supabase.removeChannel(channel)
+      }
     }
 
     // MAIN LOGIC: Decide whether to have a listener or not
@@ -738,18 +749,17 @@ setError(null)
       logger.log(`Checking in ${normalizedReg} to branch: ${branchId}`)
 
       // Check if vehicle exists in ANY branch
-      const allBranchesQuery = query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', userOrganizationId)
-      )
-      const allVehiclesSnapshot = await getDocs(allBranchesQuery)
-      
+      const { data: allVehiclesRows, error: allVehiclesError } = await supabase
+        .from('checked_in_vehicles')
+        .select('*')
+        .eq('organization_id', userOrganizationId)
+      if (allVehiclesError) throw allVehiclesError
+
       let existingVehicle: any = null
-      allVehiclesSnapshot.forEach(doc => {
-        const data = doc.data()
+      toCamelList<any>(allVehiclesRows).forEach(data => {
         const existingReg = data.registration?.toUpperCase().replace(/\s+/g, '')
         if (existingReg === normalizedReg) {
-          existingVehicle = { id: doc.id, ...data }
+          existingVehicle = { ...data }
         }
       })
 
@@ -779,43 +789,47 @@ setError(null)
         const conditionValue = vehicleData.condition?.trim() || null // ADD CONDITION
 
         // Update the existing vehicle with new data and branch
-        await updateDoc(doc(db, 'checkedInVehicles', existingVehicle.id), {
-          // PRESERVE VEHICLE ID REFERENCE
-          vehicleId: existingVehicle.vehicleId || vehicleData.vehicleId || null,
-          
-          make: safeString(vehicleData.make),
-          model: safeString(vehicleData.model),
-          colour: safeString(vehicleData.colour),
-          size: safeString(vehicleData.size),
-          condition: safeString(vehicleData.condition),
-          status: vehicleData.status,
-          mileage: safeString(vehicleData.mileage),
-          notes: safeString(vehicleData.notes),
-          comments: safeString(vehicleData.comments),
-          contract: contractValue,
-          contractColor: contractColorValue,
-          insuranceStatus: insuranceValue,
-          motExpiry: safeString(vehicleData.motExpiry),
-          taxExpiry: safeString(vehicleData.taxExpiry),
-          branchId: branchId,
-          // ✨ Phase 2.5a: vehicle is in a NEW branch — old parking space ID
-          //                is meaningless here (different layout doc). Clear.
-          parkingSpaceId: null,
-          // Ensure hire status is set for transfers
-          hireStatus: 'In Yard' as VehicleHireStatus,
-          originalStatus: null,
-          hiredAt: null,
-          hiredBy: null,
-          hiredByName: null,
-          hireNotes: null,
-          updatedAt: serverTimestamp(),
-          updatedBy: user.uid,
-          updatedByName: userDisplayName,
-          lastEditLog: auditLog,
-          vehicleDiagramType: (vehicleData as any).vehicleDiagramType || null,
-  damagePins: (vehicleData as any).damagePins || [],
-})
-        
+        {
+          const { error: transferError } = await supabase
+            .from('checked_in_vehicles')
+            .update({
+              // PRESERVE VEHICLE ID REFERENCE
+              vehicle_id: existingVehicle.vehicleId || vehicleData.vehicleId || null,
+
+              make: safeString(vehicleData.make),
+              model: safeString(vehicleData.model),
+              colour: safeString(vehicleData.colour),
+              size: safeString(vehicleData.size),
+              condition: safeString(vehicleData.condition),
+              status: vehicleData.status,
+              mileage: safeString(vehicleData.mileage),
+              notes: safeString(vehicleData.notes),
+              comments: safeString(vehicleData.comments),
+              contract: contractValue,
+              contract_color: contractColorValue,
+              insurance_status: insuranceValue,
+              mot_expiry: safeString(vehicleData.motExpiry) || null,
+              tax_expiry: safeString(vehicleData.taxExpiry) || null,
+              branch_id: branchId,
+              // ✨ Phase 2.5a: vehicle is in a NEW branch — old parking space ID
+              //                is meaningless here (different layout doc). Clear.
+              parking_space_id: null,
+              // Ensure hire status is set for transfers
+              hire_status: 'In Yard' as VehicleHireStatus,
+              original_status: null,
+              hired_at: null,
+              hired_by: null,
+              hired_by_name: null,
+              hire_notes: null,
+              updated_at: new Date().toISOString(),
+              last_edit_log: auditLog,
+              vehicle_diagram_type: (vehicleData as any).vehicleDiagramType || null,
+              damage_pins: (vehicleData as any).damagePins || [],
+            })
+            .eq('id', existingVehicle.id)
+          if (transferError) throw transferError
+        }
+
 
         logger.log(`Vehicle transferred to ${toBranch?.name}`)
 
@@ -846,10 +860,11 @@ setError(null)
           }
         }
         
+        const nowIso = new Date().toISOString()
         const checkInData = {
           // Store reference to fleet vehicle
-          vehicleId: fleetVehicleId,
-          
+          vehicle_id: fleetVehicleId,
+
           registration: normalizedReg,
           make: safeString(vehicleData.make),
           model: safeString(vehicleData.model),
@@ -861,30 +876,32 @@ setError(null)
           notes: safeString(vehicleData.notes),
           comments: safeString(vehicleData.comments),
           contract: contractValue,
-          contractColor: contractColorValue,
-          insuranceStatus: insuranceValue,
-          motExpiry: safeString(vehicleData.motExpiry),
-          taxExpiry: safeString(vehicleData.taxExpiry),
-          branchId: branchId,
+          contract_color: contractColorValue,
+          insurance_status: insuranceValue,
+          mot_expiry: safeString(vehicleData.motExpiry) || null,
+          tax_expiry: safeString(vehicleData.taxExpiry) || null,
+          branch_id: branchId,
           // Set default hire status for new vehicles
-          hireStatus: 'In Yard' as VehicleHireStatus,
-          originalStatus: null,
-          hiredAt: null,
-          hiredBy: null,
-          hiredByName: null,
-          hireNotes: null,
-          userId: user.uid,
-          organizationId: userOrganizationId,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          checkInTime: serverTimestamp(),
-          lastEditLog: auditLog,
-          vehicleDiagramType: (vehicleData as any).vehicleDiagramType || null,
-          damagePins: (vehicleData as any).damagePins || [],
-       }
-        
+          hire_status: 'In Yard' as VehicleHireStatus,
+          original_status: null,
+          hired_at: null,
+          hired_by: null,
+          hired_by_name: null,
+          hire_notes: null,
+          user_id: user.uid,
+          organization_id: userOrganizationId,
+          created_at: nowIso,
+          updated_at: nowIso,
+          check_in_time: nowIso,
+          last_edit_log: auditLog,
+          vehicle_diagram_type: (vehicleData as any).vehicleDiagramType || null,
+          damage_pins: (vehicleData as any).damagePins || [],
+        }
 
-        await addDoc(collection(db, 'checkedInVehicles'), checkInData)
+        const { error: insertError } = await supabase
+          .from('checked_in_vehicles')
+          .insert(checkInData)
+        if (insertError) throw insertError
         logger.log(`New vehicle checked into branch: ${branchId}`)
 
         // Handle sync using vehicle ID if available - INCLUDING CONDITION
@@ -929,10 +946,10 @@ setError(null)
         checkedOutBy: user.uid,
         checkedOutByName: userDisplayName,
         organizationId: userOrganizationId,
-        originalCheckInDate: vehicle.checkInTime?.toDate?.() || vehicle.createdAt || new Date(),
+        originalCheckInDate: vehicle.checkInTime || vehicle.createdAt || new Date(),
         originalCheckedInBy: vehicle.userId,
         originalCheckedInByName: vehicle.lastEditLog?.byDisplayName || userDisplayName,
-        
+
         // Store vehicle ID reference
         vehicleId: vehicle.vehicleId || null
       }
@@ -954,18 +971,24 @@ setError(null)
 
       // Create audit log and update vehicle before deletion
       const auditLog = createCheckOutAuditLog(userDisplayName, user.uid)
-      
-      await updateDoc(doc(db, 'checkedInVehicles', vehicleId), {
-        lastEditLog: auditLog,
-        // ✨ Phase 2.5a: clear parking space first so the slot frees up
-        //                immediately even before the doc is fully deleted.
-        parkingSpaceId: null,
-        updatedAt: serverTimestamp()
-      })
+
+      {
+        const { error: updError } = await supabase
+          .from('checked_in_vehicles')
+          .update({
+            last_edit_log: auditLog,
+            // ✨ Phase 2.5a: clear parking space first so the slot frees up
+            //                immediately even before the doc is fully deleted.
+            parking_space_id: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', vehicleId)
+        if (updError) throw updError
+      }
 
       // Small delay to ensure audit log is saved, then delete
       setTimeout(async () => {
-        await deleteDoc(doc(db, 'checkedInVehicles', vehicleId))
+        await supabase.from('checked_in_vehicles').delete().eq('id', vehicleId)
         logger.log(`Vehicle checked out from branch: ${branchId}`)
       }, 100)
       
@@ -1002,15 +1025,19 @@ setError(null)
     if (!vehicleId || typeof vehicleId !== 'string') throw new Error('Invalid vehicle ID')
 
     try {
-      // First, get the full vehicle document to access vehicleId reference
-      const vehicleRef = doc(db, 'checkedInVehicles', vehicleId)
-      const vehicleDoc = await getDoc(vehicleRef)
-      
-      if (!vehicleDoc.exists()) {
+      // First, get the full vehicle record to access vehicleId reference
+      const { data: vehicleRow, error: vehicleFetchError } = await supabase
+        .from('checked_in_vehicles')
+        .select('*')
+        .eq('id', vehicleId)
+        .maybeSingle()
+      if (vehicleFetchError) throw vehicleFetchError
+
+      if (!vehicleRow) {
         throw new Error('Vehicle not found')
       }
 
-      const vehicleData = vehicleDoc.data()
+      const vehicleData = toCamel<any>(vehicleRow)!
       const vehicleIdForSync = vehicleData.vehicleId // Get the fleet vehicle ID reference
       const registration = vehicleData.registration
 
@@ -1023,7 +1050,7 @@ setError(null)
       })
 
       const updateData: any = {
-  updatedAt: serverTimestamp(),
+  updatedAt: new Date().toISOString(),
   branchId: branchId,
   ...(updates.damagePins !== undefined && { damagePins: updates.damagePins })
 }
@@ -1137,7 +1164,13 @@ setError(null)
       updateData.lastEditLog = auditLog
 
       // Update the vehicle in the database
-      await updateDoc(vehicleRef, updateData)
+      {
+        const { error: updError } = await supabase
+          .from('checked_in_vehicles')
+          .update(toSnake(updateData))
+          .eq('id', vehicleId)
+        if (updError) throw updError
+      }
       logger.log(`✅ Vehicle updated in branch: ${branchId}`)
 
       // CONDITION SYNC - FIXED SECTION
@@ -1280,7 +1313,6 @@ if (updates.damagePins !== undefined && vehicleIdForSync) {
 
       logger.log(`Starting bulk checkout for ${validVehicles.length} vehicles from branch: ${branchId}`)
 
-      const batch = writeBatch(db)
       const auditLog = createCheckOutAuditLog(userDisplayName, user.uid)
 
       for (const vehicle of validVehicles) {
@@ -1297,10 +1329,10 @@ if (updates.damagePins !== undefined && vehicleIdForSync) {
           checkedOutBy: user.uid,
           checkedOutByName: userDisplayName,
           organizationId: userOrganizationId,
-          originalCheckInDate: vehicle.checkInTime?.toDate?.() || vehicle.createdAt || new Date(),
+          originalCheckInDate: vehicle.checkInTime || vehicle.createdAt || new Date(),
           originalCheckedInBy: vehicle.userId,
           originalCheckedInByName: vehicle.lastEditLog?.byDisplayName || userDisplayName,
-          
+
           // Store vehicle ID reference
           vehicleId: vehicle.vehicleId || null
         }
@@ -1320,27 +1352,25 @@ if (updates.damagePins !== undefined && vehicleIdForSync) {
         const cleanedCheckoutRecord = cleanDataForFirebase(checkoutRecord)
         await checkoutHistoryService.addCheckoutRecord(cleanedCheckoutRecord as any)
 
-        // Update with audit log in batch
-        const vehicleRef = doc(db, 'checkedInVehicles', vehicle.id)
-        batch.update(vehicleRef, {
-          lastEditLog: auditLog,
-          // ✨ Phase 2.5a: clear parking space — vehicle is leaving the yard
-          parkingSpaceId: null,
-          updatedAt: serverTimestamp()
-        })
+        // Update with audit log
+        const { error: updError } = await supabase
+          .from('checked_in_vehicles')
+          .update({
+            last_edit_log: auditLog,
+            // ✨ Phase 2.5a: clear parking space — vehicle is leaving the yard
+            parking_space_id: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', vehicle.id)
+        if (updError) throw updError
       }
 
-      await batch.commit()
-      logger.log('Bulk checkout batch committed')
+      logger.log('Bulk checkout updates committed')
 
       // Delete after a short delay
       setTimeout(async () => {
-        const deleteBatch = writeBatch(db)
-        validVehicles.forEach(vehicle => {
-          const vehicleRef = doc(db, 'checkedInVehicles', vehicle.id)
-          deleteBatch.delete(vehicleRef)
-        })
-        await deleteBatch.commit()
+        const idsToDelete = validVehicles.map(v => v.id)
+        await supabase.from('checked_in_vehicles').delete().in('id', idsToDelete)
         logger.log(`${validVehicles.length} vehicles checked out from branch: ${branchId}`)
       }, 100)
       

@@ -1,32 +1,28 @@
-// src/hooks/useBodyshopJobs.ts
+// src/hooks/useBodyshopJobs.ts — SUPABASE re-implementation.
+// Bodyshop kanban hook. Public return shape + every function signature are kept
+// identical; only the internals swap Firestore → Supabase.
+//
+// The `bodyshopJobs` collection → `bodyshop_jobs` table and its `timeEntries`
+// sub-collection → `bodyshop_time_entries` (re-parented via job_id, carries its
+// own organization_id). Columns are snake_case and mapped via dbMap so the
+// BodyshopJob / DailyLog frontend shapes stay byte-for-byte identical. The
+// original used a manual getDocs load (no onSnapshot), so loadJobs stays a
+// one-shot fetch and the same optimistic local-state updates are preserved.
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import {
-  collection,
-  query,
-  where,
-  orderBy,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  getDoc,
-  deleteField,
-  writeBatch,
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
+import { toCamel } from '@/lib/dbMap'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService, vehicleService } from '@/lib/firestore'
-import { stockService } from '@/lib/services/stockService'  // ✅ NEW: For bodyshop parts → invoice integration
+import { stockService } from '@/lib/services/stockService'  // ✅ For bodyshop parts → invoice integration
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
 import type { BodyshopJob, DailyLog, MaterialLine, BodyshopStage, StageHours } from '@/types/bodyshop'
 
-const JOBS_COLLECTION = 'bodyshopJobs'
-const LOGS_SUBCOLLECTION = 'timeEntries'
+const JOBS_TABLE = 'bodyshop_jobs'
+const LOGS_TABLE = 'bodyshop_time_entries'
 
 const DEFAULT_STAGE_HOURS: StageHours = {
   queued: 0,
@@ -40,6 +36,27 @@ const STAGE_CONFIG_LABELS: Record<BodyshopStage, string> = {
   prep: 'Prep',
   paint: 'Paint',
   finishing: 'Finishing',
+}
+
+// Row → BodyshopJob: snake→camel + apply the same defaults the Firestore
+// version did (stage/priority/stageHours fallbacks).
+function rowToJob(row: any): BodyshopJob {
+  const j = toCamel<any>(row)!
+  return {
+    ...j,
+    stage: j.stage || 'queued',
+    priority: j.priority ?? 999,
+    stageHours: j.stageHours || { ...DEFAULT_STAGE_HOURS },
+  } as BodyshopJob
+}
+
+// Row → DailyLog: snake→camel + stage fallback (matches Firestore mapping).
+function rowToLog(row: any): DailyLog {
+  const l = toCamel<any>(row)!
+  return {
+    ...l,
+    stage: l.stage || 'queued',
+  } as DailyLog
 }
 
 export function useBodyshopJobs() {
@@ -70,22 +87,13 @@ export function useBodyshopJobs() {
     if (!organizationId) return
     setLoadingJobs(true)
     try {
-      const q = query(
-        collection(db, JOBS_COLLECTION),
-        where('organizationId', '==', organizationId),
-        orderBy('createdAt', 'desc')
-      )
-      const snap = await getDocs(q)
-      setJobs(snap.docs.map(d => {
-        const data = d.data()
-        return {
-          id: d.id,
-          ...data,
-          stage: data.stage || 'queued',
-          priority: data.priority ?? 999,
-          stageHours: data.stageHours || { ...DEFAULT_STAGE_HOURS },
-        } as BodyshopJob
-      }))
+      const { data, error } = await supabase
+        .from(JOBS_TABLE)
+        .select('*')
+        .eq('organization_id', organizationId)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      setJobs((data ?? []).map(rowToJob))
     } catch (err) {
       logger.error('useBodyshopJobs: loadJobs failed', err)
       toast.error(t('bodyshop.toast.loadFail'))
@@ -166,8 +174,32 @@ export function useBodyshopJobs() {
     }
 
     try {
-      const ref = await addDoc(collection(db, JOBS_COLLECTION), newJob)
-      const created = { id: ref.id, ...newJob }
+      const { data, error } = await supabase
+        .from(JOBS_TABLE)
+        .insert({
+          organization_id: organizationId,
+          vehicle_registration: reg,
+          ...(finalVehicleId && { vehicle_id: finalVehicleId }),
+          ...(finalMake && { vehicle_make: finalMake }),
+          ...(finalModel && { vehicle_model: finalModel }),
+          status: 'open',
+          stage: 'queued',
+          priority: nextPriority,
+          stage_hours: { ...DEFAULT_STAGE_HOURS },
+          total_hours: 0,
+          created_by: user.uid,
+          created_by_name: userDisplayName,
+          created_at: newJob.createdAt,
+          ...(damages && damages.length > 0 && { damages }),
+          ...(assignedMechanic && assignedMechanic.id && {
+            assigned_mechanic_id: assignedMechanic.id,
+            assigned_mechanic_name: assignedMechanic.name,
+          }),
+        })
+        .select('id')
+        .single()
+      if (error) throw error
+      const created = { id: data.id as string, ...newJob }
       setJobs(prev => [created, ...prev])
       toast.success(t('bodyshop.toast.jobOpened', { reg }))
       return created
@@ -192,11 +224,15 @@ export function useBodyshopJobs() {
         newPriority = maxPriority + 1
       }
 
-      await updateDoc(doc(db, JOBS_COLLECTION, jobId), {
-        stage: newStage,
-        priority: newPriority,
-        updatedAt: new Date().toISOString(),
-      })
+      const { error } = await supabase
+        .from(JOBS_TABLE)
+        .update({
+          stage: newStage,
+          priority: newPriority,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', jobId)
+      if (error) throw error
 
       setJobs(prev =>
         prev.map(j => (j.id === jobId ? { ...j, stage: newStage, priority: newPriority } : j))
@@ -212,17 +248,20 @@ export function useBodyshopJobs() {
   // ── Reorder jobs in queued column ───────────────────────────────────────────
   const reorderQueue = async (jobIds: string[]) => {
     try {
-      const batch = writeBatch(db)
-      
-      jobIds.forEach((jobId, index) => {
-        const newPriority = index + 1
-        batch.update(doc(db, JOBS_COLLECTION, jobId), { 
-          priority: newPriority,
-          updatedAt: new Date().toISOString(),
-        })
-      })
-
-      await batch.commit()
+      // Firestore used a writeBatch; Supabase has no client-side batch, so the
+      // per-job priority updates are issued in parallel (same observable result —
+      // all rows updated, throws if any fails).
+      const now = new Date().toISOString()
+      const results = await Promise.all(
+        jobIds.map((jobId, index) =>
+          supabase
+            .from(JOBS_TABLE)
+            .update({ priority: index + 1, updated_at: now })
+            .eq('id', jobId)
+        )
+      )
+      const firstError = results.find(r => r.error)?.error
+      if (firstError) throw firstError
 
       // Update local state
       setJobs(prev => {
@@ -247,11 +286,15 @@ export function useBodyshopJobs() {
   // Also stamps damagesEstimated: true to lock the panel from casual edits.
   const updateJobDamages = async (jobId: string, damages: import('@/types/bodyshop').DamageItem[]): Promise<boolean> => {
     try {
-      await updateDoc(doc(db, JOBS_COLLECTION, jobId), {
-        damages,
-        damagesEstimated: true,
-        updatedAt: new Date().toISOString(),
-      })
+      const { error } = await supabase
+        .from(JOBS_TABLE)
+        .update({
+          damages,
+          damages_estimated: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', jobId)
+      if (error) throw error
       setJobs(prev => prev.map(j =>
         j.id === jobId ? { ...j, damages, damagesEstimated: true } : j
       ))
@@ -271,10 +314,15 @@ export function useBodyshopJobs() {
     mechanic: { id: string; name: string } | null,
   ): Promise<boolean> => {
     try {
+      // deleteField() → set the columns to null to clear the assignment.
       const updates = mechanic
-        ? { assignedMechanicId: mechanic.id, assignedMechanicName: mechanic.name, updatedAt: new Date().toISOString() }
-        : { assignedMechanicId: deleteField(), assignedMechanicName: deleteField(), updatedAt: new Date().toISOString() }
-      await updateDoc(doc(db, JOBS_COLLECTION, jobId), updates as any)
+        ? { assigned_mechanic_id: mechanic.id, assigned_mechanic_name: mechanic.name, updated_at: new Date().toISOString() }
+        : { assigned_mechanic_id: null, assigned_mechanic_name: null, updated_at: new Date().toISOString() }
+      const { error } = await supabase
+        .from(JOBS_TABLE)
+        .update(updates)
+        .eq('id', jobId)
+      if (error) throw error
       setJobs(prev =>
         prev.map(j =>
           j.id === jobId
@@ -300,15 +348,20 @@ export function useBodyshopJobs() {
     if (!job) return
 
     try {
-      const logsQuery = query(collection(db, JOBS_COLLECTION, jobId, LOGS_SUBCOLLECTION))
-      const logsSnap = await getDocs(logsQuery)
-      
-      const deletePromises = logsSnap.docs.map(logDoc => 
-        deleteDoc(doc(db, JOBS_COLLECTION, jobId, LOGS_SUBCOLLECTION, logDoc.id))
-      )
-      await Promise.all(deletePromises)
+      // The job's time entries are removed via the bodyshop_time_entries
+      // job_id ON DELETE CASCADE, but the original explicitly cleared them
+      // first; delete them up-front to preserve the same behaviour/ordering.
+      const { error: logsError } = await supabase
+        .from(LOGS_TABLE)
+        .delete()
+        .eq('job_id', jobId)
+      if (logsError) throw logsError
 
-      await deleteDoc(doc(db, JOBS_COLLECTION, jobId))
+      const { error } = await supabase
+        .from(JOBS_TABLE)
+        .delete()
+        .eq('id', jobId)
+      if (error) throw error
 
       setJobs(prev => prev.filter(j => j.id !== jobId))
       toast.success(t('bodyshop.toast.deleted', { reg: job.vehicleRegistration }))
@@ -322,21 +375,26 @@ export function useBodyshopJobs() {
   const setJobStatus = async (jobId: string, status: 'open' | 'complete') => {
     if (!user) return
 
-    const firestoreUpdates =
+    // deleteField() → null when reopening, so the completion attribution clears.
+    const supabaseUpdates =
       status === 'complete'
-        ? { 
-            status, 
-            completedAt: new Date().toISOString(), 
-            completedBy: user.uid 
+        ? {
+            status,
+            completed_at: new Date().toISOString(),
+            completed_by: user.uid,
           }
-        : { 
-            status, 
-            completedAt: deleteField(), 
-            completedBy: deleteField() 
+        : {
+            status,
+            completed_at: null,
+            completed_by: null,
           }
 
     try {
-      await updateDoc(doc(db, JOBS_COLLECTION, jobId), firestoreUpdates)
+      const { error } = await supabase
+        .from(JOBS_TABLE)
+        .update(supabaseUpdates)
+        .eq('id', jobId)
+      if (error) throw error
 
       setJobs(prev =>
         prev.map(j =>
@@ -362,16 +420,13 @@ export function useBodyshopJobs() {
   // ── Load logs for a job ─────────────────────────────────────────────────────
   const loadLogs = async (jobId: string): Promise<DailyLog[]> => {
     try {
-      const q = query(
-        collection(db, JOBS_COLLECTION, jobId, LOGS_SUBCOLLECTION),
-        orderBy('date', 'asc')
-      )
-      const snap = await getDocs(q)
-      return snap.docs.map(d => ({ 
-        id: d.id, 
-        ...d.data(),
-        stage: d.data().stage || 'queued',
-      } as DailyLog))
+      const { data, error } = await supabase
+        .from(LOGS_TABLE)
+        .select('*')
+        .eq('job_id', jobId)
+        .order('date', { ascending: true })
+      if (error) throw error
+      return (data ?? []).map(rowToLog)
     } catch (err) {
       logger.error('useBodyshopJobs: loadLogs failed', err)
       toast.error(t('bodyshop.toast.entriesLoadFail'))
@@ -398,15 +453,16 @@ const saveLog = async (
 
   try {
     // ─── 1. Check if a log for this date AND this stage already exists ────
-    const q = query(
-      collection(db, JOBS_COLLECTION, jobId, LOGS_SUBCOLLECTION),
-      where('date', '==', date),
-      where('stage', '==', currentStage)
-    )
-    const snap = await getDocs(q)
+    const { data: existingRows, error: existingError } = await supabase
+      .from(LOGS_TABLE)
+      .select('*')
+      .eq('job_id', jobId)
+      .eq('date', date)
+      .eq('stage', currentStage)
+    if (existingError) throw existingError
 
     // ─── 2. Determine if this is a NEW log (not an edit of existing) ──────
-    const isNewLog = snap.empty
+    const isNewLog = !existingRows || existingRows.length === 0
 
     // ─── 3. Build log data (materials now include stockPartId) ────────────
     const logData: Omit<DailyLog, 'id'> = {
@@ -417,22 +473,44 @@ const saveLog = async (
       stage: currentStage,
       loggedBy: user.uid,
       loggedByName: userDisplayName,
-      createdAt: isNewLog ? new Date().toISOString() : snap.docs[0].data().createdAt,
+      createdAt: isNewLog ? new Date().toISOString() : (existingRows![0].created_at as string),
       updatedAt: new Date().toISOString(),
     }
 
     if (!isNewLog) {
       // Update existing log for this date + stage combo
-      await updateDoc(
-        doc(db, JOBS_COLLECTION, jobId, LOGS_SUBCOLLECTION, snap.docs[0].id),
-        logData
-      )
+      const { error } = await supabase
+        .from(LOGS_TABLE)
+        .update({
+          date: logData.date,
+          hours: logData.hours,
+          notes: logData.notes,
+          materials: logData.materials,
+          stage: logData.stage,
+          logged_by: logData.loggedBy,
+          logged_by_name: logData.loggedByName,
+          updated_at: logData.updatedAt,
+        })
+        .eq('id', existingRows![0].id)
+      if (error) throw error
     } else {
       // Create new log entry
-      await addDoc(
-        collection(db, JOBS_COLLECTION, jobId, LOGS_SUBCOLLECTION),
-        logData
-      )
+      const { error } = await supabase
+        .from(LOGS_TABLE)
+        .insert({
+          organization_id: organizationId,
+          job_id: jobId,
+          date: logData.date,
+          hours: logData.hours,
+          notes: logData.notes,
+          materials: logData.materials,
+          stage: logData.stage,
+          logged_by: logData.loggedBy,
+          logged_by_name: logData.loggedByName,
+          created_at: logData.createdAt,
+          updated_at: logData.updatedAt,
+        })
+      if (error) throw error
     }
 
     // ─── 4. ✅ NEW: Write partUsage records for stock materials ───────────
@@ -490,10 +568,14 @@ const saveLog = async (
       totalHours += log.hours
     }
 
-    await updateDoc(doc(db, JOBS_COLLECTION, jobId), { 
-      totalHours,
-      stageHours: newStageHours,
-    })
+    const { error: jobUpdateError } = await supabase
+      .from(JOBS_TABLE)
+      .update({
+        total_hours: totalHours,
+        stage_hours: newStageHours,
+      })
+      .eq('id', jobId)
+    if (jobUpdateError) throw jobUpdateError
 
     setJobs(prev =>
       prev.map(j => (j.id === jobId ? { ...j, totalHours, stageHours: newStageHours } : j))
@@ -514,7 +596,11 @@ const saveLog = async (
     if (!job) return false
 
     try {
-      await deleteDoc(doc(db, JOBS_COLLECTION, jobId, LOGS_SUBCOLLECTION, logId))
+      const { error } = await supabase
+        .from(LOGS_TABLE)
+        .delete()
+        .eq('id', logId)
+      if (error) throw error
 
       // Recalculate stageHours
       const allLogs = await loadLogs(jobId)
@@ -527,10 +613,14 @@ const saveLog = async (
         totalHours += log.hours
       }
 
-      await updateDoc(doc(db, JOBS_COLLECTION, jobId), { 
-        totalHours,
-        stageHours: newStageHours,
-      })
+      const { error: jobUpdateError } = await supabase
+        .from(JOBS_TABLE)
+        .update({
+          total_hours: totalHours,
+          stage_hours: newStageHours,
+        })
+        .eq('id', jobId)
+      if (jobUpdateError) throw jobUpdateError
 
       setJobs(prev =>
         prev.map(j => (j.id === jobId ? { ...j, totalHours, stageHours: newStageHours } : j))

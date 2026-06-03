@@ -7,13 +7,8 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  collection,
-  onSnapshot,
-  query,
-  where,
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
+import { toCamelList } from '@/lib/dbMap'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { customerService, type CustomerInput } from '@/lib/customerService'
@@ -77,44 +72,66 @@ export function useCustomers(): UseCustomersReturn {
       return
     }
     setLoading(true)
-    const q = query(
-      collection(db, COLLECTION_NAME),
-      where('organizationId', '==', organizationId),
-    )
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        // Spread the raw doc FIRST so any field added to the Customer
-        // schema later flows through automatically — then fix only the
-        // fields that need a default or a Timestamp → Date coercion.
-        // (Was a hand-listed allowlist that silently dropped new fields —
-        // e.g. firstName/lastName/registrations had to be added by hand.)
-        const list: Customer[] = snap.docs.map((d) => {
-          const data = d.data() as any
+
+    const org = organizationId
+
+    // Initial fetch + re-fetch on any change to this org's customers.
+    const refresh = async () => {
+      try {
+        const { data, error: fetchError } = await supabase
+          .from(COLLECTION_NAME)
+          .select('*')
+          .eq('organization_id', org)
+        if (fetchError) throw fetchError
+
+        // Spread the raw row (camelCased) FIRST so any field added to the
+        // Customer schema later flows through automatically — then fix only
+        // the fields that need a default or a timestamp → Date coercion.
+        const list: Customer[] = toCamelList<any>(data).map((row) => {
           return {
-            ...data,
-            id: d.id,
-            name: data.name || '',
-            phone: data.phone || '',
-            phoneNormalized: data.phoneNormalized || '',
-            registrations: Array.isArray(data.registrations) ? data.registrations : undefined,
-            bookingCount: typeof data.bookingCount === 'number' ? data.bookingCount : 0,
-            createdAt: data.createdAt?.toDate?.() || data.createdAt || new Date(),
-            updatedAt: data.updatedAt?.toDate?.() || data.updatedAt || undefined,
+            ...row,
+            id: row.id,
+            name: row.name || '',
+            phone: row.phone || '',
+            phoneNormalized: row.phoneNormalized || '',
+            registrations: Array.isArray(row.registrations) ? row.registrations : undefined,
+            bookingCount: typeof row.bookingCount === 'number' ? row.bookingCount : 0,
+            createdAt: row.createdAt ? new Date(row.createdAt) : new Date(),
+            updatedAt: row.updatedAt ? new Date(row.updatedAt) : undefined,
           } as Customer
         })
         list.sort((a, b) => a.name.localeCompare(b.name))
         setCustomers(list)
         setLoading(false)
         setError(null)
-      },
-      (err) => {
-        logger.error('useCustomers snapshot error:', err)
+      } catch (err) {
+        logger.error('useCustomers fetch error:', err)
         setError(t('customers.errLoad'))
         setLoading(false)
-      },
-    )
-    return () => unsub()
+      }
+    }
+
+    refresh()
+
+    const channel = supabase
+      .channel(`customers:${org}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: COLLECTION_NAME,
+          filter: `organization_id=eq.${org}`,
+        },
+        () => {
+          refresh()
+        },
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [organizationId])
 
   const clearError = useCallback(() => setError(null), [])

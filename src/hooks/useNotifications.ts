@@ -13,8 +13,7 @@ import { useFleetData } from './useFleetData'
 import { useServiceBookings } from './useServiceBookings'
 import { useDeliveriesDefleet } from '@/contexts/DeliveriesDefleetContext'
 import { useAuth } from '@/contexts/AuthContext'
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
 import { logger } from '@/lib/logger'
 
 const NOTIFICATION_STORAGE_KEY = 'yardao_notification_state'
@@ -151,15 +150,24 @@ export function useNotifications() {
 
     const loadTodayNotes = async () => {
       try {
-        const notesQuery = query(
-          collection(db, 'userNotes', user.uid, 'notes'),
-          where('date', '==', dateCalculations.todayString),
-          where('done', '==', false)
-        )
-        const snapshot = await getDocs(notesQuery)
-        const notes: UserNote[] = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
+        // RLS scopes rows to the caller's org; we additionally filter to this
+        // user's own notes for today that aren't done yet.
+        const { data, error } = await supabase
+          .from('user_notes')
+          .select('*')
+          .eq('user_id', user.uid)
+          .eq('date', dateCalculations.todayString)
+          .eq('done', false)
+        if (error) throw error
+        const notes: UserNote[] = (data ?? []).map(row => ({
+          id: row.id,
+          text: row.text,
+          date: row.date,
+          scheduledTime: row.scheduled_time ?? null,
+          priority: row.priority,
+          category: row.category,
+          vehicleReg: row.vehicle_reg ?? null,
+          done: row.done,
         } as UserNote))
         setTodayNotes(notes)
       } catch (error) {

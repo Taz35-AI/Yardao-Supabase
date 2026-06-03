@@ -1,26 +1,23 @@
-// src/services/insuranceSyncService.ts
-// ✅ UPDATED: Now carries policy fields (id, name, expiry) through every sync
+// src/services/insuranceSyncService.ts — SUPABASE re-implementation.
+// ✅ Carries policy fields (id, name, expiry) through every sync.
 // ✅ ALL original methods preserved: bulkSyncInsurance (with direction + performanceStats),
 //    getPerformanceStats, getInsuranceBreakdown, canPerformAction
+// Public exports + method signatures unchanged; only the data-layer internals
+// were swapped from Firestore to Supabase. Firestore writeBatch → parallel
+// Promise.all of single-row .update()s (not atomic — acceptable here).
 
-import {
-  doc,
-  collection,
-  query,
-  where,
-  getDocs,
-  writeBatch,
-  serverTimestamp,
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
 import { InsuranceStatus } from '@/types'
 import { logger } from '@/lib/logger'
+
+const VEHICLES = 'vehicles'
+const CHECKED_IN = 'checked_in_vehicles'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 export interface InsuranceSyncData {
   insuranceStatus: InsuranceStatus | null
-  // ✅ NEW: optional policy fields — all existing callers still work unchanged
+  // ✅ optional policy fields — all existing callers still work unchanged
   insurancePolicyId?: string | null
   insurancePolicyName?: string | null
   insurancePolicyExpiry?: string | null
@@ -34,15 +31,23 @@ export interface SyncResult {
   method?: 'id-based' | 'registration-based'
 }
 
-// ── Helper: builds the Firestore field object for any batch write ──────────────
-// Spreads all insurance + policy fields so every write is consistent
-
+// ── Helper: camelCase policy fields (for the jsonb audit blob) ─────────────────
 function policyFields(data: InsuranceSyncData) {
   return {
     insuranceStatus:       data.insuranceStatus,
     insurancePolicyId:     data.insurancePolicyId     ?? null,
     insurancePolicyName:   data.insurancePolicyName   ?? null,
     insurancePolicyExpiry: data.insurancePolicyExpiry ?? null,
+  }
+}
+
+// ── Helper: snake_case policy columns (for the actual row update) ──────────────
+function policyColumns(data: InsuranceSyncData) {
+  return {
+    insurance_status:        data.insuranceStatus,
+    insurance_policy_id:     data.insurancePolicyId     ?? null,
+    insurance_policy_name:   data.insurancePolicyName   ?? null,
+    insurance_policy_expiry: data.insurancePolicyExpiry ?? null,
   }
 }
 
@@ -96,23 +101,25 @@ export class InsuranceSyncService {
     try {
       logger.log(`Insurance sync via ID for vehicle: ${vehicleId}`)
 
-      const batch = writeBatch(db)
       let updatedFleetRecord = false
       let updatedYardRecords = 0
 
       // 1. FAST: Update fleet record directly using document ID
       try {
-        batch.update(doc(db, 'vehicles', vehicleId), {
-          ...policyFields(insuranceData),
-          updatedAt: serverTimestamp(),
-          lastInsuranceUpdate: {
-            updatedBy: userId,
-            updatedByName: userDisplayName,
-            updatedAt: new Date(),
-            source: 'yard_sync_id',
-            vehicleId,
-          },
-        })
+        const { error } = await supabase
+          .from(VEHICLES)
+          .update({
+            ...policyColumns(insuranceData),
+            last_insurance_update: {
+              updatedBy: userId,
+              updatedByName: userDisplayName,
+              updatedAt: new Date().toISOString(),
+              source: 'yard_sync_id',
+              vehicleId,
+            },
+          })
+          .eq('id', vehicleId)
+        if (error) throw error
         updatedFleetRecord = true
         logger.log(`Fleet record queued for insurance update (ID: ${vehicleId})`)
       } catch (error) {
@@ -120,32 +127,35 @@ export class InsuranceSyncService {
       }
 
       // 2. Update all yard records that reference this vehicle ID
-      const yardSnapshot = await getDocs(query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', organizationId),
-        where('vehicleId', '==', vehicleId)
-      ))
+      const { data: yardRows } = await supabase
+        .from(CHECKED_IN)
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('vehicle_id', vehicleId)
 
-      yardSnapshot.docs.forEach(yardDoc => {
-        batch.update(doc(db, 'checkedInVehicles', yardDoc.id), {
-          ...policyFields(insuranceData),
-          updatedAt: serverTimestamp(),
-          lastEditLog: {
-            action: `Insurance status ${insuranceData.insuranceStatus ? 'set to' : 'removed'} ${insuranceData.insuranceStatus || ''} (ID sync)`,
-            editedBy: userId,
-            editedByName: userDisplayName,
-            editedAt: new Date(),
-            changes: {
-              ...policyFields(insuranceData),
-              syncSource: 'id_based_sync',
-              vehicleId,
-            },
-          },
+      await Promise.all(
+        (yardRows ?? []).map(async (yardRow) => {
+          await supabase
+            .from(CHECKED_IN)
+            .update({
+              ...policyColumns(insuranceData),
+              last_edit_log: {
+                action: `Insurance status ${insuranceData.insuranceStatus ? 'set to' : 'removed'} ${insuranceData.insuranceStatus || ''} (ID sync)`,
+                editedBy: userId,
+                editedByName: userDisplayName,
+                editedAt: new Date().toISOString(),
+                changes: {
+                  ...policyFields(insuranceData),
+                  syncSource: 'id_based_sync',
+                  vehicleId,
+                },
+              },
+            })
+            .eq('id', yardRow.id)
+          updatedYardRecords++
         })
-        updatedYardRecords++
-      })
+      )
 
-      await batch.commit()
       logger.log(`ID-based insurance sync completed: Fleet=${updatedFleetRecord}, Yard=${updatedYardRecords}`)
 
       return { success: true, updatedFleetRecord, updatedYardRecords, method: 'id-based' }
@@ -175,32 +185,34 @@ export class InsuranceSyncService {
     try {
       logger.log(`Insurance sync via registration for: ${registration}`)
 
-      const batch = writeBatch(db)
       let updatedFleetRecord = false
       let updatedYardRecords = 0
       const cleanReg = registration.toUpperCase().trim()
 
       // 1. Find fleet record by registration
-      const fleetSnapshot = await getDocs(query(
-        collection(db, 'vehicles'),
-        where('organizationId', '==', organizationId),
-        where('registration', '==', cleanReg)
-      ))
+      const { data: fleetRows } = await supabase
+        .from(VEHICLES)
+        .select('id, insurance_status')
+        .eq('organization_id', organizationId)
+        .eq('registration', cleanReg)
 
-      if (!fleetSnapshot.empty) {
-        const fleetDoc = fleetSnapshot.docs[0]
-        batch.update(doc(db, 'vehicles', fleetDoc.id), {
-          ...policyFields(insuranceData),
-          updatedAt: serverTimestamp(),
-          lastInsuranceUpdate: {
-            updatedBy: userId,
-            updatedByName: userDisplayName,
-            updatedAt: new Date(),
-            source: 'yard_sync_registration',
-            registration: cleanReg,
-            previousInsuranceStatus: fleetDoc.data().insuranceStatus || null,
-          },
-        })
+      if (fleetRows && fleetRows.length > 0) {
+        const fleetDoc = fleetRows[0]
+        const { error } = await supabase
+          .from(VEHICLES)
+          .update({
+            ...policyColumns(insuranceData),
+            last_insurance_update: {
+              updatedBy: userId,
+              updatedByName: userDisplayName,
+              updatedAt: new Date().toISOString(),
+              source: 'yard_sync_registration',
+              registration: cleanReg,
+              previousInsuranceStatus: fleetDoc.insurance_status || null,
+            },
+          })
+          .eq('id', fleetDoc.id)
+        if (error) throw error
         updatedFleetRecord = true
         logger.log(`Fleet record found and queued: ${cleanReg}`)
       } else {
@@ -208,34 +220,34 @@ export class InsuranceSyncService {
       }
 
       // 2. Find all yard records by registration
-      const yardSnapshot = await getDocs(query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', organizationId),
-        where('registration', '==', cleanReg)
-      ))
+      const { data: yardRows } = await supabase
+        .from(CHECKED_IN)
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('registration', cleanReg)
 
-      yardSnapshot.docs.forEach(yardDoc => {
-        batch.update(doc(db, 'checkedInVehicles', yardDoc.id), {
-          ...policyFields(insuranceData),
-          updatedAt: serverTimestamp(),
-          lastEditLog: {
-            action: `Insurance status ${insuranceData.insuranceStatus ? 'set to' : 'removed'} ${insuranceData.insuranceStatus || ''} (registration sync)`,
-            editedBy: userId,
-            editedByName: userDisplayName,
-            editedAt: new Date(),
-            changes: {
-              ...policyFields(insuranceData),
-              syncSource: 'registration_based_sync',
-              registration: cleanReg,
-            },
-          },
+      await Promise.all(
+        (yardRows ?? []).map(async (yardRow) => {
+          await supabase
+            .from(CHECKED_IN)
+            .update({
+              ...policyColumns(insuranceData),
+              last_edit_log: {
+                action: `Insurance status ${insuranceData.insuranceStatus ? 'set to' : 'removed'} ${insuranceData.insuranceStatus || ''} (registration sync)`,
+                editedBy: userId,
+                editedByName: userDisplayName,
+                editedAt: new Date().toISOString(),
+                changes: {
+                  ...policyFields(insuranceData),
+                  syncSource: 'registration_based_sync',
+                  registration: cleanReg,
+                },
+              },
+            })
+            .eq('id', yardRow.id)
+          updatedYardRecords++
         })
-        updatedYardRecords++
-      })
-
-      if (updatedFleetRecord || updatedYardRecords > 0) {
-        await batch.commit()
-      }
+      )
 
       logger.log(`Registration-based insurance sync completed: Fleet=${updatedFleetRecord}, Yard=${updatedYardRecords}`)
       return { success: true, updatedFleetRecord, updatedYardRecords, method: 'registration-based' }
@@ -290,35 +302,37 @@ export class InsuranceSyncService {
     try {
       logger.log(`Fleet-to-yard insurance sync via ID: ${vehicleId}`)
 
-      const batch = writeBatch(db)
       let updatedYardRecords = 0
 
-      const yardSnapshot = await getDocs(query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', organizationId),
-        where('vehicleId', '==', vehicleId)
-      ))
+      const { data: yardRows } = await supabase
+        .from(CHECKED_IN)
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('vehicle_id', vehicleId)
 
-      yardSnapshot.docs.forEach(yardDoc => {
-        batch.update(doc(db, 'checkedInVehicles', yardDoc.id), {
-          ...policyFields(insuranceData),
-          updatedAt: serverTimestamp(),
-          lastEditLog: {
-            action: `Insurance status ${insuranceData.insuranceStatus ? 'updated to' : 'removed'} ${insuranceData.insuranceStatus || ''} (fleet sync)`,
-            editedBy: userId,
-            editedByName: userDisplayName,
-            editedAt: new Date(),
-            changes: {
-              ...policyFields(insuranceData),
-              syncSource: 'fleet_to_yard_id',
-              vehicleId,
-            },
-          },
+      await Promise.all(
+        (yardRows ?? []).map(async (yardRow) => {
+          await supabase
+            .from(CHECKED_IN)
+            .update({
+              ...policyColumns(insuranceData),
+              last_edit_log: {
+                action: `Insurance status ${insuranceData.insuranceStatus ? 'updated to' : 'removed'} ${insuranceData.insuranceStatus || ''} (fleet sync)`,
+                editedBy: userId,
+                editedByName: userDisplayName,
+                editedAt: new Date().toISOString(),
+                changes: {
+                  ...policyFields(insuranceData),
+                  syncSource: 'fleet_to_yard_id',
+                  vehicleId,
+                },
+              },
+            })
+            .eq('id', yardRow.id)
+          updatedYardRecords++
         })
-        updatedYardRecords++
-      })
+      )
 
-      if (updatedYardRecords > 0) await batch.commit()
       logger.log(`Fleet-to-yard ID sync completed: ${updatedYardRecords} yard records updated`)
 
       return { success: true, updatedFleetRecord: false, updatedYardRecords, method: 'id-based' }
@@ -348,36 +362,38 @@ export class InsuranceSyncService {
     try {
       logger.log(`Fleet-to-yard insurance sync via registration: ${registration}`)
 
-      const batch = writeBatch(db)
       let updatedYardRecords = 0
       const cleanReg = registration.toUpperCase().trim()
 
-      const yardSnapshot = await getDocs(query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', organizationId),
-        where('registration', '==', cleanReg)
-      ))
+      const { data: yardRows } = await supabase
+        .from(CHECKED_IN)
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('registration', cleanReg)
 
-      yardSnapshot.docs.forEach(yardDoc => {
-        batch.update(doc(db, 'checkedInVehicles', yardDoc.id), {
-          ...policyFields(insuranceData),
-          updatedAt: serverTimestamp(),
-          lastEditLog: {
-            action: `Insurance status ${insuranceData.insuranceStatus ? 'updated to' : 'removed'} ${insuranceData.insuranceStatus || ''} (fleet sync)`,
-            editedBy: userId,
-            editedByName: userDisplayName,
-            editedAt: new Date(),
-            changes: {
-              ...policyFields(insuranceData),
-              syncSource: 'fleet_to_yard_registration',
-              registration: cleanReg,
-            },
-          },
+      await Promise.all(
+        (yardRows ?? []).map(async (yardRow) => {
+          await supabase
+            .from(CHECKED_IN)
+            .update({
+              ...policyColumns(insuranceData),
+              last_edit_log: {
+                action: `Insurance status ${insuranceData.insuranceStatus ? 'updated to' : 'removed'} ${insuranceData.insuranceStatus || ''} (fleet sync)`,
+                editedBy: userId,
+                editedByName: userDisplayName,
+                editedAt: new Date().toISOString(),
+                changes: {
+                  ...policyFields(insuranceData),
+                  syncSource: 'fleet_to_yard_registration',
+                  registration: cleanReg,
+                },
+              },
+            })
+            .eq('id', yardRow.id)
+          updatedYardRecords++
         })
-        updatedYardRecords++
-      })
+      )
 
-      if (updatedYardRecords > 0) await batch.commit()
       logger.log(`Fleet-to-yard registration sync completed: ${updatedYardRecords} yard records updated`)
 
       return { success: true, updatedFleetRecord: false, updatedYardRecords, method: 'registration-based' }
@@ -513,17 +529,16 @@ export class InsuranceSyncService {
     migrationPercentage: number
   }> {
     try {
-      const snapshot = await getDocs(query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', organizationId)
-      ))
+      const { data: rows } = await supabase
+        .from(CHECKED_IN)
+        .select('vehicle_id')
+        .eq('organization_id', organizationId)
 
       let withIds = 0
       let withoutIds = 0
 
-      snapshot.docs.forEach(doc => {
-        const data = doc.data()
-        if (data.vehicleId && data.vehicleId.trim() !== '') {
+      ;(rows ?? []).forEach((data: any) => {
+        if (data.vehicle_id && String(data.vehicle_id).trim() !== '') {
           withIds++
         } else {
           withoutIds++
@@ -551,15 +566,15 @@ export class InsuranceSyncService {
    */
   static async getInsuranceBreakdown(organizationId: string): Promise<Record<string, number>> {
     try {
-      const snapshot = await getDocs(query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', organizationId)
-      ))
+      const { data: rows } = await supabase
+        .from(CHECKED_IN)
+        .select('insurance_status')
+        .eq('organization_id', organizationId)
 
       const breakdown: Record<string, number> = {}
 
-      snapshot.docs.forEach(doc => {
-        const status = doc.data().insuranceStatus || 'Unknown'
+      ;(rows ?? []).forEach((data: any) => {
+        const status = data.insurance_status || 'Unknown'
         breakdown[status] = (breakdown[status] || 0) + 1
       })
 

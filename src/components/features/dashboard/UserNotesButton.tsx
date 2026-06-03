@@ -15,11 +15,7 @@ import {
   Sparkles, Timer
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
-import {
-  collection, addDoc, getDocs, deleteDoc,
-  doc, query, orderBy, updateDoc, where
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
 import { userProfileService } from '@/lib/firestore'
 import { toast } from 'sonner'
 import { parseMessageWithGroq, ParsedNote } from '@/lib/groqNoteParser'
@@ -289,14 +285,21 @@ export function UserNotesButton({ className = '' }: UserNotesButtonProps) {
     if (!orgId) return
     const loadFleet = async () => {
       try {
-        const q = query(collection(db, 'vehicles'), where('organizationId', '==', orgId), where('isDefleeted', '!=', true))
-        const snap = await getDocs(q)
-        setFleetVehicles(snap.docs.map(d => ({ id: d.id, registration: d.data().registration || '', make: d.data().make || '', model: d.data().model || '', colour: d.data().colour || '' })))
+        const { data, error } = await supabase
+          .from('vehicles')
+          .select('id, registration, make, model, colour')
+          .eq('organization_id', orgId)
+          .neq('is_defleeted', true)
+        if (error) throw error
+        setFleetVehicles((data ?? []).map(d => ({ id: d.id, registration: d.registration || '', make: d.make || '', model: d.model || '', colour: d.colour || '' })))
       } catch {
         try {
-          const q2 = query(collection(db, 'vehicles'), where('organizationId', '==', orgId))
-          const snap2 = await getDocs(q2)
-          setFleetVehicles(snap2.docs.filter(d => !d.data().isDefleeted && d.data().currentStatus !== 'defleeted').map(d => ({ id: d.id, registration: d.data().registration || '', make: d.data().make || '', model: d.data().model || '', colour: d.data().colour || '' })))
+          const { data, error } = await supabase
+            .from('vehicles')
+            .select('id, registration, make, model, colour, is_defleeted, current_status')
+            .eq('organization_id', orgId)
+          if (error) throw error
+          setFleetVehicles((data ?? []).filter(d => !d.is_defleeted && d.current_status !== 'defleeted').map(d => ({ id: d.id, registration: d.registration || '', make: d.make || '', model: d.model || '', colour: d.colour || '' })))
         } catch {}
       }
     }
@@ -311,31 +314,48 @@ export function UserNotesButton({ className = '' }: UserNotesButtonProps) {
     setShowVehicleDropdown(results.length > 0)
   }, [vehicleSearchTerm, fleetVehicles])
 
-  // ── Notes collection ref ──────────────────────────────────────────────────────
+  // ── Notes write target ─────────────────────────────────────────────────────
+  // Supabase has no subcollections; rows in public.user_notes carry user_id +
+  // organization_id. This returns the ids needed to scope/insert, or null when
+  // we can't yet write (no signed-in user, or org not loaded) — preserving the
+  // original `const col = notesCol(); if (!col) return` guard pattern.
   const notesCol = useCallback(() => {
-    if (!user?.uid) return null
-    return collection(db, 'userNotes', user.uid, 'notes')
-  }, [user?.uid])
+    if (!user?.uid || !orgId) return null
+    return { userId: user.uid, orgId }
+  }, [user?.uid, orgId])
+
+  // Row (snake_case) → UserNote (camelCase), applying the same field defaults
+  // the Firestore loader applied.
+  const rowToNote = (row: any): UserNote => ({
+    id: row.id,
+    text: row.text ?? '',
+    date: row.date,
+    scheduledTime: row.scheduled_time ?? null,
+    priority: (row.priority ?? 'medium') as Priority,
+    category: (row.category ?? 'work') as Category,
+    recurrence: (row.recurrence ?? 'none') as Recurrence,
+    vehicleReg: row.vehicle_reg ?? null,
+    done: row.done ?? false,
+    archivedAt: row.archived_at ?? null,
+    createdAt: row.created_at ?? '',
+  })
 
   // ── Load notes ────────────────────────────────────────────────────────────────
   const loadNotes = useCallback(async () => {
-    const col = notesCol()
-    if (!col) return []
+    if (!user?.uid) return []
     try {
-      const snap = await getDocs(query(col, orderBy('date', 'asc')))
-      const loaded = snap.docs.map(d => ({
-        priority: 'medium' as Priority,
-        category: 'work' as Category,
-        recurrence: 'none' as Recurrence,
-        done: false,
-        scheduledTime: null,
-        ...d.data(),
-        id: d.id
-      } as UserNote))
+      // RLS scopes to the caller's org; also filter to this user's own notes.
+      const { data, error } = await supabase
+        .from('user_notes')
+        .select('*')
+        .eq('user_id', user.uid)
+        .order('date', { ascending: true })
+      if (error) throw error
+      const loaded = (data ?? []).map(rowToNote)
       setNotes(loaded)
       return loaded
     } catch { return [] }
-  }, [notesCol])
+  }, [user?.uid])
 
   // ══════════════════════════════════════════════════════════════════
   // DAILY GREETING POPUP — spring burst on load
@@ -472,19 +492,22 @@ export function UserNotesButton({ className = '' }: UserNotesButtonProps) {
     const col = notesCol(); if (!col) return
     setLoading(true)
     try {
-      await addDoc(col, {
+      const { error } = await supabase.from('user_notes').insert({
+        user_id: col.userId,
+        organization_id: col.orgId,
         text: newText.trim(),
         date: newDate,
-        scheduledTime: newScheduledTime || null,
+        scheduled_time: newScheduledTime || null,
         priority: newPriority,
         category: newCategory,
         recurrence: newRecurrence,
-        vehicleReg: newVehicleReg.trim().toUpperCase() || null,
+        vehicle_reg: newVehicleReg.trim().toUpperCase() || null,
         done: false,
-        createdAt: new Date().toISOString(),
-        scheduledNotificationAt: buildScheduledNotificationAt(newDate, newScheduledTime || null),
-        notificationSent: false,
+        created_at: new Date().toISOString(),
+        scheduled_notification_at: buildScheduledNotificationAt(newDate, newScheduledTime || null),
+        notification_sent: false,
       })
+      if (error) throw error
       setNewText(''); setNewDate(getTodayString()); setNewScheduledTime(''); setNewPriority('medium'); setNewCategory('work'); setNewRecurrence('none'); setNewVehicleReg(''); setVehicleSearchTerm(''); setShowAdvanced(false)
       await loadNotes(); toast.success(t('dashboard.notes.noteSaved'))
     } catch { toast.error(t('dashboard.notes.failedSaveNote')) }
@@ -512,21 +535,24 @@ export function UserNotesButton({ className = '' }: UserNotesButtonProps) {
     const col = notesCol(); if (!col) return
     setLoading(true)
     try {
-      await Promise.all(parsedNotes.map(note =>
-        addDoc(col, {
+      const { error } = await supabase.from('user_notes').insert(
+        parsedNotes.map(note => ({
+          user_id: col.userId,
+          organization_id: col.orgId,
           text: note.summary,
           date: note.date,
-          scheduledTime: note.scheduledTime || null,
+          scheduled_time: note.scheduledTime || null,
           priority: note.priority,
           category: note.category,
-          vehicleReg: note.vehicleReg || null,
+          vehicle_reg: note.vehicleReg || null,
           recurrence: 'none',
           done: false,
-          createdAt: new Date().toISOString(),
-          scheduledNotificationAt: buildScheduledNotificationAt(note.date, note.scheduledTime || null),
-          notificationSent: false,
-        })
-      ))
+          created_at: new Date().toISOString(),
+          scheduled_notification_at: buildScheduledNotificationAt(note.date, note.scheduledTime || null),
+          notification_sent: false,
+        }))
+      )
+      if (error) throw error
       await loadNotes()
       toast.success(parsedNotes.length > 1 ? t('dashboard.notes.notesSavedPlural', { count: parsedNotes.length }) : t('dashboard.notes.noteSavedCheck'))
     } catch { toast.error(t('dashboard.notes.failedSaveNotes')) }
@@ -547,10 +573,15 @@ export function UserNotesButton({ className = '' }: UserNotesButtonProps) {
     if (!user?.uid) return
     const nowDone = !note.done
     try {
-      await updateDoc(doc(db, 'userNotes', user.uid, 'notes', note.id), { done: nowDone, archivedAt: nowDone ? new Date().toISOString() : null })
+      const { error: updateError } = await supabase
+        .from('user_notes')
+        .update({ done: nowDone, archived_at: nowDone ? new Date().toISOString() : null })
+        .eq('id', note.id)
+        .eq('user_id', user.uid)
+      if (updateError) throw updateError
       if (nowDone && note.recurrence !== 'none') {
         const next = nextRecurringDate(note.date, note.recurrence)
-        if (next) { const col = notesCol(); if (col) { await addDoc(col, { text: note.text, date: next, scheduledTime: note.scheduledTime || null, priority: note.priority, category: note.category, recurrence: note.recurrence, vehicleReg: note.vehicleReg || null, done: false, createdAt: new Date().toISOString(), scheduledNotificationAt: buildScheduledNotificationAt(next, note.scheduledTime), notificationSent: false }); toast.success(t('dashboard.notes.doneNextReminder', { date: next })) } }
+        if (next) { const col = notesCol(); if (col) { const { error: insertError } = await supabase.from('user_notes').insert({ user_id: col.userId, organization_id: col.orgId, text: note.text, date: next, scheduled_time: note.scheduledTime || null, priority: note.priority, category: note.category, recurrence: note.recurrence, vehicle_reg: note.vehicleReg || null, done: false, created_at: new Date().toISOString(), scheduled_notification_at: buildScheduledNotificationAt(next, note.scheduledTime), notification_sent: false }); if (insertError) throw insertError; toast.success(t('dashboard.notes.doneNextReminder', { date: next })) } }
       } else { toast.success(nowDone ? t('dashboard.notes.markedAsDone') : t('dashboard.notes.reopened')) }
       await loadNotes()
     } catch { toast.error(t('dashboard.notes.failedUpdateNote')) }
@@ -558,7 +589,7 @@ export function UserNotesButton({ className = '' }: UserNotesButtonProps) {
 
   const handleDelete = async (noteId: string) => {
     if (!user?.uid) return
-    try { await deleteDoc(doc(db, 'userNotes', user.uid, 'notes', noteId)); setNotes(prev => prev.filter(n => n.id !== noteId)); toast.success(t('dashboard.notes.noteDeleted')) }
+    try { const { error } = await supabase.from('user_notes').delete().eq('id', noteId).eq('user_id', user.uid); if (error) throw error; setNotes(prev => prev.filter(n => n.id !== noteId)); toast.success(t('dashboard.notes.noteDeleted')) }
     catch { toast.error(t('dashboard.notes.failedDeleteNote')) }
   }
 

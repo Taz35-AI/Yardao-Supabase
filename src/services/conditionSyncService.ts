@@ -1,16 +1,14 @@
-// src/services/conditionSyncService.ts - ID-based Condition Sync with Registration Fallback
-import { 
-  doc, 
-  updateDoc, 
-  collection, 
-  query, 
-  where, 
-  getDocs,
-  writeBatch,
-  serverTimestamp 
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+// src/services/conditionSyncService.ts — SUPABASE re-implementation.
+// ID-based Condition Sync with Registration Fallback. Public exports + method
+// signatures unchanged; only the data-layer internals were swapped from
+// Firestore to Supabase. Firestore writeBatch → parallel Promise.all of
+// single-row .update()s (not atomic — acceptable here).
+
+import { supabase } from '@/lib/supabaseClient'
 import { logger } from '@/lib/logger'
+
+const VEHICLES = 'vehicles'
+const CHECKED_IN = 'checked_in_vehicles'
 
 export interface ConditionSyncData {
   condition: string
@@ -26,13 +24,13 @@ export interface SyncResult {
 
 /**
  * Condition Sync Service - ID-First Approach with Registration Fallback
- * 
+ *
  * This service automatically syncs vehicle condition between Fleet Inventory and Yard.
- * It prioritizes fast ID-based lookups but gracefully falls back to registration-based 
+ * It prioritizes fast ID-based lookups but gracefully falls back to registration-based
  * queries for backward compatibility.
  */
 export class ConditionSyncService {
-  
+
   /**
    * MAIN METHOD: Sync condition from yard to fleet
    * Automatically chooses ID-based or registration-based sync
@@ -45,7 +43,7 @@ export class ConditionSyncService {
     userDisplayName: string,
     isVehicleId: boolean = false // Hint about identifier type
   ): Promise<SyncResult> {
-    
+
     // If we know it's a vehicle ID, use fast ID-based sync
     if (isVehicleId) {
       return this.syncConditionFromYardToFleetById(
@@ -56,7 +54,7 @@ export class ConditionSyncService {
         userDisplayName
       )
     }
-    
+
     // Otherwise, try registration-based sync
     return this.syncConditionFromYardToFleetByRegistration(
       vehicleIdentifier,
@@ -79,27 +77,27 @@ export class ConditionSyncService {
   ): Promise<SyncResult> {
     try {
       logger.log(`🔄 Condition sync via ID for vehicle: ${vehicleId}`)
-      
-      const batch = writeBatch(db)
+
       let updatedFleetRecord = false
       let updatedYardRecords = 0
 
       // 1. FAST: Update fleet record directly using document ID
       try {
-        const fleetRef = doc(db, 'vehicles', vehicleId)
-        
-        batch.update(fleetRef, {
-          condition: conditionData.condition,
-          updatedAt: serverTimestamp(),
-          lastConditionUpdate: {
-            updatedBy: userId,
-            updatedByName: userDisplayName,
-            updatedAt: new Date(),
-            source: 'yard_sync_id',
-            vehicleId: vehicleId
-          }
-        })
-        
+        const { error } = await supabase
+          .from(VEHICLES)
+          .update({
+            condition: conditionData.condition,
+            last_condition_update: {
+              updatedBy: userId,
+              updatedByName: userDisplayName,
+              updatedAt: new Date().toISOString(),
+              source: 'yard_sync_id',
+              vehicleId: vehicleId,
+            },
+          })
+          .eq('id', vehicleId)
+        if (error) throw error
+
         updatedFleetRecord = true
         logger.log(`✅ Fleet record queued for condition update (ID: ${vehicleId})`)
       } catch (error) {
@@ -107,39 +105,35 @@ export class ConditionSyncService {
       }
 
       // 2. Update all yard records that reference this vehicle ID
-      const yardQuery = query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', organizationId),
-        where('vehicleId', '==', vehicleId)
-      )
-      
-      const yardSnapshot = await getDocs(yardQuery)
-      
-      yardSnapshot.docs.forEach(yardDoc => {
-        const yardRef = doc(db, 'checkedInVehicles', yardDoc.id)
-        
-        batch.update(yardRef, {
-          condition: conditionData.condition,
-          updatedAt: serverTimestamp(),
-          lastEditLog: {
-            action: `Condition updated to "${conditionData.condition}" (ID sync)`,
-            editedBy: userId,
-            editedByName: userDisplayName,
-            editedAt: new Date(),
-            changes: {
-              condition: conditionData.condition,
-              syncSource: 'id_based_sync',
-              vehicleId: vehicleId
-            }
-          }
-        })
-        
-        updatedYardRecords++
-      })
+      const { data: yardRows } = await supabase
+        .from(CHECKED_IN)
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('vehicle_id', vehicleId)
 
-      // Commit all updates
-      await batch.commit()
-      
+      await Promise.all(
+        (yardRows ?? []).map(async (yardRow) => {
+          await supabase
+            .from(CHECKED_IN)
+            .update({
+              condition: conditionData.condition,
+              last_edit_log: {
+                action: `Condition updated to "${conditionData.condition}" (ID sync)`,
+                editedBy: userId,
+                editedByName: userDisplayName,
+                editedAt: new Date().toISOString(),
+                changes: {
+                  condition: conditionData.condition,
+                  syncSource: 'id_based_sync',
+                  vehicleId: vehicleId,
+                },
+              },
+            })
+            .eq('id', yardRow.id)
+          updatedYardRecords++
+        })
+      )
+
       logger.log(`✅ ID-based condition sync completed: Fleet=${updatedFleetRecord}, Yard=${updatedYardRecords}`)
 
       return {
@@ -173,36 +167,34 @@ export class ConditionSyncService {
   ): Promise<SyncResult> {
     try {
       logger.log(`🔄 Condition sync via registration: ${registration}`)
-      
-      const batch = writeBatch(db)
+
       let updatedFleetRecord = false
       let updatedYardRecords = 0
 
       // 1. Find and update fleet record by registration
-      const fleetQuery = query(
-        collection(db, 'vehicles'),
-        where('organizationId', '==', organizationId),
-        where('registration', '==', registration.toUpperCase())
-      )
-      
-      const fleetSnapshot = await getDocs(fleetQuery)
-      
-      if (!fleetSnapshot.empty) {
-        const fleetDoc = fleetSnapshot.docs[0]
-        const fleetRef = doc(db, 'vehicles', fleetDoc.id)
-        
-        batch.update(fleetRef, {
-          condition: conditionData.condition,
-          updatedAt: serverTimestamp(),
-          lastConditionUpdate: {
-            updatedBy: userId,
-            updatedByName: userDisplayName,
-            updatedAt: new Date(),
-            source: 'yard_sync_registration',
-            registration: registration
-          }
-        })
-        
+      const { data: fleetRows } = await supabase
+        .from(VEHICLES)
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('registration', registration.toUpperCase())
+
+      if (fleetRows && fleetRows.length > 0) {
+        const fleetDoc = fleetRows[0]
+        const { error } = await supabase
+          .from(VEHICLES)
+          .update({
+            condition: conditionData.condition,
+            last_condition_update: {
+              updatedBy: userId,
+              updatedByName: userDisplayName,
+              updatedAt: new Date().toISOString(),
+              source: 'yard_sync_registration',
+              registration: registration,
+            },
+          })
+          .eq('id', fleetDoc.id)
+        if (error) throw error
+
         updatedFleetRecord = true
         logger.log(`✅ Fleet record found and queued for condition update`)
       } else {
@@ -210,39 +202,35 @@ export class ConditionSyncService {
       }
 
       // 2. Update all yard records with matching registration
-      const yardQuery = query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', organizationId),
-        where('registration', '==', registration.toUpperCase())
-      )
-      
-      const yardSnapshot = await getDocs(yardQuery)
-      
-      yardSnapshot.docs.forEach(yardDoc => {
-        const yardRef = doc(db, 'checkedInVehicles', yardDoc.id)
-        
-        batch.update(yardRef, {
-          condition: conditionData.condition,
-          updatedAt: serverTimestamp(),
-          lastEditLog: {
-            action: `Condition updated to "${conditionData.condition}" (registration sync)`,
-            editedBy: userId,
-            editedByName: userDisplayName,
-            editedAt: new Date(),
-            changes: {
-              condition: conditionData.condition,
-              syncSource: 'registration_based_sync',
-              registration: registration
-            }
-          }
-        })
-        
-        updatedYardRecords++
-      })
+      const { data: yardRows } = await supabase
+        .from(CHECKED_IN)
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('registration', registration.toUpperCase())
 
-      // Commit all updates
-      await batch.commit()
-      
+      await Promise.all(
+        (yardRows ?? []).map(async (yardRow) => {
+          await supabase
+            .from(CHECKED_IN)
+            .update({
+              condition: conditionData.condition,
+              last_edit_log: {
+                action: `Condition updated to "${conditionData.condition}" (registration sync)`,
+                editedBy: userId,
+                editedByName: userDisplayName,
+                editedAt: new Date().toISOString(),
+                changes: {
+                  condition: conditionData.condition,
+                  syncSource: 'registration_based_sync',
+                  registration: registration,
+                },
+              },
+            })
+            .eq('id', yardRow.id)
+          updatedYardRecords++
+        })
+      )
+
       logger.log(`✅ Registration-based condition sync completed: Fleet=${updatedFleetRecord}, Yard=${updatedYardRecords}`)
 
       return {
@@ -275,7 +263,7 @@ export class ConditionSyncService {
     userDisplayName: string,
     isVehicleId: boolean = false
   ): Promise<SyncResult> {
-    
+
     if (isVehicleId) {
       return this.syncConditionFromFleetToYardById(
         vehicleIdentifier,
@@ -285,7 +273,7 @@ export class ConditionSyncService {
         userDisplayName
       )
     }
-    
+
     return this.syncConditionFromFleetToYardByRegistration(
       vehicleIdentifier,
       conditionData,
@@ -307,45 +295,39 @@ export class ConditionSyncService {
   ): Promise<SyncResult> {
     try {
       logger.log(`🔄 Fleet-to-yard condition sync via ID: ${vehicleId}`)
-      
-      const batch = writeBatch(db)
+
       let updatedYardRecords = 0
 
       // Find all yard records referencing this vehicle ID
-      const yardQuery = query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', organizationId),
-        where('vehicleId', '==', vehicleId)
-      )
-      
-      const yardSnapshot = await getDocs(yardQuery)
-      
-      yardSnapshot.docs.forEach(yardDoc => {
-        const yardRef = doc(db, 'checkedInVehicles', yardDoc.id)
-        
-        batch.update(yardRef, {
-          condition: conditionData.condition,
-          updatedAt: serverTimestamp(),
-          lastEditLog: {
-            action: `Condition updated to "${conditionData.condition}" (fleet sync)`,
-            editedBy: userId,
-            editedByName: userDisplayName,
-            editedAt: new Date(),
-            changes: {
-              condition: conditionData.condition,
-              syncSource: 'fleet_to_yard_id',
-              vehicleId: vehicleId
-            }
-          }
-        })
-        
-        updatedYardRecords++
-      })
+      const { data: yardRows } = await supabase
+        .from(CHECKED_IN)
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('vehicle_id', vehicleId)
 
-      if (updatedYardRecords > 0) {
-        await batch.commit()
-      }
-      
+      await Promise.all(
+        (yardRows ?? []).map(async (yardRow) => {
+          await supabase
+            .from(CHECKED_IN)
+            .update({
+              condition: conditionData.condition,
+              last_edit_log: {
+                action: `Condition updated to "${conditionData.condition}" (fleet sync)`,
+                editedBy: userId,
+                editedByName: userDisplayName,
+                editedAt: new Date().toISOString(),
+                changes: {
+                  condition: conditionData.condition,
+                  syncSource: 'fleet_to_yard_id',
+                  vehicleId: vehicleId,
+                },
+              },
+            })
+            .eq('id', yardRow.id)
+          updatedYardRecords++
+        })
+      )
+
       logger.log(`✅ Fleet-to-yard ID sync completed: ${updatedYardRecords} yard records updated`)
 
       return {
@@ -379,45 +361,39 @@ export class ConditionSyncService {
   ): Promise<SyncResult> {
     try {
       logger.log(`🔄 Fleet-to-yard condition sync via registration: ${registration}`)
-      
-      const batch = writeBatch(db)
+
       let updatedYardRecords = 0
 
       // Find all yard records with matching registration
-      const yardQuery = query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', organizationId),
-        where('registration', '==', registration.toUpperCase())
-      )
-      
-      const yardSnapshot = await getDocs(yardQuery)
-      
-      yardSnapshot.docs.forEach(yardDoc => {
-        const yardRef = doc(db, 'checkedInVehicles', yardDoc.id)
-        
-        batch.update(yardRef, {
-          condition: conditionData.condition,
-          updatedAt: serverTimestamp(),
-          lastEditLog: {
-            action: `Condition updated to "${conditionData.condition}" (fleet sync)`,
-            editedBy: userId,
-            editedByName: userDisplayName,
-            editedAt: new Date(),
-            changes: {
-              condition: conditionData.condition,
-              syncSource: 'fleet_to_yard_registration',
-              registration: registration
-            }
-          }
-        })
-        
-        updatedYardRecords++
-      })
+      const { data: yardRows } = await supabase
+        .from(CHECKED_IN)
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('registration', registration.toUpperCase())
 
-      if (updatedYardRecords > 0) {
-        await batch.commit()
-      }
-      
+      await Promise.all(
+        (yardRows ?? []).map(async (yardRow) => {
+          await supabase
+            .from(CHECKED_IN)
+            .update({
+              condition: conditionData.condition,
+              last_edit_log: {
+                action: `Condition updated to "${conditionData.condition}" (fleet sync)`,
+                editedBy: userId,
+                editedByName: userDisplayName,
+                editedAt: new Date().toISOString(),
+                changes: {
+                  condition: conditionData.condition,
+                  syncSource: 'fleet_to_yard_registration',
+                  registration: registration,
+                },
+              },
+            })
+            .eq('id', yardRow.id)
+          updatedYardRecords++
+        })
+      )
+
       logger.log(`✅ Fleet-to-yard registration sync completed: ${updatedYardRecords} yard records updated`)
 
       return {

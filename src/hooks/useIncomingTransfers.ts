@@ -1,26 +1,88 @@
-// src/hooks/useIncomingTransfers.ts
-// Optimized hook to load ONLY vehicles being transferred TO the current branch
-// This is 90% cheaper than loading all vehicles across all branches!
+// src/hooks/useIncomingTransfers.ts — SUPABASE re-implementation.
+// Optimized hook to load ONLY vehicles being transferred TO the current branch.
+// This stays cheap on Supabase too: the initial select + the realtime filter
+// are both scoped to (organization_id, transfer_status='in_transit',
+// target_branch_id=branchId) so only the handful of in-transit vehicles for
+// this branch are ever fetched/streamed.
+//
+// Data-layer swap only — the public return ({ incomingVehicles, loading, error })
+// and the mapped CheckedInVehicle shape are kept identical. Firestore onSnapshot
+// becomes: initial select → refetch on any postgres_changes for the org's
+// checked_in_vehicles, re-applying the same filter + branch exclusion.
 
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAppState } from '@/hooks/common/useAppState'
-import { 
-  collection, 
-  query, 
-  where, 
-  onSnapshot,
-  orderBy
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
 import { userProfileService } from '@/lib/firestore'
 import type { CheckedInVehicle } from '@/types'
 import { logger } from '@/lib/logger'
 
+const CHECKED_IN_VEHICLES = 'checked_in_vehicles'
+
 interface UseIncomingTransfersProps {
   branchId: string
+}
+
+// timestamptz/date columns arrive as ISO strings — revive to Date to match the
+// Firestore .toDate() behaviour the consumers expect.
+const toDate = (v: any) => (v ? new Date(v) : v)
+
+// snake_case row → the exact CheckedInVehicle shape the original built.
+function mapRow(data: any): CheckedInVehicle {
+  return {
+    id: data.id,
+    vehicleId: data.vehicle_id || null,
+    registration: data.registration || '',
+    make: data.make || '',
+    model: data.model || '',
+    colour: data.colour,
+    size: data.size || '',
+    condition: data.condition || '',
+    status: data.status || 'Pending checks',
+    userId: data.user_id || '',
+    organizationId: data.organization_id || '',
+    branchId: data.branch_id || '',
+    mileage: data.mileage,
+    notes: data.notes,
+    comments: data.comments,
+    contract: data.contract || null,
+    contractColor: data.contract_color || null,
+    insuranceStatus: data.insurance_status || null,
+    motExpiry: data.mot_expiry,
+    taxExpiry: data.tax_expiry,
+    location: data.location,
+    bay: data.bay,
+    updatedAt: toDate(data.updated_at),
+    createdAt: toDate(data.created_at),
+    checkInTime: data.check_in_time,
+    hireStatus: data.hire_status || 'In Yard',
+    originalStatus: data.original_status,
+    hiredAt: toDate(data.hired_at),
+    hiredBy: data.hired_by,
+    hiredByName: data.hired_by_name,
+    hireNotes: data.hire_notes,
+
+    // Transfer status fields
+    transferStatus: data.transfer_status || null,
+    targetBranchId: data.target_branch_id || null,
+    targetBranchName: data.target_branch_name || null,
+    transferInitiatedAt: toDate(data.transfer_initiated_at),
+    transferInitiatedBy: data.transfer_initiated_by,
+    transferInitiatedByName: data.transfer_initiated_by_name,
+
+    // External garage fields
+    externalGarageId: data.external_garage_id || null,
+    externalGarageName: data.external_garage_name || null,
+    serviceBookingId: data.service_booking_id || null,
+    checkedOutToGarageAt: toDate(data.checked_out_to_garage_at),
+    checkedOutToGarageBy: data.checked_out_to_garage_by,
+    checkedOutToGarageByName: data.checked_out_to_garage_by_name,
+
+    lastEditLog: data.last_edit_log,
+  } as CheckedInVehicle
 }
 
 export function useIncomingTransfers({ branchId }: UseIncomingTransfersProps) {
@@ -31,7 +93,7 @@ export function useIncomingTransfers({ branchId }: UseIncomingTransfersProps) {
   const [error, setError] = useState<string | null>(null)
   const [organizationId, setOrganizationId] = useState<string | null>(null)
 
-  // Ref for managing subscription
+  // Ref for managing subscription (the realtime channel cleanup fn)
   const unsubscribeRef = useRef<(() => void) | null>(null)
 
   // Load user's organization
@@ -86,96 +148,63 @@ export function useIncomingTransfers({ branchId }: UseIncomingTransfersProps) {
       setError(null)
 
       // 🎯 OPTIMIZED QUERY: Only load vehicles where targetBranchId === current branch
-      // This means we only load 1-10 vehicles instead of 500+!
-      const incomingQuery = query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', organizationId),
-        where('transferStatus', '==', 'in_transit'),
-        where('targetBranchId', '==', branchId), // 🚀 This is the key optimization!
-        orderBy('transferInitiatedAt', 'desc')
-      )
+      // (org + in_transit + target branch). Mirrors the Firestore composite query.
+      const fetchIncoming = async () => {
+        try {
+          const { data, error: fetchError } = await supabase
+            .from(CHECKED_IN_VEHICLES)
+            .select('*')
+            .eq('organization_id', organizationId)
+            .eq('transfer_status', 'in_transit')
+            .eq('target_branch_id', branchId) // 🚀 This is the key optimization!
+            .order('transfer_initiated_at', { ascending: false })
+          if (fetchError) throw fetchError
 
-      const unsubscribe = onSnapshot(
-        incomingQuery,
-        (snapshot) => {
-          logger.log(`📦 Incoming transfers snapshot for ${branchId}: ${snapshot.docs.length} vehicles`)
-          
+          logger.log(`📦 Incoming transfers snapshot for ${branchId}: ${(data ?? []).length} vehicles`)
+
           const vehicles: CheckedInVehicle[] = []
-          
-          snapshot.docs.forEach(doc => {
-            const data = doc.data()
-            
+          ;(data ?? []).forEach((row) => {
             // Only include vehicles that are NOT already at this branch
             // (they should still be at the source branch)
-            if (data.branchId !== branchId) {
-              vehicles.push({
-                id: doc.id,
-                vehicleId: data.vehicleId || null,
-                registration: data.registration || '',
-                make: data.make || '',
-                model: data.model || '',
-                colour: data.colour,
-                size: data.size || '',
-                condition: data.condition || '',
-                status: data.status || 'Pending checks',
-                userId: data.userId || '',
-                organizationId: data.organizationId || '',
-                branchId: data.branchId || '',
-                mileage: data.mileage,
-                notes: data.notes,
-                comments: data.comments,
-                contract: data.contract || null,
-                contractColor: data.contractColor || null,
-                insuranceStatus: data.insuranceStatus || null,
-                motExpiry: data.motExpiry,
-                taxExpiry: data.taxExpiry,
-                location: data.location,
-                bay: data.bay,
-                updatedAt: data.updatedAt?.toDate?.() || data.updatedAt,
-                createdAt: data.createdAt?.toDate?.() || data.createdAt,
-                checkInTime: data.checkInTime,
-                hireStatus: data.hireStatus || 'In Yard',
-                originalStatus: data.originalStatus,
-                hiredAt: data.hiredAt?.toDate?.() || data.hiredAt,
-                hiredBy: data.hiredBy,
-                hiredByName: data.hiredByName,
-                hireNotes: data.hireNotes,
-                
-                // Transfer status fields
-                transferStatus: data.transferStatus || null,
-                targetBranchId: data.targetBranchId || null,
-                targetBranchName: data.targetBranchName || null,
-                transferInitiatedAt: data.transferInitiatedAt?.toDate?.() || data.transferInitiatedAt,
-                transferInitiatedBy: data.transferInitiatedBy,
-                transferInitiatedByName: data.transferInitiatedByName,
-                
-                // External garage fields
-                externalGarageId: data.externalGarageId || null,
-                externalGarageName: data.externalGarageName || null,
-                serviceBookingId: data.serviceBookingId || null,
-                checkedOutToGarageAt: data.checkedOutToGarageAt?.toDate?.() || data.checkedOutToGarageAt,
-                checkedOutToGarageBy: data.checkedOutToGarageBy,
-                checkedOutToGarageByName: data.checkedOutToGarageByName,
-                
-                lastEditLog: data.lastEditLog
-              })
-              
-              logger.log(`✅ Incoming transfer: ${data.registration} from ${data.branchId} → ${branchId}`)
+            if (row.branch_id !== branchId) {
+              vehicles.push(mapRow(row))
+              logger.log(`✅ Incoming transfer: ${row.registration} from ${row.branch_id} → ${branchId}`)
             }
           })
-          
+
           setIncomingVehicles(vehicles)
           setLoading(false)
           setError(null)
-        },
-        (error) => {
-          logger.error('❌ Error in incoming transfers subscription:', error)
+        } catch (err) {
+          logger.error('❌ Error in incoming transfers subscription:', err)
           setError('Failed to load incoming transfers')
           setLoading(false)
         }
-      )
+      }
 
-      unsubscribeRef.current = unsubscribe
+      // initial fetch
+      fetchIncoming()
+
+      // refetch on any change to this org's checked_in_vehicles
+      const channel = supabase
+        .channel(`incoming_transfers:${organizationId}:${branchId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: CHECKED_IN_VEHICLES,
+            filter: `organization_id=eq.${organizationId}`,
+          },
+          () => {
+            fetchIncoming()
+          }
+        )
+        .subscribe()
+
+      unsubscribeRef.current = () => {
+        supabase.removeChannel(channel)
+      }
     }
 
     // Decide whether to have a listener

@@ -1,21 +1,63 @@
-// src/hooks/useBranchOverviewData.ts
-// ✅ BATTERY FIX: PROPERLY PAUSES/RESUMES LISTENERS WHEN APP GOES TO BACKGROUND
+// src/hooks/useBranchOverviewData.ts — SUPABASE re-implementation.
+// Loads ALL of the org's checked-in vehicles (across every branch) for the
+// branch-overview screen. Data-layer swap only: the public return
+// ({ allVehicles, loading, error }) and the mapped BranchVehicle shape are kept
+// identical. Firestore onSnapshot → initial select (ordered created_at desc)
+// then refetch on any postgres_changes for the org's checked_in_vehicles.
+// ✅ BATTERY FIX preserved: listener still pauses/resumes with app state.
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAppState } from '@/hooks/common/useAppState'
-import { 
-  collection, 
-  query, 
-  where, 
-  onSnapshot,
-  orderBy
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
 import { userProfileService } from '@/lib/firestore'
 import type { BranchVehicle } from '@/types/branch-overview'
 import { logger } from '@/lib/logger'
+
+const CHECKED_IN_VEHICLES = 'checked_in_vehicles'
+
+// timestamptz/date columns arrive as ISO strings — revive to Date to match the
+// Firestore .toDate() behaviour the consumers expect.
+const toDate = (v: any) => (v ? new Date(v) : v)
+
+// snake_case row → the exact BranchVehicle shape the original built.
+function mapRow(data: any): BranchVehicle {
+  return {
+    id: data.id,
+    registration: data.registration || '',
+    make: data.make || '',
+    model: data.model || '',
+    colour: data.colour,
+    size: data.size,
+    status: data.status,
+    condition: data.condition,
+    contract: data.contract,
+    contractColor: data.contract_color,
+    branchId: data.branch_id || 'main',
+    createdAt: toDate(data.created_at),
+    mileage: data.mileage,
+    notes: data.notes,
+    comments: data.comments,
+
+    // HIRE STATUS FIELDS - Include all hire-related data
+    hireStatus: data.hire_status || 'In Yard',
+    hiredBy: data.hired_by,
+    hiredByName: data.hired_by_name,
+    hiredAt: toDate(data.hired_at),
+    hireNotes: data.hire_notes,
+    originalStatus: data.original_status,
+    // returnedFromHire* / returnNotes were ad-hoc Firestore-only fields on the
+    // vehicle doc. The Supabase hire model clears all hire fields on return and
+    // keeps the return ledger in hire_history (0012), so these columns don't
+    // exist on checked_in_vehicles — the optional BranchVehicle fields stay
+    // undefined here, exactly as for any Firestore vehicle that never set them.
+    returnedFromHireAt: toDate(data.returned_from_hire_at),
+    returnedFromHireBy: data.returned_from_hire_by,
+    returnedFromHireByName: data.returned_from_hire_by_name,
+    returnNotes: data.return_notes,
+  } as BranchVehicle
+}
 
 export function useBranchOverviewData() {
   const { user } = useAuth()
@@ -25,7 +67,7 @@ export function useBranchOverviewData() {
   const [error, setError] = useState<string | null>(null)
   const [organizationId, setOrganizationId] = useState<string | null>(null)
 
-  // Ref for managing subscription
+  // Ref for managing subscription (the realtime channel cleanup fn)
   const unsubscribeRef = useRef<(() => void) | null>(null)
 
   // Load user's organization
@@ -88,57 +130,23 @@ export function useBranchOverviewData() {
       setError(null)
 
       // Query ALL vehicles for the organization (across all branches)
-      const vehiclesQuery = query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', organizationId),
-        orderBy('createdAt', 'desc')
-      )
+      const fetchVehicles = async () => {
+        try {
+          const { data, error: fetchError } = await supabase
+            .from(CHECKED_IN_VEHICLES)
+            .select('*')
+            .eq('organization_id', organizationId)
+            .order('created_at', { ascending: false })
+          if (fetchError) throw fetchError
 
-      // Set up real-time listener
-      const unsubscribe = onSnapshot(
-        vehiclesQuery,
-        (snapshot) => {
-          logger.log(`📦 Branch overview snapshot: ${snapshot.docs.length} vehicles`)
-          
-          const vehicles: BranchVehicle[] = []
-          
-          snapshot.docs.forEach(doc => {
-            const data = doc.data()
-            vehicles.push({
-              id: doc.id,
-              registration: data.registration || '',
-              make: data.make || '',
-              model: data.model || '',
-              colour: data.colour,
-              size: data.size,
-              status: data.status,
-              condition: data.condition,
-              contract: data.contract,
-              contractColor: data.contractColor,
-              branchId: data.branchId || 'main',
-              createdAt: data.createdAt?.toDate?.() || data.createdAt,
-              mileage: data.mileage,
-              notes: data.notes,
-              comments: data.comments,
-              
-              // HIRE STATUS FIELDS - Include all hire-related data
-              hireStatus: data.hireStatus || 'In Yard',
-              hiredBy: data.hiredBy,
-              hiredByName: data.hiredByName,
-              hiredAt: data.hiredAt?.toDate?.() || data.hiredAt,
-              hireNotes: data.hireNotes,
-              originalStatus: data.originalStatus,
-              returnedFromHireAt: data.returnedFromHireAt?.toDate?.() || data.returnedFromHireAt,
-              returnedFromHireBy: data.returnedFromHireBy,
-              returnedFromHireByName: data.returnedFromHireByName,
-              returnNotes: data.returnNotes
-            })
-          })
-          
+          logger.log(`📦 Branch overview snapshot: ${(data ?? []).length} vehicles`)
+
+          const vehicles: BranchVehicle[] = (data ?? []).map(mapRow)
+
           // Debug logging to help identify hire status
           const hiredVehicles = vehicles.filter(v => v.hireStatus === 'Out on Hire')
           logger.log(`📊 Loaded ${vehicles.length} vehicles across all branches`)
-          logger.log(`🚗 Found ${hiredVehicles.length} vehicles out on hire:`, 
+          logger.log(`🚗 Found ${hiredVehicles.length} vehicles out on hire:`,
             hiredVehicles.map(v => ({
               registration: v.registration,
               hireStatus: v.hireStatus,
@@ -146,24 +154,45 @@ export function useBranchOverviewData() {
               hiredAt: v.hiredAt
             }))
           )
-          
+
           setAllVehicles(vehicles)
           setLoading(false)
           setError(null)
-        },
-        (error) => {
-          logger.error('❌ Error in branch overview subscription:', error)
+        } catch (err) {
+          logger.error('❌ Error in branch overview subscription:', err)
           setError('Failed to load vehicles')
           setLoading(false)
         }
-      )
+      }
 
-      unsubscribeRef.current = unsubscribe
+      // initial fetch
+      fetchVehicles()
+
+      // refetch on any change to this org's checked_in_vehicles
+      const channel = supabase
+        .channel(`branch_overview:${organizationId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: CHECKED_IN_VEHICLES,
+            filter: `organization_id=eq.${organizationId}`,
+          },
+          () => {
+            fetchVehicles()
+          }
+        )
+        .subscribe()
+
+      unsubscribeRef.current = () => {
+        supabase.removeChannel(channel)
+      }
     }
 
     // MAIN LOGIC: Decide whether to have a listener or not
     const shouldListen = shouldHaveActiveListener()
-    
+
     logger.log('🎯 Branch overview listener decision:', {
       shouldListen,
       hasUser: !!user,
@@ -184,10 +213,10 @@ export function useBranchOverviewData() {
       // We should NOT have a listener - remove it if we have one
       if (unsubscribeRef.current) {
         logger.log('🛑 CONDITIONS NOT MET: Removing branch overview listener')
-        logger.log('Reason:', 
-          !user ? 'No user' : 
-          !organizationId ? 'No org' : 
-          !isAppActive ? '🔴 APP IN BACKGROUND' : 
+        logger.log('Reason:',
+          !user ? 'No user' :
+          !organizationId ? 'No org' :
+          !isAppActive ? '🔴 APP IN BACKGROUND' :
           'Unknown'
         )
         cleanupListener()

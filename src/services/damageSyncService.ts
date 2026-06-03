@@ -1,21 +1,26 @@
-// src/services/damageSyncService.ts
-// Syncs damagePins between the fleet `vehicles` collection and `checkedInVehicles`
-// Mirrors the InsuranceSyncService pattern exactly.
-// ✅ FIX: cleanPinsForFirestore() strips undefined values before every Firestore write
+// src/services/damageSyncService.ts — SUPABASE re-implementation.
+// Syncs damagePins between the fleet `vehicles` table and `checked_in_vehicles`.
+// Mirrors the InsuranceSyncService pattern. Public exports + signatures unchanged.
+//
+// Data layer swapped from Firestore to Supabase. Firestore writeBatch → parallel
+// Promise.all of single-row .update()s (not atomic — acceptable here).
+// damagePins is stored verbatim in the `damage_pins` jsonb column (camelCase shape
+// preserved by the jsonb-passthrough convention).
+//
+// Photo uploads moved from Firebase Storage → Supabase Storage. uploadDamagePhoto
+// keeps its signature (returns a public URL string) and uploads into the
+// `damage-photos` bucket (path: {orgId}/{registration}/{pinId}_{ts}.jpg).
+// NOTE: the `damage-photos` storage bucket must exist + be readable; it is infra
+// config (not a SQL table), so it is provisioned in the Supabase dashboard /
+// storage config rather than in a table migration.
 
-import {
-  doc,
-  collection,
-  query,
-  where,
-  getDocs,
-  writeBatch,
-  serverTimestamp,
-} from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
 import { logger } from '@/lib/logger'
 import { DamagePin } from '@/components/common/DamageMapper/DamageMapper'
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+
+const VEHICLES = 'vehicles'
+const CHECKED_IN = 'checked_in_vehicles'
+const DAMAGE_PHOTO_BUCKET = 'damage-photos'
 
 export interface DamageSyncResult {
   success: boolean
@@ -34,20 +39,20 @@ export async function compressImage(
     const img = new Image()
     img.onload = () => {
       const canvas = document.createElement('canvas')
-      
+
       // Scale down if wider than maxWidth, keep aspect ratio
       let { width, height } = img
       if (width > maxWidth) {
         height = Math.round((height * maxWidth) / width)
         width = maxWidth
       }
-      
+
       canvas.width = width
       canvas.height = height
-      
+
       const ctx = canvas.getContext('2d')!
       ctx.drawImage(img, 0, 0, width, height)
-      
+
       // quality 0.82 = ~80% smaller than raw, visually identical
       resolve(canvas.toDataURL('image/jpeg', quality))
     }
@@ -61,24 +66,27 @@ export async function uploadDamagePhoto(
   pinId: string,
   base64: string
 ): Promise<string> {
-  const storage = getStorage()
-  const path = `damage-photos/${orgId}/${registration}/${pinId}_${Date.now()}.jpg`
-  const storageRef = ref(storage, path)
+  const path = `${orgId}/${registration}/${pinId}_${Date.now()}.jpg`
 
   // 🔥 Compress before upload
   const compressed = await compressImage(base64)
 
   const res = await fetch(compressed)
   const blob = await res.blob()
-  
-  await uploadBytes(storageRef, blob)
-  return await getDownloadURL(storageRef)
+
+  const { error } = await supabase.storage
+    .from(DAMAGE_PHOTO_BUCKET)
+    .upload(path, blob, { contentType: 'image/jpeg', upsert: true })
+  if (error) throw error
+
+  const { data } = supabase.storage.from(DAMAGE_PHOTO_BUCKET).getPublicUrl(path)
+  return data.publicUrl
 }
 
-// ─── Strip undefined from every pin before any Firestore write ───────────────
-// Firestore throws "Unsupported field value: undefined" when a pin has e.g.
-// photoBase64: undefined or photoUrl: undefined after the user removes a photo.
-function cleanPinsForFirestore(pins: DamagePin[]): Record<string, any>[] {
+// ─── Strip undefined from every pin before any write ─────────────────────────
+// Defensive: keeps the stored jsonb clean (no undefined-valued keys) when a user
+// removes a photo (e.g. photoBase64 / photoUrl becomes undefined).
+function cleanPins(pins: DamagePin[]): Record<string, any>[] {
   return pins.map(pin => {
     const cleaned: Record<string, any> = {}
     for (const [key, value] of Object.entries(pin)) {
@@ -134,41 +142,42 @@ export class DamageSyncService {
   ): Promise<DamageSyncResult> {
     try {
       logger.log(`[DamageSync] Yard→Fleet by ID: ${vehicleId}`)
-      const cleanedPins = cleanPinsForFirestore(damagePins)
-      const batch = writeBatch(db)
+      const cleanedPins = cleanPins(damagePins)
 
       // 1. Update fleet record
-      const fleetRef = doc(db, 'vehicles', vehicleId)
-      batch.update(fleetRef, {
-        damagePins: cleanedPins,
-        updatedAt: serverTimestamp(),
-        lastDamageUpdate: {
-          updatedBy: userId,
-          updatedByName: userDisplayName,
-          updatedAt: new Date(),
-          source: 'yard_sync_id',
-          pinCount: damagePins.length,
-        },
-      })
+      const { error: fleetError } = await supabase
+        .from(VEHICLES)
+        .update({
+          damage_pins: cleanedPins,
+          last_damage_update: {
+            updatedBy: userId,
+            updatedByName: userDisplayName,
+            updatedAt: new Date().toISOString(),
+            source: 'yard_sync_id',
+            pinCount: damagePins.length,
+          },
+        })
+        .eq('id', vehicleId)
+      if (fleetError) throw fleetError
 
       // 2. Update all yard records with the same vehicleId
-      const yardQuery = query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', organizationId),
-        where('vehicleId', '==', vehicleId)
-      )
-      const yardSnap = await getDocs(yardQuery)
+      const { data: yardRows } = await supabase
+        .from(CHECKED_IN)
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('vehicle_id', vehicleId)
       let updatedYardRecords = 0
 
-      yardSnap.docs.forEach(yardDoc => {
-        batch.update(doc(db, 'checkedInVehicles', yardDoc.id), {
-          damagePins: cleanedPins,
-          updatedAt: serverTimestamp(),
+      await Promise.all(
+        (yardRows ?? []).map(async (yardRow) => {
+          await supabase
+            .from(CHECKED_IN)
+            .update({ damage_pins: cleanedPins })
+            .eq('id', yardRow.id)
+          updatedYardRecords++
         })
-        updatedYardRecords++
-      })
+      )
 
-      await batch.commit()
       logger.log(`[DamageSync] Yard→Fleet ID sync done: fleet + ${updatedYardRecords} yard records`)
 
       return { success: true, updatedFleetRecord: true, updatedYardRecords, method: 'id-based' }
@@ -196,49 +205,52 @@ export class DamageSyncService {
       const cleanReg = registration.toUpperCase().trim()
       logger.log(`[DamageSync] Yard→Fleet by reg: ${cleanReg}`)
 
-      const cleanedPins = cleanPinsForFirestore(damagePins)
-      const batch = writeBatch(db)
+      const cleanedPins = cleanPins(damagePins)
       let updatedFleetRecord = false
       let updatedYardRecords = 0
 
       // Fleet
-      const fleetQuery = query(
-        collection(db, 'vehicles'),
-        where('organizationId', '==', organizationId),
-        where('registration', '==', cleanReg)
-      )
-      const fleetSnap = await getDocs(fleetQuery)
-      if (!fleetSnap.empty) {
-        batch.update(doc(db, 'vehicles', fleetSnap.docs[0].id), {
-          damagePins: cleanedPins,
-          updatedAt: serverTimestamp(),
-          lastDamageUpdate: {
-            updatedBy: userId,
-            updatedByName: userDisplayName,
-            updatedAt: new Date(),
-            source: 'yard_sync_registration',
-            pinCount: damagePins.length,
-          },
-        })
+      const { data: fleetRows } = await supabase
+        .from(VEHICLES)
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('registration', cleanReg)
+
+      if (fleetRows && fleetRows.length > 0) {
+        const { error } = await supabase
+          .from(VEHICLES)
+          .update({
+            damage_pins: cleanedPins,
+            last_damage_update: {
+              updatedBy: userId,
+              updatedByName: userDisplayName,
+              updatedAt: new Date().toISOString(),
+              source: 'yard_sync_registration',
+              pinCount: damagePins.length,
+            },
+          })
+          .eq('id', fleetRows[0].id)
+        if (error) throw error
         updatedFleetRecord = true
       }
 
       // Yard
-      const yardQuery = query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', organizationId),
-        where('registration', '==', cleanReg)
-      )
-      const yardSnap = await getDocs(yardQuery)
-      yardSnap.docs.forEach(yardDoc => {
-        batch.update(doc(db, 'checkedInVehicles', yardDoc.id), {
-          damagePins: cleanedPins,
-          updatedAt: serverTimestamp(),
-        })
-        updatedYardRecords++
-      })
+      const { data: yardRows } = await supabase
+        .from(CHECKED_IN)
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('registration', cleanReg)
 
-      await batch.commit()
+      await Promise.all(
+        (yardRows ?? []).map(async (yardRow) => {
+          await supabase
+            .from(CHECKED_IN)
+            .update({ damage_pins: cleanedPins })
+            .eq('id', yardRow.id)
+          updatedYardRecords++
+        })
+      )
+
       return { success: true, updatedFleetRecord, updatedYardRecords, method: 'registration-based' }
     } catch (error) {
       logger.error('[DamageSync] Yard→Fleet reg sync failed:', error)
@@ -261,25 +273,24 @@ export class DamageSyncService {
     userDisplayName: string
   ): Promise<DamageSyncResult> {
     try {
-      const cleanedPins = cleanPinsForFirestore(damagePins)
-      const batch = writeBatch(db)
-      const yardQuery = query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', organizationId),
-        where('vehicleId', '==', vehicleId)
-      )
-      const yardSnap = await getDocs(yardQuery)
+      const cleanedPins = cleanPins(damagePins)
+      const { data: yardRows } = await supabase
+        .from(CHECKED_IN)
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('vehicle_id', vehicleId)
       let updatedYardRecords = 0
 
-      yardSnap.docs.forEach(yardDoc => {
-        batch.update(doc(db, 'checkedInVehicles', yardDoc.id), {
-          damagePins: cleanedPins,
-          updatedAt: serverTimestamp(),
+      await Promise.all(
+        (yardRows ?? []).map(async (yardRow) => {
+          await supabase
+            .from(CHECKED_IN)
+            .update({ damage_pins: cleanedPins })
+            .eq('id', yardRow.id)
+          updatedYardRecords++
         })
-        updatedYardRecords++
-      })
+      )
 
-      if (updatedYardRecords > 0) await batch.commit()
       return { success: true, updatedFleetRecord: false, updatedYardRecords, method: 'id-based' }
     } catch (error) {
       logger.error('[DamageSync] Fleet→Yard ID sync failed:', error)
@@ -303,25 +314,24 @@ export class DamageSyncService {
   ): Promise<DamageSyncResult> {
     try {
       const cleanReg = registration.toUpperCase().trim()
-      const cleanedPins = cleanPinsForFirestore(damagePins)
-      const batch = writeBatch(db)
-      const yardQuery = query(
-        collection(db, 'checkedInVehicles'),
-        where('organizationId', '==', organizationId),
-        where('registration', '==', cleanReg)
-      )
-      const yardSnap = await getDocs(yardQuery)
+      const cleanedPins = cleanPins(damagePins)
+      const { data: yardRows } = await supabase
+        .from(CHECKED_IN)
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('registration', cleanReg)
       let updatedYardRecords = 0
 
-      yardSnap.docs.forEach(yardDoc => {
-        batch.update(doc(db, 'checkedInVehicles', yardDoc.id), {
-          damagePins: cleanedPins,
-          updatedAt: serverTimestamp(),
+      await Promise.all(
+        (yardRows ?? []).map(async (yardRow) => {
+          await supabase
+            .from(CHECKED_IN)
+            .update({ damage_pins: cleanedPins })
+            .eq('id', yardRow.id)
+          updatedYardRecords++
         })
-        updatedYardRecords++
-      })
+      )
 
-      if (updatedYardRecords > 0) await batch.commit()
       return { success: true, updatedFleetRecord: false, updatedYardRecords, method: 'registration-based' }
     } catch (error) {
       logger.error('[DamageSync] Fleet→Yard reg sync failed:', error)

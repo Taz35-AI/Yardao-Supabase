@@ -1,8 +1,7 @@
 // src/services/pushNotificationService.ts
 import { PushNotifications, Token, ActionPerformed } from '@capacitor/push-notifications'
 import { Capacitor } from '@capacitor/core'
-import { doc, setDoc } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
 import { logger } from '@/lib/logger'
 
 export class PushNotificationService {
@@ -85,21 +84,27 @@ export class PushNotificationService {
   }
 
   /**
-   * Save FCM token to Firestore for backend to send notifications
+   * Save FCM token to Supabase for backend to send notifications
    */
   private async saveFCMToken(userId: string, organizationId: string, token: string): Promise<void> {
     try {
-      const tokenDoc = doc(db, 'fcmTokens', userId)
-      await setDoc(tokenDoc, {
-        token,
-        userId,
-        organizationId,
-        platform: 'android',
-        updatedAt: new Date(),
-        createdAt: new Date()
-      }, { merge: true })
-      
-      logger.log('✅ FCM token saved to Firestore')
+      // One settings/token row per user (unique on user_id). Upsert so a
+      // re-registration just refreshes the token — mirrors setDoc({ merge: true }).
+      const { error } = await supabase
+        .from('notification_settings')
+        .upsert(
+          {
+            user_id: userId,
+            organization_id: organizationId,
+            token,
+            platform: 'android',
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' }
+        )
+      if (error) throw error
+
+      logger.log('✅ FCM token saved to Supabase')
     } catch (error) {
       logger.error('❌ Error saving FCM token:', error)
       throw error

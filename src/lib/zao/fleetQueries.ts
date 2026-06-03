@@ -1,10 +1,22 @@
-// src/lib/zao/fleetQueries.ts
-// All Firestore READ operations for Zao.
-// Fetches data, shapes it, returns it. Zero writes happen here.
-// The hook handles all writes — keeping reads and writes clearly separated.
+// src/lib/zao/fleetQueries.ts — SUPABASE re-implementation.
+// All READ operations for Zao. Fetches data, shapes it, returns it.
+// Zero writes happen here. The hook handles all writes — keeping reads and
+// writes clearly separated.
+//
+// Exported function names, signatures and the FleetData shape are kept identical
+// to the Firestore version; only the internals change. snake→camel mapping
+// (toCamel) keeps the returned objects matching the TS interfaces, and jsonb
+// columns (workRequired, externalProvider, …) pass through with their internal
+// camelCase preserved.
+//
+//   vehicles          → vehicles
+//   checkedInVehicles → checked_in_vehicles
+//   externalGarages   → external_garages
+//   serviceBookings   → service_bookings
+//   branches          → branches
 
-import { collection, query, where, getDocs } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
+import { supabase } from '@/lib/supabaseClient'
+import { toCamel, toCamelList } from '@/lib/dbMap'
 import type { Vehicle, CheckedInVehicle } from '@/types'
 import type { GarageOption } from '@/types/zao.types'
 
@@ -42,21 +54,25 @@ export async function fetchFleetData(organizationId: string): Promise<FleetData>
   const todayStr   = localDate(0)
   const futureStr  = localDate(14)
 
-  const [fleetSnap, yardSnap, garageSnap, bookingsSnap] = await Promise.all([
-    getDocs(query(collection(db, 'vehicles'),          where('organizationId', '==', organizationId))),
-    getDocs(query(collection(db, 'checkedInVehicles'), where('organizationId', '==', organizationId))),
-    getDocs(query(collection(db, 'externalGarages'),   where('organizationId', '==', organizationId), where('isActive', '==', true))),
-    // Single-field query only (organizationId) — avoids composite index requirement.
-    // Date filtering done in JS below. Fetches ~30 most recent bookings, plenty for context.
-    getDocs(query(collection(db, 'serviceBookings'),   where('organizationId', '==', organizationId))),
+  const [fleetRes, yardRes, garageRes, bookingsRes] = await Promise.all([
+    supabase.from('vehicles').select('*').eq('organization_id', organizationId),
+    supabase.from('checked_in_vehicles').select('*').eq('organization_id', organizationId),
+    supabase.from('external_garages').select('*').eq('organization_id', organizationId).eq('is_active', true),
+    // Single-table fetch scoped by org — date filtering done in JS below to
+    // mirror the original (avoids needing a composite index server-side).
+    supabase.from('service_bookings').select('*').eq('organization_id', organizationId),
   ])
 
-  const fleetVehicles   = fleetSnap.docs.map(d   => ({ id: d.id, ...d.data() })) as Vehicle[]
-  const yardVehicles    = yardSnap.docs.map(d    => ({ id: d.id, ...d.data() })) as CheckedInVehicle[]
-  const externalGarages = garageSnap.docs.map(d  => ({ id: d.id, ...d.data() })) as GarageOption[]
+  if (fleetRes.error) throw fleetRes.error
+  if (yardRes.error) throw yardRes.error
+  if (garageRes.error) throw garageRes.error
+  if (bookingsRes.error) throw bookingsRes.error
+
+  const fleetVehicles   = toCamelList<Vehicle>(fleetRes.data)
+  const yardVehicles    = toCamelList<CheckedInVehicle>(yardRes.data)
+  const externalGarages = toCamelList<GarageOption>(garageRes.data)
   // Filter to upcoming 14 days in JS — no composite index needed
-  const allBookings     = bookingsSnap.docs
-    .map(d => ({ id: d.id, ...d.data() }))
+  const allBookings     = toCamelList<any>(bookingsRes.data)
     .filter((b: any) => b.date >= todayStr && b.date <= futureStr)
   const todayBookings   = allBookings.filter((b: any) => b.date === todayStr)
 
@@ -166,28 +182,32 @@ export function buildSmartSummary(fleetData: FleetData, userMessage: string): st
 }
 
 /**
- * Look up the real display name of a branch by its slug from Firestore.
+ * Look up the real display name of a branch by its slug.
  * Used so Zao says "Fairview Barking" not "fairview-barking".
  */
 export async function resolveBranchName(organizationId: string, slug: string): Promise<string> {
   try {
     if (slug === 'main' || !slug) {
-      const mainSnap = await getDocs(query(
-        collection(db, 'branches'),
-        where('organizationId', '==', organizationId),
-        where('isMain', '==', true),
-      ))
-      if (!mainSnap.empty) return mainSnap.docs[0].data().name || 'Main Branch'
+      const { data, error } = await supabase
+        .from('branches')
+        .select('name')
+        .eq('organization_id', organizationId)
+        .eq('is_main', true)
+        .limit(1)
+      if (error) throw error
+      if (data && data.length > 0) return data[0].name || 'Main Branch'
       return 'Main Branch'
     }
 
-    const snap = await getDocs(query(
-      collection(db, 'branches'),
-      where('organizationId', '==', organizationId),
-      where('slug', '==', slug),
-      where('isActive', '==', true),
-    ))
-    if (!snap.empty) return snap.docs[0].data().name || slug
+    const { data, error } = await supabase
+      .from('branches')
+      .select('name')
+      .eq('organization_id', organizationId)
+      .eq('slug', slug)
+      .eq('is_active', true)
+      .limit(1)
+    if (error) throw error
+    if (data && data.length > 0) return data[0].name || slug
   } catch { /* non-fatal */ }
 
   // Fallback: prettify slug ("fairview-barking" → "Fairview Barking")
