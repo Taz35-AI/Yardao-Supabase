@@ -62,6 +62,10 @@ begin
     (v_org, 'Poor',      3, '#f97316', 'poor'),
     (v_org, 'Critical',  4, '#ef4444', 'critical');
 
+  -- every org starts with one renamable Main Branch (slug 'main', is_main)
+  insert into public.branches (organization_id, slug, name, is_main, is_active, created_by)
+  values (v_org, 'main', 'Main Branch', true, true, v_uid);
+
   return v_org;
 end;
 $$;

@@ -5,26 +5,26 @@ BEGIN;
 
 -- ===================== 0001_core_schema.sql =====================
 -- ============================================================================
--- YARDAO â†’ Supabase  |  0001_core_schema.sql
+-- YARDAO → Supabase  |  0001_core_schema.sql
 -- Core tables for the vertical slice + closely-coupled support tables.
 -- Multi-tenant: every tenant row carries organization_id (the RLS boundary).
 -- RLS itself is enabled in 0002_rls_policies.sql.
 --
 -- Conventions
---   * Columns are snake_case (Postgres idiom). The data layer maps snakeâ†”camel
+--   * Columns are snake_case (Postgres idiom). The data layer maps snake↔camel
 --     so the frontend TypeScript interfaces stay byte-for-byte identical.
---   * uuid primary keys (gen_random_uuid). Fresh-start data â€” no Firestore IDs
+--   * uuid primary keys (gen_random_uuid). Fresh-start data — no Firestore IDs
 --     are preserved, so we use real uuids everywhere instead of string keys.
---   * String-union TS types (VehicleStatus, etc.) â†’ text + CHECK constraints,
+--   * String-union TS types (VehicleStatus, etc.) → text + CHECK constraints,
 --     so adding a value later is a cheap migration (no enum ALTER pain).
---   * Firestore "YYYY-MM-DD" string dates â†’ date; created/updated â†’ timestamptz.
+--   * Firestore "YYYY-MM-DD" string dates → date; created/updated → timestamptz.
 --   * Free-form maps / arrays that the UI treats as opaque (damagePins,
---     yard spaces/blocks, invoice parts/labour, externalProvider) â†’ jsonb.
+--     yard spaces/blocks, invoice parts/labour, externalProvider) → jsonb.
 -- ============================================================================
 
 create extension if not exists pgcrypto;  -- gen_random_uuid()
 
--- â”€â”€ shared updated_at trigger â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── shared updated_at trigger ───────────────────────────────────────────────
 create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$
 begin
@@ -47,7 +47,7 @@ create table public.organizations (
 );
 
 -- ============================================================================
--- profiles  (1:1 with auth.users â€” app-level user record / UserProfile)
+-- profiles  (1:1 with auth.users — app-level user record / UserProfile)
 -- ============================================================================
 create table public.profiles (
   id                    uuid primary key references auth.users(id) on delete cascade,
@@ -168,7 +168,7 @@ create table public.external_garages (
 create index external_garages_org_idx on public.external_garages(organization_id);
 
 -- ============================================================================
--- vehicles  (fleet inventory â€” the master record)
+-- vehicles  (fleet inventory — the master record)
 -- ============================================================================
 create table public.vehicles (
   id                      uuid primary key default gen_random_uuid(),
@@ -335,8 +335,8 @@ create trigger yard_vehicles_set_updated_at before update on public.yard_vehicle
 
 -- ============================================================================
 -- yard_layouts  (one row per branch; spaces + blocks kept as jsonb so the
--- yardLayoutService contract â€” a YardLayout with a spaces Record + blocks
--- array â€” maps 1:1. Vehicleâ†’space link is the stable space id in parking_space_id.)
+-- yardLayoutService contract — a YardLayout with a spaces Record + blocks
+-- array — maps 1:1. Vehicle→space link is the stable space id in parking_space_id.)
 -- ============================================================================
 create table public.yard_layouts (
   id              uuid primary key default gen_random_uuid(),
@@ -534,7 +534,7 @@ create index stock_adjustments_org_idx  on public.stock_adjustments(organization
 create index stock_adjustments_part_idx on public.stock_adjustments(part_id);
 
 -- ============================================================================
--- invoices  (jsPDF source data â€” parts/labour kept as jsonb line arrays)
+-- invoices  (jsPDF source data — parts/labour kept as jsonb line arrays)
 -- ============================================================================
 create table public.invoices (
   id                   uuid primary key default gen_random_uuid(),
@@ -566,7 +566,7 @@ create table public.invoices (
 create index invoices_org_idx on public.invoices(organization_id);
 
 -- ============================================================================
--- checkout_history  (matches checkoutHistoryService.CheckoutHistoryRecord â€” the
+-- checkout_history  (matches checkoutHistoryService.CheckoutHistoryRecord — the
 -- branch-aware shape actually written by the app. Person/branch refs are TEXT
 -- because records legitimately carry non-uuid actors like 'system'/'Unknown'.)
 -- ============================================================================
@@ -613,10 +613,9 @@ create index checkout_history_org_idx        on public.checkout_history(organiza
 create index checkout_history_org_reg_idx     on public.checkout_history(organization_id, registration);
 create index checkout_history_org_date_idx    on public.checkout_history(organization_id, checked_out_date desc);
 
-
 -- ===================== 0002_rls_policies.sql =====================
 -- ============================================================================
--- YARDAO â†’ Supabase  |  0002_rls_policies.sql
+-- YARDAO → Supabase  |  0002_rls_policies.sql
 -- Row-Level Security: organization_id is the tenant boundary on every table.
 --
 -- Tenancy model
@@ -626,26 +625,26 @@ create index checkout_history_org_date_idx    on public.checkout_history(organiz
 --   * Policy shape:  organization_id = auth_org_id()
 --
 -- After applying this migration you MUST enable the hook in the dashboard:
---   Authentication â†’ Hooks â†’ Customize Access Token (JWT) Claims
---   â†’ select public.custom_access_token_hook
+--   Authentication → Hooks → Customize Access Token (JWT) Claims
+--   → select public.custom_access_token_hook
 -- (or set [auth.hook.custom_access_token] in supabase/config.toml).
 -- ============================================================================
 
--- â”€â”€ claim helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── claim helpers ───────────────────────────────────────────────────────────
 -- org_id of the calling user, read from the JWT claim (no table lookup).
 create or replace function public.auth_org_id()
 returns uuid language sql stable as $$
   select nullif(current_setting('request.jwt.claims', true)::jsonb ->> 'org_id', '')::uuid
 $$;
 
--- app role is exposed as a custom `user_role` claim â€” NOT the Postgres `role`
+-- app role is exposed as a custom `user_role` claim — NOT the Postgres `role`
 -- claim (PostgREST uses `role` to SET ROLE, so it must stay 'authenticated').
 create or replace function public.auth_role()
 returns text language sql stable as $$
   select current_setting('request.jwt.claims', true)::jsonb ->> 'user_role'
 $$;
 
--- â”€â”€ Custom Access Token Hook â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── Custom Access Token Hook ─────────────────────────────────────────────────
 -- Injects org_id + role from the user's profile into every issued JWT.
 create or replace function public.custom_access_token_hook(event jsonb)
 returns jsonb language plpgsql stable as $$
@@ -674,7 +673,7 @@ grant usage on schema public to supabase_auth_admin;
 grant execute on function public.custom_access_token_hook(jsonb) to supabase_auth_admin;
 grant select on public.profiles to supabase_auth_admin;
 
--- â”€â”€ enable RLS on every table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── enable RLS on every table ────────────────────────────────────────────────
 alter table public.organizations          enable row level security;
 alter table public.profiles               enable row level security;
 alter table public.organization_settings  enable row level security;
@@ -695,7 +694,7 @@ alter table public.stock_adjustments      enable row level security;
 alter table public.invoices               enable row level security;
 alter table public.checkout_history       enable row level security;
 
--- â”€â”€ organizations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── organizations ────────────────────────────────────────────────────────────
 -- members can read their own org; admins can update it.
 create policy org_select on public.organizations
   for select to authenticated using (id = public.auth_org_id());
@@ -704,7 +703,7 @@ create policy org_update on public.organizations
   using (id = public.auth_org_id() and public.auth_role() = 'admin')
   with check (id = public.auth_org_id() and public.auth_role() = 'admin');
 
--- â”€â”€ profiles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── profiles ─────────────────────────────────────────────────────────────────
 -- a user can always read/update their own row; members can read profiles in
 -- their org; admins can insert/update/soft-delete profiles in their org.
 create policy profiles_select_self on public.profiles
@@ -722,7 +721,7 @@ create policy profiles_admin_write on public.profiles
 create policy auth_admin_read_profiles on public.profiles
   as permissive for select to supabase_auth_admin using (true);
 
--- â”€â”€ generic org-scoped tables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── generic org-scoped tables ────────────────────────────────────────────────
 -- Identical full-CRUD-within-org policy. Generated via a DO loop to stay DRY;
 -- tighten per-table (e.g. admin-only deletes) in a later migration if needed.
 do $$
@@ -744,7 +743,7 @@ begin
   end loop;
 end $$;
 
--- â”€â”€ Realtime â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── Realtime ─────────────────────────────────────────────────────────────────
 -- Surfaces that replace Firestore onSnapshot. RLS still applies to realtime,
 -- so clients only receive changes for their own org.
 alter publication supabase_realtime add table public.checked_in_vehicles;
@@ -752,11 +751,10 @@ alter publication supabase_realtime add table public.vehicles;
 alter publication supabase_realtime add table public.yard_layouts;
 alter publication supabase_realtime add table public.service_bookings;
 
-
 -- ===================== 0003_auth_bootstrap.sql =====================
 -- ============================================================================
--- YARDAO â†’ Supabase  |  0003_auth_bootstrap.sql
--- Signup â†’ profile provisioning + RLS-safe organization bootstrap.
+-- YARDAO → Supabase  |  0003_auth_bootstrap.sql
+-- Signup → profile provisioning + RLS-safe organization bootstrap.
 --
 -- The chicken-and-egg problem: a just-signed-up user has no org_id JWT claim
 -- yet, so a direct client INSERT into organizations / UPDATE of their profile
@@ -767,7 +765,7 @@ alter publication supabase_realtime add table public.service_bookings;
 --      auth.uid()).
 -- ============================================================================
 
--- â”€â”€ 1. auto-create profile on signup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── 1. auto-create profile on signup ─────────────────────────────────────────
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
@@ -788,7 +786,7 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- â”€â”€ 2. create organization + join caller as admin + seed conditions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── 2. create organization + join caller as admin + seed conditions ──────────
 create or replace function public.create_organization(p_name text, p_description text default null)
 returns uuid language plpgsql security definer set search_path = public as $$
 declare
@@ -818,6 +816,10 @@ begin
     (v_org, 'Poor',      3, '#f97316', 'poor'),
     (v_org, 'Critical',  4, '#ef4444', 'critical');
 
+  -- every org starts with one renamable Main Branch (slug 'main', is_main)
+  insert into public.branches (organization_id, slug, name, is_main, is_active, created_by)
+  values (v_org, 'main', 'Main Branch', true, true, v_uid);
+
   return v_org;
 end;
 $$;
@@ -826,28 +828,27 @@ grant execute on function public.create_organization(text, text) to authenticate
 
 -- NOTE: after calling create_organization the client MUST refresh its session
 -- (supabase.auth.refreshSession()) so the access-token hook re-issues a JWT
--- carrying the new org_id claim â€” otherwise subsequent RLS-scoped reads return
+-- carrying the new org_id claim — otherwise subsequent RLS-scoped reads return
 -- nothing. organizationService.createOrganization does this automatically.
-
 
 -- ===================== 0010_stock_settings.sql =====================
 -- ============================================================================
--- YARDAO â†’ Supabase  |  0010_stock_settings.sql
+-- YARDAO → Supabase  |  0010_stock_settings.sql
 -- Backing schema for stockService + settingsService (Phase 4 data-layer swap).
 --
 -- stockService maps entirely to tables that already exist in 0001
--- (stock_parts, part_usage, order_history, stock_adjustments, invoices) â€” no
+-- (stock_parts, part_usage, order_history, stock_adjustments, invoices) — no
 -- new tables needed there.
 --
 -- settingsService stores a single per-org "organization settings" document
 -- holding opaque arrays/maps (suppliers, from/to companies, insurance
--- policies, contractâ†’default-status map). The existing public.organization_settings
+-- policies, contract→default-status map). The existing public.organization_settings
 -- table (0001) carries scalar tenant settings keyed by organization_id; we
 -- extend it with the jsonb columns this service needs so both settings
 -- surfaces share the one per-org row (organization_id is already UNIQUE there).
 -- ============================================================================
 
--- â”€â”€ organization_settings: settingsService jsonb columns â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── organization_settings: settingsService jsonb columns ────────────────────
 -- Stored as jsonb arrays/objects so the camel-cased element shapes
 -- (FromCompanyDetails, InsurancePolicy, etc.) pass through dbMap untouched.
 alter table public.organization_settings
@@ -858,17 +859,16 @@ alter table public.organization_settings
   add column if not exists contract_default_statuses  jsonb       not null default '{}'::jsonb,
   add column if not exists created_at                 timestamptz not null default now();
 
-
 -- ===================== 0011_transfers.sql =====================
 -- ============================================================================
--- YARDAO â†’ Supabase  |  0011_transfers.sql
--- Vehicle transfers (branchâ†”branch) + external-garage checkout for
+-- YARDAO → Supabase  |  0011_transfers.sql
+-- Vehicle transfers (branch↔branch) + external-garage checkout for
 -- src/lib/services/transferService.ts.
 --
 -- Finding: transferService operates ENTIRELY on `checked_in_vehicles`. It reads
 -- a row (registration / branch_id / external_garage_name) and updates the
 -- transfer + garage columns in place. There is NO separate transfers
--- collection in the Firestore original, so no new table is required â€” every
+-- collection in the Firestore original, so no new table is required — every
 -- column the service writes already exists on checked_in_vehicles
 -- (0001_core_schema.sql, "transfer / in-transit" + "external garage" blocks):
 --   transfer_status, target_branch_id, target_branch_name,
@@ -888,10 +888,9 @@ alter table public.organization_settings
 alter table public.checked_in_vehicles
   alter column service_booking_id type text using service_booking_id::text;
 
-
 -- ===================== 0012_hire.sql =====================
 -- ============================================================================
--- YARDAO â†’ Supabase  |  0012_hire.sql
+-- YARDAO → Supabase  |  0012_hire.sql
 -- Out-on-hire / return tracking + hire history.
 --
 -- The checked_in_vehicles row (0001) already carries the per-vehicle hire state
@@ -901,12 +900,12 @@ alter table public.checked_in_vehicles
 --
 -- Conventions (see 0001):
 --   * snake_case columns; uuid PK; org-scoped via organization_id.
---   * branch refs are TEXT (the app keys branches by a stable string â€”
---     a branch uuid as string, or the 'main'/slug literal â€” and passes it
+--   * branch refs are TEXT (the app keys branches by a stable string —
+--     a branch uuid as string, or the 'main'/slug literal — and passes it
 --     through unchanged; matches checked_in_vehicles.branch_id).
 --   * Person refs (hired_by / returned_by) are TEXT: the app stores the raw
 --     userId string and can pass non-uuid actors. createdAt/updatedAt +
---     hire dates â†’ timestamptz; the data layer revives them to Date objects.
+--     hire dates → timestamptz; the data layer revives them to Date objects.
 -- ============================================================================
 
 -- ============================================================================
@@ -942,7 +941,7 @@ create table public.hire_history (
 create index hire_history_org_idx      on public.hire_history(organization_id);
 create index hire_history_org_reg_idx  on public.hire_history(organization_id, registration);
 
--- â”€â”€ RLS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── RLS ──────────────────────────────────────────────────────────────────────
 alter table public.hire_history enable row level security;
 
 create policy hire_history_org_rw on public.hire_history
@@ -950,15 +949,14 @@ create policy hire_history_org_rw on public.hire_history
   using (organization_id = public.auth_org_id())
   with check (organization_id = public.auth_org_id());
 
-
 -- ===================== 0013_customers_history.sql =====================
 -- ============================================================================
--- YARDAO â†’ Supabase  |  0013_customers_history.sql
+-- YARDAO → Supabase  |  0013_customers_history.sql
 -- Manual per-vehicle service-history records.
 --
 -- The `customers` table already exists (0001) and the per-customer job
 -- history + the booking-sourced half of the per-vehicle service history are
--- DERIVED on demand from existing tables (service_bookings) â€” no storage of
+-- DERIVED on demand from existing tables (service_bookings) — no storage of
 -- their own. The ONLY new persistence this slice needs is the hand-entered
 -- ("manual") service-history rows that the Firestore version stored in the
 -- `vehicleServiceHistory` collection. Booking-sourced rows are NOT copied
@@ -970,7 +968,7 @@ create policy hire_history_org_rw on public.hire_history
 -- ============================================================================
 
 -- ============================================================================
--- vehicle_service_history  (manual records only â€” mirrors ManualServiceHistoryDoc)
+-- vehicle_service_history  (manual records only — mirrors ManualServiceHistoryDoc)
 --   * registration       : as the user typed it (display)
 --   * registration_key    : canonical UPPER/no-space key used for equality match
 --   * location_type       : 'internal' | 'external'  (ServiceLocationType)
@@ -1003,42 +1001,41 @@ create index vehicle_service_history_org_regkey_idx
 create trigger vehicle_service_history_set_updated_at before update on public.vehicle_service_history
   for each row execute function public.set_updated_at();
 
--- â”€â”€ RLS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── RLS ──────────────────────────────────────────────────────────────────────
 alter table public.vehicle_service_history enable row level security;
 create policy vehicle_service_history_org_rw on public.vehicle_service_history
   for all to authenticated
   using (organization_id = public.auth_org_id())
   with check (organization_id = public.auth_org_id());
 
-
 -- ===================== 0014_branches_misc.sql =====================
 -- ============================================================================
--- YARDAO â†’ Supabase  |  0014_branches_misc.sql
+-- YARDAO → Supabase  |  0014_branches_misc.sql
 -- Support tables/columns for the branchService, organizationService,
 -- externalGarageService, conditionService and contractService ports.
 --
 -- branches / contracts / condition_categories / external_garages already exist
 -- in 0001. This migration:
---   * adds branches.vehicle_count (Branch.vehicleCount â€” written on create)
+--   * adds branches.vehicle_count (Branch.vehicleCount — written on create)
 --   * adds condition_categories.is_editable + updated_at (standalone
---     ConditionCategory contract carries isEditable/updatedAt; sort_order â†”
+--     ConditionCategory contract carries isEditable/updatedAt; sort_order ↔
 --     ConditionCategory.order is already in 0001)
 --   * creates branch_migrations (one row per org, keyed by organization_id) for
 --     branchService.checkMigrationStatus / runMigration
 -- ============================================================================
 
--- â”€â”€ branches: vehicle_count â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── branches: vehicle_count ──────────────────────────────────────────────────
 alter table public.branches
   add column if not exists vehicle_count int not null default 0;
 
--- â”€â”€ condition_categories: is_editable + updated_at â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── condition_categories: is_editable + updated_at ───────────────────────────
 alter table public.condition_categories
   add column if not exists is_editable boolean not null default true;
 alter table public.condition_categories
   add column if not exists updated_at  timestamptz;
 
 -- ============================================================================
--- branch_migrations  (BranchMigration â€” one row per org)
+-- branch_migrations  (BranchMigration — one row per org)
 -- The Firestore version keyed the doc by organizationId; here organization_id is
 -- both the tenant boundary and the natural key (unique).
 -- ============================================================================
@@ -1063,33 +1060,32 @@ create policy branch_migrations_org_rw on public.branch_migrations
 -- Realtime parity with the Firestore branch subscription (subscribeToBranches).
 alter publication supabase_realtime add table public.branches;
 
-
 -- ===================== 0015_bulk_insurance.sql =====================
 -- ============================================================================
--- YARDAO â†’ Supabase  |  0015_bulk_insurance.sql
+-- YARDAO → Supabase  |  0015_bulk_insurance.sql
 -- Schema for the bulk-insurance / bulk-road-tax / bulk-vehicle-refresh services.
 --
 -- What these services actually touch:
---   * bulkInsuranceService  â€” sets vehicles.insurance_status (+ an audit blob)
---   * bulkRoadTaxService     â€” sets vehicles.tax_expiry        (+ an audit blob)
---   * bulkVehicleRefreshService â€” enqueues a server-side DVLA refresh job and
+--   * bulkInsuranceService  — sets vehicles.insurance_status (+ an audit blob)
+--   * bulkRoadTaxService     — sets vehicles.tax_expiry        (+ an audit blob)
+--   * bulkVehicleRefreshService — enqueues a server-side DVLA refresh job and
 --                                  watches its live progress (was a Firestore
 --                                  doc bulkRefreshJobs/{organizationId};
 --                                  becomes the bulk_refresh_jobs table here).
 --
 -- The bulk update services write a per-vehicle audit object that the Firestore
 -- version stored inline on the vehicle doc (lastInsuranceUpdate / lastTaxUpdate).
--- These are opaque maps â†’ jsonb columns on `vehicles`, matching the dbMap
+-- These are opaque maps → jsonb columns on `vehicles`, matching the dbMap
 -- jsonb-passthrough convention (camelCase keys preserved verbatim).
 --
 -- insurance_policies: created per the migration brief. NOTE: none of the four
--- ported services in this phase read or write this table â€” they only flip the
+-- ported services in this phase read or write this table — they only flip the
 -- vehicles.insurance_status enum. It is provisioned here so the existing
 -- vehicles.insurance_policy_id / _name / _expiry columns (added in 0001) have a
 -- real table to point at when the policy-management feature is ported.
 -- ============================================================================
 
--- â”€â”€ vehicles: bulk-update audit blobs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── vehicles: bulk-update audit blobs ────────────────────────────────────────
 -- Opaque audit objects written by the bulk services. Stored as jsonb so the
 -- nested camelCase shape ({ updatedBy, updatedByName, updatedAt, source,
 -- bulkOperation, previousInsuranceStatus }) passes through untouched.
@@ -1142,7 +1138,7 @@ create index if not exists bulk_refresh_jobs_org_idx on public.bulk_refresh_jobs
 create trigger bulk_refresh_jobs_set_updated_at before update on public.bulk_refresh_jobs
   for each row execute function public.set_updated_at();
 
--- â”€â”€ RLS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── RLS ──────────────────────────────────────────────────────────────────────
 alter table public.insurance_policies enable row level security;
 alter table public.bulk_refresh_jobs  enable row level security;
 
@@ -1156,24 +1152,23 @@ create policy bulk_refresh_jobs_org_rw on public.bulk_refresh_jobs
   using (organization_id = public.auth_org_id())
   with check (organization_id = public.auth_org_id());
 
--- â”€â”€ Realtime â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── Realtime ─────────────────────────────────────────────────────────────────
 -- Replaces the Firestore onSnapshot the refresh service used for live progress.
 alter publication supabase_realtime add table public.bulk_refresh_jobs;
 
-
 -- ===================== 0016_sync_columns.sql =====================
 -- ============================================================================
--- YARDAO â†’ Supabase  |  0016_sync_columns.sql
--- Audit blobs written by the fleetâ‡„yard field-sync services:
---   * contractSyncService   â†’ vehicles.last_contract_update
---   * conditionSyncService  â†’ vehicles.last_condition_update
---   * damageSyncService     â†’ vehicles.last_damage_update
---   * insuranceSyncService  â†’ vehicles.last_insurance_update (already added in 0015)
+-- YARDAO → Supabase  |  0016_sync_columns.sql
+-- Audit blobs written by the fleet⇄yard field-sync services:
+--   * contractSyncService   → vehicles.last_contract_update
+--   * conditionSyncService  → vehicles.last_condition_update
+--   * damageSyncService     → vehicles.last_damage_update
+--   * insuranceSyncService  → vehicles.last_insurance_update (already added in 0015)
 --
 -- Each service stamps an opaque per-vehicle audit object on the fleet row when it
 -- syncs a field down from / up to the yard. The Firestore version stored these
 -- inline on the vehicle doc (lastContractUpdate / lastConditionUpdate /
--- lastDamageUpdate). They are opaque maps â†’ jsonb, matching the dbMap
+-- lastDamageUpdate). They are opaque maps → jsonb, matching the dbMap
 -- jsonb-passthrough convention (nested camelCase keys preserved verbatim:
 -- { updatedBy, updatedByName, updatedAt, source, vehicleId | registration |
 --   previousContract | pinCount }).
@@ -1189,20 +1184,19 @@ alter table public.vehicles
   add column if not exists last_condition_update jsonb,
   add column if not exists last_damage_update    jsonb;
 
-
 -- ===================== 0017_notifications.sql =====================
 -- ============================================================================
--- YARDAO â†’ Supabase  |  0017_notifications.sql
+-- YARDAO → Supabase  |  0017_notifications.sql
 -- Notifications + per-user notes/reminders + push (FCM) settings.
 --
 -- Models the Firestore surfaces ported in this slice:
---   * userNotes/{uid}/notes  â†’ public.user_notes          (per-user reminders)
---   * fcmTokens/{uid}        â†’ public.notification_settings (per-user push/FCM)
---   * (new) backend-pushed   â†’ public.user_notifications   (per-user notif rows)
+--   * userNotes/{uid}/notes  → public.user_notes          (per-user reminders)
+--   * fcmTokens/{uid}        → public.notification_settings (per-user push/FCM)
+--   * (new) backend-pushed   → public.user_notifications   (per-user notif rows)
 --
 -- Conventions match 0001/0002: snake_case columns, uuid PK, organization_id is
 -- the RLS tenant boundary, dates as date, timestamps as timestamptz, person
--- refs as uuid where they are real users. string-unions â†’ text + CHECK.
+-- refs as uuid where they are real users. string-unions → text + CHECK.
 -- vehicle refs are TEXT (registration string), matching the rest of the schema.
 -- ============================================================================
 
@@ -1251,7 +1245,7 @@ create policy user_notes_org_rw on public.user_notes
   with check (organization_id = public.auth_org_id());
 
 -- ============================================================================
--- notification_settings  (mirrors fcmTokens/{uid} â€” one row per user)
+-- notification_settings  (mirrors fcmTokens/{uid} — one row per user)
 --   * user_id     : token owner (Firestore keyed the doc by uid)
 --   * token       : FCM registration token
 --   * platform    : 'android' (only native Android registers today)
@@ -1284,7 +1278,7 @@ create policy notification_settings_org_rw on public.notification_settings
 --   Live surface: a bell/inbox can subscribe via Realtime. Generic shape so the
 --   sender can fan out service/MOT/delivery/note alerts as persisted rows.
 --   * type/title/message/priority mirror the in-app NotificationItem shape
---   * data : opaque payload â†’ jsonb
+--   * data : opaque payload → jsonb
 --   * read_at : null until the user reads it
 -- ============================================================================
 create table public.user_notifications (
@@ -1311,33 +1305,32 @@ create policy user_notifications_org_rw on public.user_notifications
   using (organization_id = public.auth_org_id())
   with check (organization_id = public.auth_org_id());
 
--- â”€â”€ Realtime â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── Realtime ─────────────────────────────────────────────────────────────────
 -- user_notifications has a live bell/inbox surface. user_notes is read via
 -- one-shot fetches in the ported code (no onSnapshot), so it is NOT published.
 alter publication supabase_realtime add table public.user_notifications;
 
-
 -- ===================== 0018_bodyshop.sql =====================
 -- ============================================================================
--- YARDAO â†’ Supabase  |  0018_bodyshop.sql
+-- YARDAO → Supabase  |  0018_bodyshop.sql
 -- Bodyshop kanban: jobs + per-job daily time entries.
 --
 -- Firestore shape ported here:
---   * collection `bodyshopJobs`            â†’ table public.bodyshop_jobs
---   * sub-collection `timeEntries` (per job) â†’ table public.bodyshop_time_entries
+--   * collection `bodyshopJobs`            → table public.bodyshop_jobs
+--   * sub-collection `timeEntries` (per job) → table public.bodyshop_time_entries
 --     (re-parented via job_id FK, with its own organization_id for RLS).
 --
 -- Conventions (see 0001):
 --   * snake_case columns; uuid PK; org-scoped via organization_id (RLS boundary).
---   * String-union TS types â†’ text + CHECK:
+--   * String-union TS types → text + CHECK:
 --       BodyshopStage  = 'queued' | 'prep' | 'paint' | 'finishing'
 --       BodyshopJob.status = 'open' | 'complete'
---   * Firestore "YYYY-MM-DD" string dates â†’ date; created/updated â†’ timestamptz.
+--   * Firestore "YYYY-MM-DD" string dates → date; created/updated → timestamptz.
 --   * Person refs (created_by / completed_by / logged_by) are TEXT: the app
 --     stores the raw Firebase uid string and can pass non-uuid actors.
 --   * vehicle_id is TEXT for parity (the job links an optional fleet vehicle id;
 --     stock integration passes it through unchanged to batchUseParts).
---   * Opaque arrays/objects the UI round-trips â†’ jsonb:
+--   * Opaque arrays/objects the UI round-trips → jsonb:
 --       stage_hours  (StageHours: { queued, prep, paint, finishing })
 --       damages      (DamageItem[])
 --       materials    (MaterialLine[])  on each time entry
@@ -1397,7 +1390,7 @@ create table public.bodyshop_time_entries (
 create index bodyshop_time_entries_org_idx on public.bodyshop_time_entries(organization_id);
 create index bodyshop_time_entries_job_idx on public.bodyshop_time_entries(job_id);
 
--- â”€â”€ RLS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── RLS ──────────────────────────────────────────────────────────────────────
 alter table public.bodyshop_jobs         enable row level security;
 alter table public.bodyshop_time_entries enable row level security;
 
@@ -1411,19 +1404,18 @@ create policy bodyshop_time_entries_org_rw on public.bodyshop_time_entries
   using (organization_id = public.auth_org_id())
   with check (organization_id = public.auth_org_id());
 
--- â”€â”€ Realtime â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── Realtime ─────────────────────────────────────────────────────────────────
 -- The kanban board subscribes to jobs for live updates. Time entries are read
 -- on-demand (per job, on modal open) and have no live surface, so only
 -- bodyshop_jobs is added to the realtime publication.
 alter publication supabase_realtime add table public.bodyshop_jobs;
 
-
 -- ===================== 0019_realtime_pub.sql =====================
 -- ============================================================================
--- YARDAO â†’ Supabase  |  0019_realtime_pub.sql
+-- YARDAO → Supabase  |  0019_realtime_pub.sql
 -- ----------------------------------------------------------------------------
 -- Adds the `customers` table to the supabase_realtime publication so the
--- useCustomers hook receives live INSERT/UPDATE/DELETE events â€” replacing the
+-- useCustomers hook receives live INSERT/UPDATE/DELETE events — replacing the
 -- Firestore onSnapshot it previously used (new customers created by the
 -- booking-save upsert must appear in autocomplete immediately).
 --
@@ -1437,16 +1429,15 @@ alter publication supabase_realtime add table public.bodyshop_jobs;
 
 alter publication supabase_realtime add table public.customers;
 
-
 -- ===================== 0020_deliveries.sql =====================
 -- ============================================================================
--- YARDAO â†’ Supabase  |  0020_deliveries.sql
+-- YARDAO → Supabase  |  0020_deliveries.sql
 -- deliveries_defleet  (for src/hooks/useDeliveriesDefleet.ts via
 -- DeliveriesDefleetContext).
 --
 -- Finding: despite the "defleet" name, this hook does NOT read defleeted
 -- vehicles. In the Firestore original it owns a dedicated `deliveriesDefleet`
--- collection â€” a standalone delivery/defleet planning log keyed by
+-- collection — a standalone delivery/defleet planning log keyed by
 -- organizationId, with its own create/update/delete CRUD. It is unrelated to
 -- the `vehicles.is_defleeted` lifecycle flag, so a dedicated table is required
 -- (there is no existing table that carries operationType / expectedArrival /
@@ -1494,7 +1485,7 @@ create index if not exists deliveries_defleet_org_date_idx
 create trigger deliveries_defleet_set_updated_at before update on public.deliveries_defleet
   for each row execute function public.set_updated_at();
 
--- â”€â”€ RLS: standard org-scoped read/write â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── RLS: standard org-scoped read/write ──────────────────────────────────────
 alter table public.deliveries_defleet enable row level security;
 
 create policy deliveries_defleet_org_rw on public.deliveries_defleet
@@ -1502,7 +1493,7 @@ create policy deliveries_defleet_org_rw on public.deliveries_defleet
   using (organization_id = public.auth_org_id())
   with check (organization_id = public.auth_org_id());
 
--- â”€â”€ Realtime: replaces the Firestore onSnapshot listener â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- ── Realtime: replaces the Firestore onSnapshot listener ─────────────────────
 alter publication supabase_realtime add table public.deliveries_defleet;
 
 -- ============================================================================
@@ -1521,10 +1512,9 @@ alter table public.checked_in_vehicles
   add column if not exists returned_from_garage_by  uuid,
   add column if not exists returned_from_garage_by_name text;
 
-
 -- ===================== 0021_fix_jwt_hook.sql =====================
 -- ============================================================================
--- 0021_fix_jwt_hook.sql â€” make the access-token hook actually populate claims.
+-- 0021_fix_jwt_hook.sql — make the access-token hook actually populate claims.
 --
 -- Two fixes:
 -- 1. The hook runs as `supabase_auth_admin`. profiles has RLS on, and no policy
@@ -1533,7 +1523,7 @@ alter table public.checked_in_vehicles
 --    requirement for access-token hooks that read app tables).
 -- 2. The app role must NOT overwrite the JWT `role` claim (PostgREST uses it to
 --    SET ROLE). Put it in a separate `user_role` claim, and read that in
---    auth_role(). Idempotent â€” safe to run on the already-applied database.
+--    auth_role(). Idempotent — safe to run on the already-applied database.
 -- ============================================================================
 
 -- 1. let the auth admin read profiles under RLS
@@ -1572,5 +1562,51 @@ $$;
 
 grant execute on function public.custom_access_token_hook(jsonb) to supabase_auth_admin;
 
+-- ===================== 0022_org_main_branch.sql =====================
+-- ============================================================================
+-- 0022_org_main_branch.sql — every new organization starts with one
+-- auto-created, renamable Main Branch (slug 'main', is_main = true).
+-- The branch selector shows the Main entry only when an is_main row exists, and
+-- checked-in vehicles are keyed by branch_id = 'main', so this makes the default
+-- branch a real, renamable row instead of a UI-only fallback.
+-- Idempotent (create or replace). Existing orgs are backfilled separately.
+-- ============================================================================
+create or replace function public.create_organization(p_name text, p_description text default null)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  v_uid uuid := auth.uid();
+  v_org uuid;
+begin
+  if v_uid is null then
+    raise exception 'not authenticated';
+  end if;
+
+  insert into public.organizations (name, description, created_by, member_count)
+  values (p_name, p_description, v_uid, 1)
+  returning id into v_org;
+
+  update public.profiles
+     set organization_id = v_org,
+         organization_name = p_name,
+         role = 'admin',
+         updated_at = now()
+   where id = v_uid;
+
+  insert into public.condition_categories (organization_id, name, sort_order, color, severity) values
+    (v_org, 'Excellent', 0, '#16a34a', 'excellent'),
+    (v_org, 'Good',      1, '#22c55e', 'good'),
+    (v_org, 'Fair',      2, '#eab308', 'fair'),
+    (v_org, 'Poor',      3, '#f97316', 'poor'),
+    (v_org, 'Critical',  4, '#ef4444', 'critical');
+
+  -- every org starts with one renamable Main Branch
+  insert into public.branches (organization_id, slug, name, is_main, is_active, created_by)
+  values (v_org, 'main', 'Main Branch', true, true, v_uid);
+
+  return v_org;
+end;
+$$;
+
+grant execute on function public.create_organization(text, text) to authenticated;
 
 COMMIT;
