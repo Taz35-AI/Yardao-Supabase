@@ -252,14 +252,15 @@ export function FleetDataProvider({ children }: { children: ReactNode }) {
         // Previously we fetched all for migration then discarded them and re-fetched
         // without defleeted via vehicleService.getVehicles(). Now we keep ALL vehicles
         // in state so the showDefleeted toggle in FleetFilters actually has data to show.
-        const { collection: col, query: q2, where: wh, getDocs: gd, orderBy: ob } = await import(
-          'firebase/firestore'
-        )
-        const { db: firedb } = await import('@/lib/firebase')
-        const allSnapshot = await gd(
-          q2(col(firedb, 'vehicles'), wh('organizationId', '==', organizationId), ob('createdAt', 'desc')),
-        )
-        const allVehicles = allSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Vehicle))
+        const { supabase } = await import('@/lib/supabaseClient')
+        const { toCamelList } = await import('@/lib/dbMap')
+        const { data: allRows, error: allErr } = await supabase
+          .from('vehicles')
+          .select('*')
+          .eq('organization_id', organizationId)
+          .order('created_at', { ascending: false })
+        if (allErr) throw allErr
+        const allVehicles = toCamelList<Vehicle>(allRows)
 
         // ── Contract badge colour: resolve from the live contracts list ──────
         // Each vehicle stores a denormalised `contractColor` copy that can be
