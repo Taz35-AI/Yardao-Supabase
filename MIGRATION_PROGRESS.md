@@ -133,11 +133,14 @@ Ported all inline-Firestore UI off Firebase: stock modals (AddPart/EditPart/Crea
 Admin user-creation stubbed via `supabase.functions.invoke('admin-create-user')` (Phase 5,
 service-role Edge Function — can't create users from the client).
 
-### Only 11 Firebase files left (all expected)
-- Phase 5: `usePushNotifications`, `useGroqAssistant`, `SpeechEnabledGroqAssistant`,
-  `VoiceCommandButton`, `PushDebugScreen`, `push-debug/page` (voice/Groq/FCM).
-- Final cleanup (when firebase dep is removed): `types/{yardLayout,transfer,hireHistory}.ts`
-  (only import the `Timestamp` *type*), `lib/firebase.ts`, `hooks/common/useFirestoreNetwork.ts`.
+### ✅ Firebase fully removed (step 1 done — app is 100% Supabase)
+- Ported the last Firestore reads (logged-in `/` home view; Zao/voice; push;
+  FleetDataContext defleet migration). `firebase` dependency dropped + `firebase.ts`
+  deleted. `tsc --noEmit` passes, no firebase imports remain, all routes serve 200.
+- `firebase/functions` callers → `supabase.functions.invoke(...)` **stubs** for
+  Phase 5 (not deployed yet): `vehicleLookup` (DVLA/MOT), `callGroq` (Zao),
+  `geocodeAddress` (maps), `transcribeAudio` (voice). These features no-op until
+  their Edge Functions exist.
 
 ### Core tables drafted (Firestore collection → Postgres table)
 organizations, userProfiles→`profiles`, organizationSettings→`organization_settings`,
