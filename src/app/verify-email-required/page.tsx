@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { supabase } from '@/lib/supabaseClient'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Mail, RefreshCw, LogOut, CheckCircle } from 'lucide-react'
@@ -34,10 +35,9 @@ export default function VerifyEmailRequiredPage() {
     // Set up polling to check verification status every 5 seconds
     const pollInterval = setInterval(async () => {
       try {
-        // Reload user to get fresh data from Firebase
-        await user.reload()
-        
-        if (user.emailVerified) {
+        // Refresh the session to pick up fresh email-verification status
+        const { data } = await supabase.auth.refreshSession()
+        if (data.user?.email_confirmed_at) {
           clearInterval(pollInterval)
           handleVerificationSuccess()
         }
@@ -98,8 +98,8 @@ export default function VerifyEmailRequiredPage() {
     if (!user) return
     
     try {
-      await user.reload()
-      if (user.emailVerified) {
+      const { data } = await supabase.auth.refreshSession()
+      if (data.user?.email_confirmed_at) {
         handleVerificationSuccess()
       } else {
         setError('Email not verified yet. Please check your inbox and click the verification link.')

@@ -46,8 +46,10 @@ create table public.organizations (
 create table public.profiles (
   id                    uuid primary key references auth.users(id) on delete cascade,
   organization_id       uuid references public.organizations(id) on delete set null,
+  organization_name     text,                  -- denormalised org name (UserProfile.organizationName)
   display_name          text,
   email                 text,
+  fcm_token             text,                  -- Capacitor push token (set on login)
   role                  text not null default 'member' check (role in ('admin','member','mechanic')),
   theme_preference      text not null default 'system' check (theme_preference in ('light','dark','system')),
   language_preference   text check (language_preference in ('en','ro','bg','pl')),
@@ -136,6 +138,7 @@ create table public.condition_categories (
   id              uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
   name            text not null,
+  sort_order      int  not null default 0,   -- maps to ConditionCategory.order (firestore.ts contract)
   is_default      boolean not null default false,
   color           text,
   severity        text check (severity in ('excellent','good','fair','poor','critical')),
@@ -283,6 +286,38 @@ create index civ_org_vehicle_idx    on public.checked_in_vehicles(organization_i
 -- yard occupancy lookups: which space is taken in a branch (replaces client-side filtering)
 create index civ_branch_space_idx   on public.checked_in_vehicles(branch_id, parking_space_id);
 create trigger civ_set_updated_at before update on public.checked_in_vehicles
+  for each row execute function public.set_updated_at();
+
+-- ============================================================================
+-- yard_vehicles  (legacy parallel check-in collection; kept for the
+-- yardVehicleService contract in firestore.ts. Mirrors the YardVehicle type.)
+-- ============================================================================
+create table public.yard_vehicles (
+  id               uuid primary key default gen_random_uuid(),
+  organization_id  uuid not null references public.organizations(id) on delete cascade,
+  vehicle_id       uuid references public.vehicles(id) on delete set null,
+  registration     text not null,
+  size             text,
+  mileage          text,
+  condition        text,
+  comments         text,
+  date_in          text,
+  status           text check (status in ('Ready','Pending checks','Repairs needed','Non-Starter')),
+  make             text,
+  model            text,
+  colour           text,
+  contract         text,
+  contract_color   text,
+  contract_id      uuid references public.contracts(id) on delete set null,
+  insurance_status text check (insurance_status in ('Insured','Not Insured')),
+  mot_expiry       date,
+  tax_expiry       date,
+  checked_in_by    uuid,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz
+);
+create index yard_vehicles_org_idx on public.yard_vehicles(organization_id);
+create trigger yard_vehicles_set_updated_at before update on public.yard_vehicles
   for each row execute function public.set_updated_at();
 
 -- ============================================================================

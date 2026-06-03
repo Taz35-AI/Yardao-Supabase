@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { UserProfile } from '@/types'
-import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth'
+import { supabase } from '@/lib/supabaseClient'
 import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
 
@@ -191,15 +191,20 @@ export function useProfileLogic() {
         return
       }
 
-      // Re-authenticate user
-      const credential = EmailAuthProvider.credential(
-        user.email!,
-        passwordData.currentPassword
-      )
-      await reauthenticateWithCredential(user, credential)
+      // Re-authenticate by verifying the current password (Supabase has no
+      // explicit reauthenticate; a successful sign-in confirms it).
+      const { error: reauthErr } = await supabase.auth.signInWithPassword({
+        email: user.email!,
+        password: passwordData.currentPassword,
+      })
+      if (reauthErr) {
+        setError(t('profile.msg.currentPwdIncorrect'))
+        return
+      }
 
       // Update password
-      await updatePassword(user, passwordData.newPassword)
+      const { error: pwErr } = await supabase.auth.updateUser({ password: passwordData.newPassword })
+      if (pwErr) throw pwErr
 
       setSuccess(t('profile.msg.pwdChanged'))
       setPasswordData({

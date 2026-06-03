@@ -42,8 +42,9 @@ keeping every function signature identical. Online-only. Fresh-start data.
 | Phase | State |
 |---|---|
 | 1. Scaffold isolated folder | ✅ done |
-| 2. Core schema + RLS draft | ✅ first pass (`supabase/migrations/0001`, `0002`) |
-| 3. Vertical slice (auth→org→vehicles→yard→realtime→Vercel+Capacitor) | ⏳ next |
+| 2. Core schema + RLS draft | ✅ first pass (`0001`, `0002`, `0003`) |
+| 3a. Auth + core data layer on Supabase (type-clean) | ✅ done |
+| 3b. Yard map + realtime wiring, Vercel + Capacitor verify | ⏳ needs live project |
 | 4. Remaining tables + service-layer port | ⬜ |
 | 5. Edge Functions (DVLA, bulk refresh, Groq, Resend) + pg_cron | ⬜ |
 | 6. RLS audit + realtime QA + cutover (on your go) | ⬜ |
@@ -60,6 +61,32 @@ keeping every function signature identical. Online-only. Fresh-start data.
 - `supabase/migrations/0001_core_schema.sql` — 18 core tables.
 - `supabase/migrations/0002_rls_policies.sql` — RLS, `auth_org_id()`,
   `custom_access_token_hook`, realtime publication.
+
+### Phase 3a — done (whole project type-checks clean: `npx tsc --noEmit` → 0)
+- `src/lib/dbMap.ts` — top-level snake↔camel mappers (jsonb values pass through).
+- `src/lib/firestore.ts` — **re-implemented against Supabase**, every export +
+  signature identical: `vehicleService`, `conditionService`, `contractService`,
+  `yardVehicleService`, `userProfileService`, `organizationService` + `Vehicle`
+  type. `getVehicles` now uses a SQL `WHERE` (was a client-side filter).
+- `src/contexts/AuthContext.tsx` — Supabase Auth, same `useAuth()` contract;
+  `user` is a Firebase-compatible shape (`uid/email/emailVerified/displayName`).
+- Ported the 3 screens that called Firebase-`User` methods to Supabase:
+  `verify-email-required` (`user.reload()` → `refreshSession()`),
+  `reset-password-required` + `useProfileLogic` (`updatePassword`/reauth →
+  `supabase.auth.updateUser` / sign-in re-auth).
+- `supabase/migrations/0003_auth_bootstrap.sql` — `handle_new_user` trigger
+  (auto-creates profile on signup) + `create_organization` SECURITY DEFINER RPC
+  (atomic org create + admin join + seed conditions, RLS-safe before claim).
+
+### Phase 3b — remaining for the runnable slice (needs live project)
+- Re-implement `enhancedVehicleService`, `vehicleParkingService`,
+  `yardLayoutService` against Supabase (yard map data + occupancy).
+- Replace Firestore `onSnapshot` in `FleetDataContext` / `YardDataContext` with
+  Supabase Realtime channels.
+- Add `vercel.json`, deploy, and verify in a Capacitor build.
+- ⚠️ Until the remaining services are ported, the app is split-brain (some paths
+  Supabase, some still Firestore) — don't run end-to-end until Phase 4 lands or
+  the slice's services are all swapped.
 
 ### Core tables drafted (Firestore collection → Postgres table)
 organizations, userProfiles→`profiles`, organizationSettings→`organization_settings`,

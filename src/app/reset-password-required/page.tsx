@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
-import { updatePassword } from 'firebase/auth'
+import { supabase } from '@/lib/supabaseClient'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -103,8 +103,9 @@ export default function ResetPasswordRequiredPage() {
 
     try {
       // Update password
-      await updatePassword(user, newPassword)
-      
+      const { error: pwErr } = await supabase.auth.updateUser({ password: newPassword })
+      if (pwErr) throw pwErr
+
       // Update user profile to remove password reset requirement
       await userProfileService.updateProfile(user.uid, {
         requiresPasswordReset: false

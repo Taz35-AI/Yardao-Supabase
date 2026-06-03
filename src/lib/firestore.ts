@@ -1,33 +1,28 @@
-// src/lib/firestore.ts - UPDATED: Complete version with ID-based vehicle relationships
-// ✅ FIXED: organizationService now initializes conditions atomically
-// ✅ ADDED: dateAcquired field support in Vehicle interface and service methods
-// ✅ ADDED: defleet fields support in Vehicle interface INCLUDING defleetDate
-// ✅ ADDED: settingsService export for supplier management
-import { 
-  collection, 
-  addDoc, 
-  getDocs, 
-  deleteDoc, 
-  doc, 
-  updateDoc,
-  query,
-  where,
-  orderBy,
-  getDoc,
-  setDoc 
-} from 'firebase/firestore'
-import { updatePassword, updateProfile } from 'firebase/auth'
-import { db } from './firebase'
+// src/lib/firestore.ts — SUPABASE re-implementation.
+//
+// ⚠️ Data-layer swap: the file name and every EXPORT below are kept identical to
+// the original Firestore version so the frontend imports nothing new. Only the
+// INTERNALS change — Firestore SDK calls become Supabase queries, with
+// snake↔camel mapping (see dbMap) so the returned objects match the TS
+// interfaces byte-for-byte. RLS scopes every query to the caller's org.
+//
+// Actively-consumed exports across the app: vehicleService, userProfileService,
+// organizationService, and the Vehicle type. conditionService/contractService/
+// yardVehicleService are retained for contract-compat (the app's live versions
+// live in @/lib/conditionService and @/lib/contractService).
+
+import { supabase } from './supabaseClient'
 import { UserProfile, Organization, VehicleStatus, isUserDeleted, Contract, InsuranceStatus, DefleetReason } from '@/types'
+import { toCamel, toCamelList, toSnake } from './dbMap'
 import { logger } from '@/lib/logger'
 
-// UPDATED: Vehicle interface with ID-based relationships + DEFLEET FIELDS INCLUDING defleetDate
+// Vehicle interface — unchanged from the Firestore version.
 export interface Vehicle {
   insurancePolicyId: null
   insurancePolicyName: null
   insurancePolicyExpiry: null
-  id?: string // Firestore document ID - primary key
-  registration: string // Still unique, but not primary lookup key
+  id?: string
+  registration: string
   make: string
   model: string
   colour: string
@@ -36,29 +31,25 @@ export interface Vehicle {
   taxExpiry: string
   comments: string
   condition: string
-  contract?: string | null // Contract field (display name)
-  contractColor?: string | null // Contract color field (denormalised copy)
-  contractId?: string | null // Stable link to the contract doc (source of truth)
-  insuranceStatus?: InsuranceStatus | null // Insurance Status field
-  dateAcquired?: string | null // ✅ ADDED: Date vehicle was acquired
+  contract?: string | null
+  contractColor?: string | null
+  contractId?: string | null
+  insuranceStatus?: InsuranceStatus | null
+  dateAcquired?: string | null
   createdAt: string
   organizationId: string
   createdBy: string
-  
-  // NEW: Current status tracking
   currentStatus?: 'in_fleet' | 'checked_in' | 'external_service' | 'sold' | 'scrapped' | 'defleeted'
-  currentLocation?: string // Branch ID where it's currently located
+  currentLocation?: string
   lastKnownLocation?: string
   updatedAt?: string
-  
-  // ✅ COMPLETE: Defleet tracking fields
-  isDefleeted?: boolean              // Quick filter flag
-  defleetDate?: string | null        // ✅ NEW: When it was defleeted (user-provided date) - YYYY-MM-DD format
-  defleetProcessedDate?: string      // When the defleet was processed in system (ISO timestamp)
-  defleetReason?: DefleetReason      // Why it was defleeted
-  defleetReasonDetails?: string      // Additional details/comments
-  defleetedBy?: string               // User ID who defleeted it
-  defleetedByName?: string           // User display name
+  isDefleeted?: boolean
+  defleetDate?: string | null
+  defleetProcessedDate?: string
+  defleetReason?: DefleetReason
+  defleetReasonDetails?: string
+  defleetedBy?: string
+  defleetedByName?: string
 }
 
 export interface ConditionCategory {
@@ -70,13 +61,9 @@ export interface ConditionCategory {
   severity: 'excellent' | 'good' | 'fair' | 'poor' | 'critical'
 }
 
-// UPDATED: YardVehicle interface with ID-based relationships
 export interface YardVehicle {
   id?: string
-  
-  // NEW: ID-based relationship to fleet inventory
-  vehicleId?: string | null // Reference to the vehicle in fleet inventory
-  
+  vehicleId?: string | null
   registration: string
   size: string
   mileage: string
@@ -90,115 +77,98 @@ export interface YardVehicle {
   make?: string
   model?: string
   colour?: string
-  contract?: string | null // Contract field (display name)
-  contractColor?: string | null // Contract color field (denormalised copy)
-  contractId?: string | null // Stable link to the contract doc (source of truth)
-  insuranceStatus?: InsuranceStatus | null // Insurance Status field
+  contract?: string | null
+  contractColor?: string | null
+  contractId?: string | null
+  insuranceStatus?: InsuranceStatus | null
   motExpiry?: string
   taxExpiry?: string
 }
 
-const VEHICLES_COLLECTION = 'vehicles'
-const CONDITIONS_COLLECTION = 'conditionCategories'
-const CONTRACTS_COLLECTION = 'contracts'
-const YARD_VEHICLES_COLLECTION = 'yardVehicles'
-const USER_PROFILES_COLLECTION = 'userProfiles'
-const ORGANIZATIONS_COLLECTION = 'organizations'
+const VEHICLES = 'vehicles'
+const CONDITIONS = 'condition_categories'
+const CONTRACTS = 'contracts'
+const YARD_VEHICLES = 'yard_vehicles'
+const PROFILES = 'profiles'
+const ORGANIZATIONS = 'organizations'
 
-// UPDATED: Vehicle service with ID-based lookup helper
+// ── vehicleService ───────────────────────────────────────────────────────────
 export const vehicleService = {
   async addVehicle(vehicle: Omit<Vehicle, 'id' | 'createdAt'>) {
-    const vehicleData = {
-      ...vehicle,
-      createdAt: new Date().toISOString(),
-      currentStatus: 'in_fleet' as const,
-      dateAcquired: vehicle.dateAcquired || null // ✅ ADDED: Preserve dateAcquired
+    const row = {
+      ...toSnake(vehicle),
+      current_status: 'in_fleet',
+      date_acquired: vehicle.dateAcquired ?? null,
     }
-    const docRef = await addDoc(collection(db, VEHICLES_COLLECTION), vehicleData)
-    return { id: docRef.id, ...vehicleData }
+    const { data, error } = await supabase.from(VEHICLES).insert(row).select().single()
+    if (error) throw error
+    return toCamel<Vehicle>(data) as Vehicle
   },
 
   async getVehicles(organizationId: string): Promise<Vehicle[]> {
-  const q = query(
-    collection(db, VEHICLES_COLLECTION),
-    where('organizationId', '==', organizationId),
-    orderBy('createdAt', 'desc')
-  )
-  const querySnapshot = await getDocs(q)
-  return querySnapshot.docs
-    .map(doc => ({ id: doc.id, ...doc.data() } as Vehicle))
-    .filter(vehicle => vehicle.isDefleeted !== true && vehicle.currentStatus !== 'defleeted')
-},
+    const { data, error } = await supabase
+      .from(VEHICLES)
+      .select('*')
+      .eq('organization_id', organizationId)
+      .neq('is_defleeted', true)                 // SQL WHERE replaces client-side filter
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    // null-safe currentStatus guard (matches original semantics exactly)
+    return toCamelList<Vehicle>(data).filter((v) => v.currentStatus !== 'defleeted')
+  },
 
-  // NEW: Get vehicle by document ID (fastest lookup)
   async getVehicleById(vehicleId: string): Promise<Vehicle | null> {
     try {
-      const docRef = doc(db, VEHICLES_COLLECTION, vehicleId)
-      const docSnap = await getDoc(docRef)
-      
-      if (docSnap.exists()) {
-        return { id: docSnap.id, ...docSnap.data() } as Vehicle
-      }
-      return null
+      const { data, error } = await supabase.from(VEHICLES).select('*').eq('id', vehicleId).maybeSingle()
+      if (error) throw error
+      return toCamel<Vehicle>(data)
     } catch (error) {
       logger.error('Error fetching vehicle by ID:', error)
       return null
     }
   },
 
-  // NEW: Get vehicle by registration (fallback for legacy support)
   async getVehicleByRegistration(organizationId: string, registration: string): Promise<Vehicle | null> {
     try {
       const cleanReg = registration.trim().toUpperCase().replace(/\s+/g, '')
-      const q = query(
-        collection(db, VEHICLES_COLLECTION),
-        where('organizationId', '==', organizationId),
-        where('registration', '==', cleanReg)
-      )
-      const querySnapshot = await getDocs(q)
-      
-      if (!querySnapshot.empty) {
-        const doc = querySnapshot.docs[0]
-        return { id: doc.id, ...doc.data() } as Vehicle
-      }
-      return null
+      const { data, error } = await supabase
+        .from(VEHICLES)
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('registration', cleanReg)
+        .limit(1)
+        .maybeSingle()
+      if (error) throw error
+      return toCamel<Vehicle>(data)
     } catch (error) {
       logger.error('Error fetching vehicle by registration:', error)
       return null
     }
   },
 
-  // NEW: Search vehicles for check-in form
   async searchVehiclesForCheckIn(organizationId: string, searchTerm: string = ''): Promise<Vehicle[]> {
     try {
-      // Get all vehicles for the organization
-      const q = query(
-        collection(db, VEHICLES_COLLECTION),
-        where('organizationId', '==', organizationId),
-        orderBy('registration', 'asc')
-      )
-      const querySnapshot = await getDocs(q)
-      
-      let vehicles = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Vehicle))
-
-      // Filter by search term if provided
+      const { data, error } = await supabase
+        .from(VEHICLES)
+        .select('*')
+        .eq('organization_id', organizationId)
+        .order('registration', { ascending: true })
+      if (error) throw error
+      let vehicles = toCamelList<Vehicle>(data)
       if (searchTerm.trim()) {
         const term = searchTerm.toLowerCase().trim()
-        vehicles = vehicles.filter(vehicle => {
+        vehicles = vehicles.filter((vehicle) => {
           const registration = vehicle.registration?.toLowerCase() || ''
           const make = vehicle.make?.toLowerCase() || ''
           const model = vehicle.model?.toLowerCase() || ''
-          
-          return registration.includes(term) || 
-                 make.includes(term) || 
-                 model.includes(term) ||
-                 `${make} ${model}`.includes(term)
+          return (
+            registration.includes(term) ||
+            make.includes(term) ||
+            model.includes(term) ||
+            `${make} ${model}`.includes(term)
+          )
         })
       }
-
       return vehicles
     } catch (error) {
       logger.error('Error searching vehicles:', error)
@@ -207,318 +177,238 @@ export const vehicleService = {
   },
 
   async updateVehicle(vehicleId: string, updates: Partial<Omit<Vehicle, 'id' | 'createdAt'>>) {
-    const cleaned: any = Object.fromEntries(
-      Object.entries(updates).filter(([, v]) => v !== undefined)
-    )
+    const cleaned: any = { ...updates }
     if (cleaned.damagePins) {
       cleaned.damagePins = cleaned.damagePins.map((pin: any) =>
         Object.fromEntries(Object.entries(pin).filter(([, v]) => v !== undefined))
       )
     }
-    await updateDoc(doc(db, VEHICLES_COLLECTION, vehicleId), {
-      ...cleaned,
-      updatedAt: new Date().toISOString()
-    })
+    const { error } = await supabase.from(VEHICLES).update(toSnake(cleaned)).eq('id', vehicleId)
+    if (error) throw error
   },
 
-  // NEW: Update vehicle status (e.g., when checked in/out)
   async updateVehicleStatus(
-    vehicleId: string, 
+    vehicleId: string,
     status: 'in_fleet' | 'checked_in' | 'external_service' | 'sold' | 'scrapped' | 'defleeted',
     location?: string
   ) {
-    const updates: Partial<Vehicle> = {
-      currentStatus: status,
-      updatedAt: new Date().toISOString()
-    }
-
+    const updates: Record<string, any> = { current_status: status }
     if (location) {
-      updates.currentLocation = location
-      updates.lastKnownLocation = location
+      updates.current_location = location
+      updates.last_known_location = location
     }
-
-    await updateDoc(doc(db, VEHICLES_COLLECTION, vehicleId), updates)
+    const { error } = await supabase.from(VEHICLES).update(updates).eq('id', vehicleId)
+    if (error) throw error
   },
 
   async deleteVehicle(vehicleId: string) {
-    await deleteDoc(doc(db, VEHICLES_COLLECTION, vehicleId))
+    const { error } = await supabase.from(VEHICLES).delete().eq('id', vehicleId)
+    if (error) throw error
   },
 
   async clearAllVehicles(organizationId: string) {
-    const q = query(
-      collection(db, VEHICLES_COLLECTION),
-      where('organizationId', '==', organizationId)
-    )
-    const querySnapshot = await getDocs(q)
-    const deletePromises = querySnapshot.docs.map(doc => deleteDoc(doc.ref))
-    await Promise.all(deletePromises)
+    const { error } = await supabase.from(VEHICLES).delete().eq('organization_id', organizationId)
+    if (error) throw error
   },
 
   async bulkAddVehicles(vehicles: Omit<Vehicle, 'id' | 'createdAt'>[]) {
-    const addPromises = vehicles.map(vehicle => this.addVehicle(vehicle))
+    const addPromises = vehicles.map((vehicle) => this.addVehicle(vehicle))
     return Promise.all(addPromises)
-  }
+  },
+}
+
+// ── conditionService (order ↔ sort_order) ────────────────────────────────────
+const rowToCondition = (row: any): ConditionCategory => {
+  const c = toCamel<any>(row)!
+  return { ...c, order: c.sortOrder ?? 0 } as ConditionCategory
+}
+const conditionToRow = (c: Partial<ConditionCategory>) => {
+  const { order, ...rest } = c as any
+  const row = toSnake(rest)
+  if (order !== undefined) row.sort_order = order
+  return row
 }
 
 export const conditionService = {
   async getConditions(organizationId: string): Promise<ConditionCategory[]> {
-    const q = query(
-      collection(db, CONDITIONS_COLLECTION),
-      where('organizationId', '==', organizationId),
-      orderBy('order', 'asc')
-    )
-    const querySnapshot = await getDocs(q)
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as ConditionCategory))
+    const { data, error } = await supabase
+      .from(CONDITIONS)
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('sort_order', { ascending: true })
+    if (error) throw error
+    return (data ?? []).map(rowToCondition)
   },
 
   async addCondition(condition: Omit<ConditionCategory, 'id'>) {
-    const docRef = await addDoc(collection(db, CONDITIONS_COLLECTION), condition)
-    return { id: docRef.id, ...condition }
+    const { data, error } = await supabase.from(CONDITIONS).insert(conditionToRow(condition)).select().single()
+    if (error) throw error
+    return rowToCondition(data)
   },
 
   async updateCondition(conditionId: string, updates: Partial<Omit<ConditionCategory, 'id'>> | string) {
-    const updateData = typeof updates === 'string' 
-      ? { name: updates }
-      : updates
-    
-    await updateDoc(doc(db, CONDITIONS_COLLECTION, conditionId), updateData)
+    const updateData = typeof updates === 'string' ? { name: updates } : conditionToRow(updates)
+    const { error } = await supabase.from(CONDITIONS).update(updateData).eq('id', conditionId)
+    if (error) throw error
   },
 
   async deleteCondition(conditionId: string) {
-    await deleteDoc(doc(db, CONDITIONS_COLLECTION, conditionId))
+    const { error } = await supabase.from(CONDITIONS).delete().eq('id', conditionId)
+    if (error) throw error
   },
 
   async initializeDefaultConditions(organizationId: string): Promise<ConditionCategory[]> {
-    const defaultConditions = [
-      {
-        name: 'Excellent',
-        order: 0,
-        color: '#16a34a',
-        severity: 'excellent' as const,
-        organizationId
-      },
-      {
-        name: 'Good', 
-        order: 1,
-        color: '#22c55e',
-        severity: 'good' as const,
-        organizationId
-      },
-      {
-        name: 'Fair',
-        order: 2, 
-        color: '#eab308',
-        severity: 'fair' as const,
-        organizationId
-      },
-      {
-        name: 'Poor',
-        order: 3,
-        color: '#f97316', 
-        severity: 'poor' as const,
-        organizationId
-      },
-      {
-        name: 'Critical',
-        order: 4,
-        color: '#ef4444',
-        severity: 'critical' as const,
-        organizationId
-      }
+    const defaults = [
+      { name: 'Excellent', order: 0, color: '#16a34a', severity: 'excellent' as const, organizationId },
+      { name: 'Good', order: 1, color: '#22c55e', severity: 'good' as const, organizationId },
+      { name: 'Fair', order: 2, color: '#eab308', severity: 'fair' as const, organizationId },
+      { name: 'Poor', order: 3, color: '#f97316', severity: 'poor' as const, organizationId },
+      { name: 'Critical', order: 4, color: '#ef4444', severity: 'critical' as const, organizationId },
     ]
-
-    const addPromises = defaultConditions.map(condition => this.addCondition(condition))
-    return await Promise.all(addPromises)
-  }
+    const { data, error } = await supabase.from(CONDITIONS).insert(defaults.map(conditionToRow)).select()
+    if (error) throw error
+    return (data ?? []).map(rowToCondition)
+  },
 }
 
-// Contract Service
+// ── contractService ──────────────────────────────────────────────────────────
 export const contractService = {
   async getContracts(organizationId: string): Promise<Contract[]> {
-    const q = query(
-      collection(db, CONTRACTS_COLLECTION),
-      where('organizationId', '==', organizationId),
-      orderBy('name', 'asc')
-    )
-    const querySnapshot = await getDocs(q)
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as Contract))
+    const { data, error } = await supabase
+      .from(CONTRACTS)
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('name', { ascending: true })
+    if (error) throw error
+    return toCamelList<Contract>(data)
   },
 
   async addContract(contract: Omit<Contract, 'id'>) {
-    const docRef = await addDoc(collection(db, CONTRACTS_COLLECTION), contract)
-    return { id: docRef.id, ...contract }
+    const { data, error } = await supabase.from(CONTRACTS).insert(toSnake(contract)).select().single()
+    if (error) throw error
+    return toCamel<Contract>(data) as Contract
   },
 
   async updateContract(contractId: string, updates: Partial<Omit<Contract, 'id'>>) {
-    await updateDoc(doc(db, CONTRACTS_COLLECTION, contractId), {
-      ...updates,
-      updatedAt: new Date().toISOString()
-    })
+    const { error } = await supabase.from(CONTRACTS).update(toSnake(updates)).eq('id', contractId)
+    if (error) throw error
   },
 
   async deleteContract(contractId: string) {
-    await deleteDoc(doc(db, CONTRACTS_COLLECTION, contractId))
-  }
+    const { error } = await supabase.from(CONTRACTS).delete().eq('id', contractId)
+    if (error) throw error
+  },
 }
 
-// UPDATED: Yard vehicle service with ID-based relationships
+// ── yardVehicleService ───────────────────────────────────────────────────────
 export const yardVehicleService = {
   async addYardVehicle(vehicle: Omit<YardVehicle, 'id' | 'createdAt'>) {
-    const vehicleData = {
-      ...vehicle,
-      createdAt: new Date().toISOString()
-    }
-    
-    // If vehicleId is provided, update fleet status
     if (vehicle.vehicleId) {
       try {
-        await vehicleService.updateVehicleStatus(
-          vehicle.vehicleId, 
-          'checked_in',
-          vehicle.organizationId // Use organizationId as location for now
-        )
+        await vehicleService.updateVehicleStatus(vehicle.vehicleId, 'checked_in', vehicle.organizationId)
       } catch (error) {
         logger.error('Failed to update fleet vehicle status:', error)
-        // Continue with yard check-in even if fleet update fails
       }
     }
-    
-    const docRef = await addDoc(collection(db, YARD_VEHICLES_COLLECTION), vehicleData)
-    return { id: docRef.id, ...vehicleData }
+    const { data, error } = await supabase.from(YARD_VEHICLES).insert(toSnake(vehicle)).select().single()
+    if (error) throw error
+    return toCamel<YardVehicle>(data) as YardVehicle
   },
 
   async getYardVehicles(organizationId: string): Promise<YardVehicle[]> {
-    const q = query(
-      collection(db, YARD_VEHICLES_COLLECTION),
-      where('organizationId', '==', organizationId),
-      orderBy('createdAt', 'desc')
-    )
-    const querySnapshot = await getDocs(q)
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as YardVehicle))
+    const { data, error } = await supabase
+      .from(YARD_VEHICLES)
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    return toCamelList<YardVehicle>(data)
   },
 
   async updateYardVehicle(vehicleId: string, updates: Partial<YardVehicle>) {
-    await updateDoc(doc(db, YARD_VEHICLES_COLLECTION, vehicleId), {
-      ...updates,
-      updatedAt: new Date().toISOString()
-    })
+    const { error } = await supabase.from(YARD_VEHICLES).update(toSnake(updates)).eq('id', vehicleId)
+    if (error) throw error
   },
 
   async deleteYardVehicle(vehicleId: string) {
-    // Get the yard vehicle first to check if it has a fleet reference
-    const docRef = doc(db, YARD_VEHICLES_COLLECTION, vehicleId)
-    const docSnap = await getDoc(docRef)
-    
-    if (docSnap.exists()) {
-      const yardVehicle = docSnap.data() as YardVehicle
-      
-      // If it references a fleet vehicle, update the fleet status back to 'in_fleet'
-      if (yardVehicle.vehicleId) {
-        try {
-          await vehicleService.updateVehicleStatus(yardVehicle.vehicleId, 'in_fleet')
-        } catch (error) {
-          logger.error('Failed to update fleet vehicle status on checkout:', error)
-          // Continue with yard checkout even if fleet update fails
-        }
+    const { data } = await supabase.from(YARD_VEHICLES).select('vehicle_id').eq('id', vehicleId).maybeSingle()
+    if (data?.vehicle_id) {
+      try {
+        await vehicleService.updateVehicleStatus(data.vehicle_id, 'in_fleet')
+      } catch (error) {
+        logger.error('Failed to update fleet vehicle status on checkout:', error)
       }
     }
-    
-    await deleteDoc(docRef)
+    const { error } = await supabase.from(YARD_VEHICLES).delete().eq('id', vehicleId)
+    if (error) throw error
   },
 
   async clearAllYardVehicles(organizationId: string) {
-    const q = query(
-      collection(db, YARD_VEHICLES_COLLECTION),
-      where('organizationId', '==', organizationId)
-    )
-    const querySnapshot = await getDocs(q)
-    const deletePromises = querySnapshot.docs.map(doc => deleteDoc(doc.ref))
-    await Promise.all(deletePromises)
-  }
+    const { error } = await supabase.from(YARD_VEHICLES).delete().eq('organization_id', organizationId)
+    if (error) throw error
+  },
 }
 
-// ENHANCED userProfileService with proper typing and additional methods
+// ── userProfileService ───────────────────────────────────────────────────────
+// profiles.id IS the auth user uuid; UserProfile exposes both `id` and `uid`.
+const rowToProfile = (row: any): UserProfile | null => {
+  if (!row) return null
+  const p = toCamel<any>(row)!
+  return {
+    ...p,
+    uid: p.id,
+    isActive: p.isActive !== undefined && p.isActive !== null ? p.isActive : true,
+    isDeleted: p.isDeleted !== undefined && p.isDeleted !== null ? p.isDeleted : false,
+  } as UserProfile
+}
+
 export const userProfileService = {
   async createProfile(profile: Omit<UserProfile, 'id' | 'createdAt' | 'updatedAt'>) {
-    const profileData: UserProfile = {
-      ...profile,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      // Ensure proper defaults for new properties
-      isActive: profile.isActive !== undefined ? profile.isActive : true,
-      isDeleted: profile.isDeleted !== undefined ? profile.isDeleted : false
-    }
-    await setDoc(doc(db, USER_PROFILES_COLLECTION, profile.uid), profileData)
-    return { id: profile.uid, ...profileData }
+    const { uid, ...rest } = profile as any
+    const row: Record<string, any> = { ...toSnake(rest), id: uid }
+    if (row.is_active === undefined) row.is_active = true
+    if (row.is_deleted === undefined) row.is_deleted = false
+    const { data, error } = await supabase.from(PROFILES).upsert(row).select().single()
+    if (error) throw error
+    return rowToProfile(data) as UserProfile
   },
 
   async getProfile(uid: string): Promise<UserProfile | null> {
-    const docRef = doc(db, USER_PROFILES_COLLECTION, uid)
-    const docSnap = await getDoc(docRef)
-    
-    if (docSnap.exists()) {
-      const data = docSnap.data() as UserProfile
-      
-      // Ensure backwards compatibility for missing properties
-      return { 
-        id: docSnap.id, 
-        ...data,
-        isActive: data.isActive !== undefined ? data.isActive : true,
-        isDeleted: data.isDeleted !== undefined ? data.isDeleted : false
-      }
-    }
-    return null
+    const { data, error } = await supabase.from(PROFILES).select('*').eq('id', uid).maybeSingle()
+    if (error) throw error
+    return rowToProfile(data)
   },
 
   async updateProfile(uid: string, updates: Partial<Omit<UserProfile, 'id' | 'uid' | 'createdAt'>>) {
-    await updateDoc(doc(db, USER_PROFILES_COLLECTION, uid), {
-      ...updates,
-      updatedAt: new Date().toISOString()
-    })
+    const { error } = await supabase.from(PROFILES).update(toSnake(updates)).eq('id', uid)
+    if (error) throw error
   },
 
   async updateLastLogin(uid: string): Promise<void> {
     try {
-      await updateDoc(doc(db, USER_PROFILES_COLLECTION, uid), {
-        lastLoginAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      })
+      const { error } = await supabase
+        .from(PROFILES)
+        .update({ last_login_at: new Date().toISOString() })
+        .eq('id', uid)
+      if (error) throw error
     } catch (error) {
       logger.error('Error updating last login:', error)
     }
   },
 
   async getUsersByOrganization(organizationId: string): Promise<UserProfile[]> {
-    const q = query(
-      collection(db, USER_PROFILES_COLLECTION),
-      where('organizationId', '==', organizationId),
-      orderBy('createdAt', 'desc')
-    )
-    const querySnapshot = await getDocs(q)
-    return querySnapshot.docs.map(doc => {
-      const data = doc.data() as UserProfile
-      
-      return {
-        id: doc.id,
-        ...data,
-        isActive: data.isActive !== undefined ? data.isActive : true,
-        isDeleted: data.isDeleted !== undefined ? data.isDeleted : false
-      }
-    })
+    const { data, error } = await supabase
+      .from(PROFILES)
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    return (data ?? []).map(rowToProfile) as UserProfile[]
   },
 
   async getActiveUsersByOrganization(organizationId: string): Promise<UserProfile[]> {
     const allUsers = await this.getUsersByOrganization(organizationId)
-    return allUsers.filter(user => !isUserDeleted(user))
+    return allUsers.filter((user) => !isUserDeleted(user))
   },
 
   async softDeleteUser(uid: string, deletedBy: string): Promise<void> {
@@ -526,7 +416,7 @@ export const userProfileService = {
       isActive: false,
       isDeleted: true,
       deletedAt: new Date().toISOString(),
-      deletedBy
+      deletedBy,
     })
   },
 
@@ -535,29 +425,22 @@ export const userProfileService = {
       isActive: true,
       isDeleted: false,
       deletedAt: undefined,
-      deletedBy: undefined
+      deletedBy: undefined,
     })
   },
 
   async toggleUserStatus(uid: string): Promise<boolean> {
     const profile = await this.getProfile(uid)
-    if (!profile) {
-      throw new Error('User profile not found')
-    }
-
+    if (!profile) throw new Error('User profile not found')
     const newStatus = !profile.isActive
-    await this.updateProfile(uid, {
-      isActive: newStatus
-    })
-
+    await this.updateProfile(uid, { isActive: newStatus })
     return newStatus
   },
 
   async isUserActiveAndExists(uid: string): Promise<boolean> {
     const profile = await this.getProfile(uid)
     if (!profile) return false
-    
-    return !isUserDeleted(profile) && (profile.isActive !== false)
+    return !isUserDeleted(profile) && profile.isActive !== false
   },
 
   async getUserCountByOrganization(organizationId: string): Promise<number> {
@@ -567,134 +450,90 @@ export const userProfileService = {
 
   async searchUsers(organizationId: string, searchTerm: string): Promise<UserProfile[]> {
     const allUsers = await this.getActiveUsersByOrganization(organizationId)
-    
-    if (!searchTerm.trim()) {
-      return allUsers
-    }
-
+    if (!searchTerm.trim()) return allUsers
     const term = searchTerm.toLowerCase().trim()
-    return allUsers.filter(user => 
-      user.displayName.toLowerCase().includes(term) ||
-      user.email.toLowerCase().includes(term)
+    return allUsers.filter(
+      (user) => user.displayName.toLowerCase().includes(term) || user.email.toLowerCase().includes(term)
     )
   },
 
   async getRecentlyCreatedUsers(organizationId: string, days: number = 7): Promise<UserProfile[]> {
     const cutoffDate = new Date()
     cutoffDate.setDate(cutoffDate.getDate() - days)
-    
     const allUsers = await this.getActiveUsersByOrganization(organizationId)
-    
-    return allUsers.filter(user => {
-      const createdAt = new Date(user.createdAt)
-      return createdAt >= cutoffDate
-    }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    return allUsers
+      .filter((user) => new Date(user.createdAt) >= cutoffDate)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   },
 
-  async updateUserPassword(user: any, newPassword: string) {
-    await updatePassword(user, newPassword)
+  async updateUserPassword(_user: any, newPassword: string) {
+    const { error } = await supabase.auth.updateUser({ password: newPassword })
+    if (error) throw error
   },
 
   async updateUserDisplayName(user: any, displayName: string) {
-    await updateProfile(user, { displayName })
-  }
+    const { error } = await supabase.auth.updateUser({ data: { displayName } })
+    if (error) throw error
+    const uid = user?.id ?? user?.uid
+    if (uid) await supabase.from(PROFILES).update({ display_name: displayName }).eq('id', uid)
+  },
 }
 
-// ✅ FIXED: organizationService now initializes conditions atomically
+// ── organizationService ──────────────────────────────────────────────────────
+// createOrganization delegates to a SECURITY DEFINER RPC (migration 0003): it
+// creates the org, joins the caller as admin, and seeds default conditions
+// atomically — necessary because a just-signed-up user has no org_id JWT claim
+// yet, so a direct client INSERT would be blocked by RLS.
 export const organizationService = {
-  /**
-   * ✅ FIXED: Create organization AND initialize default conditions atomically
-   */
   async createOrganization(
     organization: Omit<Organization, 'id' | 'createdAt' | 'updatedAt' | 'memberCount'>
   ): Promise<Organization> {
     logger.log('🏢 Creating organization:', organization.name)
-    
-    try {
-      // Step 1: Create organization
-      const organizationData = {
-        ...organization,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        memberCount: 1
-      }
-      
-      const docRef = await addDoc(collection(db, ORGANIZATIONS_COLLECTION), organizationData)
-      const orgId = docRef.id
-      
-      logger.log(`✅ Organization created with ID: ${orgId}`)
-      
-      // Step 2: ✅ CRITICAL FIX - Initialize default conditions IMMEDIATELY
-      logger.log('🎨 Initializing default conditions for new organization...')
-      try {
-        await conditionService.initializeDefaultConditions(orgId)
-        logger.log('✅ Default conditions initialized')
-      } catch (error) {
-        logger.error('❌ Failed to initialize conditions:', error)
-        // Rollback: Delete the organization if condition creation fails
-        await deleteDoc(docRef)
-        throw new Error('Failed to initialize organization conditions')
-      }
-      
-      return { 
-        id: orgId, 
-        ...organizationData 
-      }
-    } catch (error) {
+    const { data: orgId, error } = await supabase.rpc('create_organization', {
+      p_name: organization.name,
+      p_description: organization.description ?? null,
+    })
+    if (error) {
       logger.error('❌ Failed to create organization:', error)
       throw new Error('Failed to create organization')
     }
+    // Re-issue the JWT so it carries the new org_id claim (set by the hook from
+    // the now-updated profile); without this, the RLS-scoped read below is empty.
+    await supabase.auth.refreshSession()
+    const created = await this.getOrganization(orgId as string)
+    if (!created) throw new Error('Failed to create organization')
+    return created
   },
 
   async getOrganization(organizationId: string): Promise<Organization | null> {
-    const docRef = doc(db, ORGANIZATIONS_COLLECTION, organizationId)
-    const docSnap = await getDoc(docRef)
-    
-    if (docSnap.exists()) {
-      return { id: docSnap.id, ...docSnap.data() } as Organization
-    }
-    return null
+    const { data, error } = await supabase.from(ORGANIZATIONS).select('*').eq('id', organizationId).maybeSingle()
+    if (error) throw error
+    return toCamel<Organization>(data)
   },
 
   async getOrganizationByName(name: string): Promise<Organization | null> {
-    const q = query(
-      collection(db, ORGANIZATIONS_COLLECTION),
-      where('name', '==', name)
-    )
-    const querySnapshot = await getDocs(q)
-    
-    if (!querySnapshot.empty) {
-      const doc = querySnapshot.docs[0]
-      return { id: doc.id, ...doc.data() } as Organization
-    }
-    return null
+    const { data, error } = await supabase.from(ORGANIZATIONS).select('*').eq('name', name).limit(1).maybeSingle()
+    if (error) throw error
+    return toCamel<Organization>(data)
   },
 
   async updateOrganization(organizationId: string, updates: Partial<Omit<Organization, 'id' | 'createdAt'>>) {
-    await updateDoc(doc(db, ORGANIZATIONS_COLLECTION, organizationId), {
-      ...updates,
-      updatedAt: new Date().toISOString()
-    })
+    const { error } = await supabase.from(ORGANIZATIONS).update(toSnake(updates)).eq('id', organizationId)
+    if (error) throw error
   },
 
   async incrementMemberCount(organizationId: string) {
     const org = await this.getOrganization(organizationId)
-    if (org) {
-      await this.updateOrganization(organizationId, {
-        memberCount: (org.memberCount || 0) + 1
-      })
-    }
+    if (org) await this.updateOrganization(organizationId, { memberCount: (org.memberCount || 0) + 1 })
   },
 
   async decrementMemberCount(organizationId: string) {
     const org = await this.getOrganization(organizationId)
     if (org && org.memberCount && org.memberCount > 0) {
-      await this.updateOrganization(organizationId, {
-        memberCount: org.memberCount - 1
-      })
+      await this.updateOrganization(organizationId, { memberCount: org.memberCount - 1 })
     }
-  }
+  },
 }
 
-// ✅ NEW: Export settingsService for supplier management
+// ✅ Re-export settingsService (ported to Supabase in Phase 4)
 export { settingsService } from '@/lib/services/settingsService'

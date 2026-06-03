@@ -65,6 +65,7 @@ alter table public.condition_categories   enable row level security;
 alter table public.external_garages       enable row level security;
 alter table public.vehicles               enable row level security;
 alter table public.checked_in_vehicles    enable row level security;
+alter table public.yard_vehicles          enable row level security;
 alter table public.yard_layouts           enable row level security;
 alter table public.customers              enable row level security;
 alter table public.service_bookings       enable row level security;
@@ -106,7 +107,7 @@ declare t text;
 begin
   foreach t in array array[
     'organization_settings','branches','contracts','condition_categories',
-    'external_garages','vehicles','checked_in_vehicles','yard_layouts',
+    'external_garages','vehicles','checked_in_vehicles','yard_vehicles','yard_layouts',
     'customers','service_bookings','stock_parts','part_usage',
     'order_history','stock_adjustments','invoices','checkout_history'
   ]

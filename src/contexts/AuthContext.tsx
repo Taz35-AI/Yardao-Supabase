@@ -1,46 +1,57 @@
-// src/contexts/AuthContext.tsx - Fixed logout redirect handling
+// src/contexts/AuthContext.tsx — SUPABASE auth (drop-in replacement).
+// Public contract (useAuth) is unchanged: { user, loading, signUp, signIn,
+// logout, resetPassword, sendVerificationEmail, profile, profileLoading,
+// profileError, refreshProfile }. `user` is a Firebase-User-compatible shape
+// (uid/email/emailVerified/displayName) so consumers like
+// `const user = (await signIn(...)).user; user.uid` keep working unchanged.
 'use client'
 
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
-import { 
-  User,
-  onAuthStateChanged,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut,
-  sendPasswordResetEmail,
-  sendEmailVerification,
-  UserCredential
-} from 'firebase/auth'
-import { auth } from '@/lib/firebase'
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
+import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabaseClient'
 import { userProfileService } from '@/lib/firestore'
 import { PushNotifications } from '@capacitor/push-notifications'
 import { LocalNotifications } from '@capacitor/local-notifications'
 import { Capacitor } from '@capacitor/core'
-import { doc, updateDoc } from 'firebase/firestore'
-import { db } from '@/lib/firebase'
 import { logger } from '@/lib/logger'
 
-// Profile shape mirrors whatever userProfileService.getProfile returns,
-// without needing to import the type name (robust to its location).
+// Firebase-User-compatible projection of a Supabase user.
+export interface AppUser {
+  uid: string
+  id: string
+  email: string | null
+  emailVerified: boolean
+  displayName: string | null
+}
+
+export interface AppUserCredential {
+  user: AppUser
+}
+
+const mapUser = (u: SupabaseUser | null | undefined): AppUser | null => {
+  if (!u) return null
+  return {
+    uid: u.id,
+    id: u.id,
+    email: u.email ?? null,
+    emailVerified: !!(u.email_confirmed_at || (u as any).confirmed_at),
+    displayName: (u.user_metadata?.displayName as string) ?? (u.user_metadata?.display_name as string) ?? null,
+  }
+}
+
 type Profile = Awaited<ReturnType<typeof userProfileService.getProfile>>
 
 interface AuthContextType {
-  user: User | null
+  user: AppUser | null
   loading: boolean
-  signUp: (email: string, password: string) => Promise<UserCredential>
-  signIn: (email: string, password: string) => Promise<UserCredential>
+  signUp: (email: string, password: string) => Promise<AppUserCredential>
+  signIn: (email: string, password: string) => Promise<AppUserCredential>
   logout: () => Promise<void>
   resetPassword: (email: string) => Promise<void>
   sendVerificationEmail: () => Promise<void>
-  // 🪪 Shared user profile — fetched ONCE per auth change here (not per
-  // navigation). ProtectedRoute consumes this instead of re-reading
-  // userProfiles on every route. `profileLoading` is true only during the
-  // initial fetch; background refreshes are silent.
   profile: Profile
   profileLoading: boolean
   profileError: boolean
-  /** Force a fresh profile read (call after mutating role/active/settings). */
   refreshProfile: () => Promise<void>
 }
 
@@ -55,16 +66,29 @@ export function useAuth() {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<AppUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<Profile>(null)
   const [profileLoading, setProfileLoading] = useState(false)
   const [profileError, setProfileError] = useState(false)
+  const uidRef = useRef<string | null>(null)
 
-  // Silent re-fetch (no spinner flicker) — used by bounded refresh and
-  // callable after a screen mutates role/active/settings.
+  // Persist the FCM token onto the signed-in user's profile.
+  const saveFcmToken = async (uid: string) => {
+    try {
+      const storedToken = localStorage.getItem('fcm_token')
+      if (storedToken) {
+        await supabase.from('profiles').update({ fcm_token: storedToken }).eq('id', uid)
+        logger.log('✅ [FCM] Token saved to user profile')
+      }
+    } catch (error) {
+      logger.error('❌ [FCM] Failed to save token to user profile:', error)
+    }
+  }
+
+  // Silent re-fetch (no spinner flicker).
   const refreshProfile = useCallback(async () => {
-    const uid = auth.currentUser?.uid
+    const uid = uidRef.current
     if (!uid) return
     try {
       const p = await userProfileService.getProfile(uid)
@@ -72,11 +96,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfileError(false)
     } catch (err) {
       logger.error('AuthContext: profile refresh failed', err)
-      // Keep the last good profile on a transient refresh failure.
     }
   }, [])
 
-  // 🔥 NEW: Initialize FCM at app startup (before any authentication)
+  // Initialize FCM at app startup (native only). Unchanged from the original.
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) {
       logger.log('⚠️ [FCM] Not a native platform, skipping FCM initialization')
@@ -84,19 +107,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     logger.log('🔥 [FCM] Initializing push notifications at app startup...')
-    
+
     const initializeFCM = async () => {
       try {
-        // Check permission status
         const permResult = await PushNotifications.checkPermissions()
         logger.log(`📋 [FCM] Current permission: ${permResult.receive}`)
 
-        // Request permission if needed
         if (permResult.receive === 'prompt' || permResult.receive === 'prompt-with-rationale') {
-          logger.log('📋 [FCM] Requesting permission...')
           const requestResult = await PushNotifications.requestPermissions()
-          logger.log(`✅ [FCM] Permission result: ${requestResult.receive}`)
-          
           if (requestResult.receive !== 'granted') {
             logger.log('⚠️ [FCM] Permission denied')
             return
@@ -106,23 +124,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return
         }
 
-        // Request local notification permission for foreground notifications
         try {
-          const localPermResult = await LocalNotifications.requestPermissions()
-          logger.log(`✅ [FCM] Local notification permission: ${localPermResult.display}`)
+          await LocalNotifications.requestPermissions()
         } catch (localErr) {
           logger.log('⚠️ [FCM] Local notification permission request failed (non-critical):', localErr)
         }
 
-        // Register for push notifications
-        logger.log('📋 [FCM] Registering for push notifications...')
         await PushNotifications.register()
 
-        // Listen for token registration
         PushNotifications.addListener('registration', async (token) => {
-          logger.log('✅ [FCM] Token received:', token.value.substring(0, 30) + '...')
-          
-          // Store token in localStorage immediately (device-level storage)
           try {
             localStorage.setItem('fcm_token', token.value)
             localStorage.setItem('fcm_token_timestamp', Date.now().toString())
@@ -132,15 +142,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         })
 
-        // Listen for registration errors
         PushNotifications.addListener('registrationError', (error) => {
           logger.error('❌ [FCM] Registration error:', error)
         })
 
-        // Handle foreground notifications (show local notification)
         PushNotifications.addListener('pushNotificationReceived', async (notification) => {
-          logger.log('📬 [FCM] Notification received (foreground):', notification.title)
-          
           try {
             await LocalNotifications.schedule({
               notifications: [{
@@ -154,21 +160,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 largeIcon: 'ic_launcher',
               }]
             })
-            logger.log('✅ [FCM] Local notification displayed')
           } catch (err) {
             logger.error('❌ [FCM] Failed to show local notification:', err)
           }
         })
 
-        // Handle notification taps (background/foreground)
         PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-          logger.log('👆 [FCM] Notification tapped:', action.notification.data)
           handleNotificationTap(action.notification.data)
         })
 
-        // Handle local notification taps
         LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
-          logger.log('👆 [FCM] Local notification tapped:', action.notification.extra)
           handleNotificationTap(action.notification.extra)
         })
 
@@ -179,14 +180,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     initializeFCM()
-  }, []) // Empty dependency - run once on mount
+  }, [])
 
-  // Handle notification navigation
   const handleNotificationTap = (data: any) => {
     if (!data) return
-    
-    logger.log('🚗 [FCM] Processing notification tap...')
-    
     if (data.type === 'service_today' || data.type === 'service_created') {
       window.location.href = '/bookings'
     } else if (data.type === 'mot_expired' || data.type === 'mot_expiring') {
@@ -194,36 +191,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  // Listen for auth state changes
+  // Subscribe to auth state. getSession() resolves the persisted session on
+  // load; onAuthStateChange fires on sign-in/out and token refresh.
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setUser(user)
-      setLoading(false)
+    let active = true
 
-      // 🔥 NEW: When user logs in, save FCM token to their profile
-      if (user && Capacitor.isNativePlatform()) {
-        try {
-          const storedToken = localStorage.getItem('fcm_token')
-          if (storedToken) {
-            logger.log('💾 [FCM] Saving token to user profile...')
-            const userRef = doc(db, 'userProfiles', user.uid)
-            await updateDoc(userRef, {
-              fcmToken: storedToken,
-              updatedAt: new Date().toISOString()
-            })
-            logger.log('✅ [FCM] Token saved to user profile')
-          }
-        } catch (error) {
-          logger.error('❌ [FCM] Failed to save token to user profile:', error)
-        }
-      }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!active) return
+      const mapped = mapUser(session?.user)
+      uidRef.current = mapped?.uid ?? null
+      setUser(mapped)
+      setLoading(false)
     })
 
-    return unsubscribe
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (_event: string, session: Session | null) => {
+        const mapped = mapUser(session?.user)
+        uidRef.current = mapped?.uid ?? null
+        setUser(mapped)
+        setLoading(false)
+
+        if (mapped && Capacitor.isNativePlatform()) {
+          await saveFcmToken(mapped.uid)
+        }
+      }
+    )
+
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
   }, [])
 
-  // Fetch the profile ONCE when the signed-in user changes. This replaces
-  // ProtectedRoute's per-navigation getProfile read.
+  // Fetch the profile ONCE when the signed-in user changes (with a single
+  // retry on a cold/transient miss, exactly as the original did).
   useEffect(() => {
     let cancelled = false
     const uid = user?.uid
@@ -236,13 +237,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfileLoading(true)
     setProfileError(false)
 
-    // Cold reloads occasionally return null / throw on the very first
-    // Firestore read before the client is warm. Retry ONCE before
-    // declaring the profile missing — otherwise ProtectedRoute would log
-    // the (actually signed-in) user straight back out to /login on
-    // refresh. profileLoading stays true through the retry so the gate
-    // shows its spinner instead of evicting.
-    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
     const load = async () => {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
@@ -259,7 +254,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (cancelled) return
             continue
           }
-          // Still null after a retry → genuinely no profile.
           setProfile(null)
           setProfileLoading(false)
           return
@@ -285,10 +279,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user?.uid])
 
-  // Bounded re-validation so a mid-session deactivation/role change still
-  // takes effect quickly WITHOUT a read on every navigation: silently
-  // re-fetch when the tab regains visibility and on a 10-minute interval
-  // (only while visible, so a backgrounded tab costs nothing).
+  // Bounded re-validation: silently re-fetch on tab focus + every 10 min while
+  // visible, so a mid-session role/active change takes effect without a read
+  // on every navigation.
   useEffect(() => {
     if (!user?.uid) return
     const onVisible = () => {
@@ -304,72 +297,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user?.uid, refreshProfile])
 
-  const signUp = async (email: string, password: string): Promise<UserCredential> => {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password)
-    return userCredential
+  const signUp = async (email: string, password: string): Promise<AppUserCredential> => {
+    const { data, error } = await supabase.auth.signUp({ email, password })
+    if (error) throw error
+    return { user: mapUser(data.user) as AppUser }
   }
 
-  const signIn = async (email: string, password: string): Promise<UserCredential> => {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password)
-    
-    // Update last login timestamp after successful login
-    if (userCredential.user) {
+  const signIn = async (email: string, password: string): Promise<AppUserCredential> => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) throw error
+    const mapped = mapUser(data.user) as AppUser
+
+    // Update last login + persist FCM token (non-fatal, mirrors original).
+    if (mapped) {
       try {
-        await userProfileService.updateLastLogin(userCredential.user.uid)
-        
-        // 🔥 NEW: Save FCM token to user profile on login
-        if (Capacitor.isNativePlatform()) {
-          const storedToken = localStorage.getItem('fcm_token')
-          if (storedToken) {
-            const userRef = doc(db, 'userProfiles', userCredential.user.uid)
-            await updateDoc(userRef, {
-              fcmToken: storedToken,
-              updatedAt: new Date().toISOString()
-            })
-          }
-        }
+        await userProfileService.updateLastLogin(mapped.uid)
+        if (Capacitor.isNativePlatform()) await saveFcmToken(mapped.uid)
       } catch (error) {
         logger.error('Failed to update last login timestamp:', error)
-        // Don't throw error to avoid breaking the login flow
       }
     }
-    
-    return userCredential
+    return { user: mapped }
   }
 
   const logout = async () => {
     try {
-      // Clear any local state first
       setUser(null)
-      
-      // 🔥 NOTE: We keep the FCM token in localStorage so notifications still work after logout
-      // The token stays on the device, just not linked to the user profile
-      
-      // Then sign out from Firebase
-      await signOut(auth)
-      
-      // Force redirect to login page using window.location for reliability
-      // This ensures complete page refresh and clears any cached state
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login'
-      }
+      uidRef.current = null
+      await supabase.auth.signOut()
+      if (typeof window !== 'undefined') window.location.href = '/login'
     } catch (error) {
       logger.error('Logout error:', error)
-      // Even on error, force redirect to login
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login'
-      }
+      if (typeof window !== 'undefined') window.location.href = '/login'
     }
   }
 
   const resetPassword = async (email: string) => {
-    await sendPasswordResetEmail(auth, email)
+    const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/reset-password-required` : undefined
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
+    if (error) throw error
   }
 
   const sendVerificationEmail = async () => {
-    if (auth.currentUser) {
-      await sendEmailVerification(auth.currentUser)
-    }
+    const email = user?.email
+    if (!email) return
+    const { error } = await supabase.auth.resend({ type: 'signup', email })
+    if (error) throw error
   }
 
   const value = {
@@ -386,9 +359,5 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshProfile,
   }
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  )
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
