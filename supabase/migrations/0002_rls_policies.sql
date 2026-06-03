@@ -21,9 +21,11 @@ returns uuid language sql stable as $$
   select nullif(current_setting('request.jwt.claims', true)::jsonb ->> 'org_id', '')::uuid
 $$;
 
+-- app role is exposed as a custom `user_role` claim — NOT the Postgres `role`
+-- claim (PostgREST uses `role` to SET ROLE, so it must stay 'authenticated').
 create or replace function public.auth_role()
 returns text language sql stable as $$
-  select current_setting('request.jwt.claims', true)::jsonb ->> 'role'
+  select current_setting('request.jwt.claims', true)::jsonb ->> 'user_role'
 $$;
 
 -- ── Custom Access Token Hook ─────────────────────────────────────────────────
@@ -43,7 +45,7 @@ begin
     claims := jsonb_set(claims, '{org_id}', to_jsonb(v_org_id::text));
   end if;
   if v_role is not null then
-    claims := jsonb_set(claims, '{role}', to_jsonb(v_role));
+    claims := jsonb_set(claims, '{user_role}', to_jsonb(v_role));
   end if;
 
   return jsonb_set(event, '{claims}', claims);
@@ -98,6 +100,10 @@ create policy profiles_admin_write on public.profiles
   for all to authenticated
   using (organization_id = public.auth_org_id() and public.auth_role() = 'admin')
   with check (organization_id = public.auth_org_id() and public.auth_role() = 'admin');
+-- the access-token hook runs as supabase_auth_admin and must read profiles
+-- (RLS would otherwise return 0 rows and the org_id claim would never be set).
+create policy auth_admin_read_profiles on public.profiles
+  as permissive for select to supabase_auth_admin using (true);
 
 -- ── generic org-scoped tables ────────────────────────────────────────────────
 -- Identical full-CRUD-within-org policy. Generated via a DO loop to stay DRY;

@@ -104,7 +104,15 @@ Ported to Supabase (identical signatures):
 - Branches/org/garages/conditions/contracts: `branchService` (Realtime subscribe), standalone `organizationService`, `externalGarageService`, standalone `conditionService`, `contractService` (+ new `branch_migrations`; branches→Realtime).
 - Bulk ops: `bulkInsuranceService` (×2 paths), `bulkRoadTaxService`, `bulkVehicleRefreshService` (Realtime; DVLA call stubbed via `functions.invoke` for Phase 5).
 - New migrations: `0010_stock_settings` … `0015_bulk_insurance`.
-- ⚠️ Migrations are TS-side validated only — not yet applied to a DB (`supabase db push` will validate SQL once a project exists).
+
+### ✅ Applied & verified on the live Supabase project (ref gxiplydgrcjxdfrcrwcg)
+- All 15 migrations (0001–0003, 0010–0021) applied cleanly via the SQL Editor.
+- Custom Access Token hook enabled; **0021** fixes it: added an RLS policy so
+  `supabase_auth_admin` can read `profiles`, and moved the app role to a
+  `user_role` claim (never overwrite PostgREST's `role`).
+- End-to-end live test PASSED: sign-in → `create_organization` → JWT `org_id`
+  claim → 5 conditions seeded → vehicle insert/read → yard check-in →
+  tenant isolation (anon sees nothing). The data/auth/RLS slice is green.
 
 Known follow-ups flagged by agents:
 - A few `writeBatch` ops are now non-atomic parallel writes → convert to RPCs if true atomicity matters (stock batch-use, bulk updates).
