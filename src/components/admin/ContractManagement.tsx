@@ -12,6 +12,7 @@ import { settingsService, ContractDefaultStatuses } from '@/lib/services/setting
 import { Plus, Edit2, Trash2, FileText, AlertCircle, Check } from 'lucide-react'
 import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
+import { ConfirmationModal } from '@/components/common/Modals/ConfirmationModal'
 
 // Available contract colors - EXPANDED to 18 colors (ORIGINAL 9 + 9 NEW DISTINCT)
 const CONTRACT_COLORS = [
@@ -87,6 +88,8 @@ export const ContractManagement = React.memo(function ContractManagement() {
   const [editColor, setEditColor] = useState('')
   const [contractDefaults, setContractDefaults] = useState<ContractDefaultStatuses>({})
   const [savingDefaultFor, setSavingDefaultFor] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<Contract | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   // Load user profile, contracts and per-contract default statuses
   useEffect(() => {
@@ -193,16 +196,20 @@ export const ContractManagement = React.memo(function ContractManagement() {
     }
   }
 
-  const handleDeleteContract = async (contract: Contract) => {
+  const handleDeleteContract = (contract: Contract) => {
     if (contract.isDefault) {
       alert(t('settings.contract.cannotDeleteDefault'))
       return
     }
+    // Open the styled confirmation modal (no native window.confirm).
+    setPendingDelete(contract)
+  }
 
-    if (!window.confirm(t('settings.contract.confirmDelete', { name: contract.name }))) {
-      return
-    }
+  const confirmDeleteContract = async () => {
+    const contract = pendingDelete
+    if (!contract) return
 
+    setDeleting(true)
     try {
       await contractService.deleteContract(contract.id)
       setContracts(prev => prev.filter(c => c.id !== contract.id))
@@ -217,9 +224,12 @@ export const ContractManagement = React.memo(function ContractManagement() {
           logger.error('Error clearing default status for deleted contract:', e)
         }
       }
+      setPendingDelete(null)
     } catch (error) {
       logger.error('Error deleting contract:', error)
       alert(t('settings.contract.deleteFail'))
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -441,6 +451,17 @@ export const ContractManagement = React.memo(function ContractManagement() {
           </ul>
         )}
       </div>
+
+      <ConfirmationModal
+        isOpen={!!pendingDelete}
+        onClose={() => { if (!deleting) setPendingDelete(null) }}
+        onConfirm={confirmDeleteContract}
+        title={t('settings.contract.deleteContract')}
+        message={pendingDelete ? t('settings.contract.confirmDelete', { name: pendingDelete.name }) : ''}
+        confirmText={t('settings.contract.deleteContract')}
+        variant="danger"
+        loading={deleting}
+      />
     </div>
   )
 })

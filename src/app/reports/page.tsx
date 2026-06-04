@@ -220,7 +220,10 @@ function AnalyticsDashboardContent() {
   }, [organizationId, refreshYard, refreshFleetCount])
 
   // Calculate comprehensive stats
-  const notCheckedIn = totalFleetCount - yardVehicles.length // Active vehicles not in yard
+  // Active vehicles not in yard. Clamp at 0 — the yard can briefly hold more
+  // rows than the active fleet (e.g. checked-in copies), which would otherwise
+  // render a nonsensical negative count.
+  const notCheckedIn = Math.max(0, totalFleetCount - yardVehicles.length)
   const outOnHire = yardVehicles.filter(v => v.hireStatus === 'Out on Hire').length
   const inYard = yardVehicles.filter(v => v.hireStatus === 'In Yard').length
 
