@@ -28,8 +28,9 @@ import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
 // ✨ PHASE 2: Yard layout view (read-only dashboard map of branch parking spaces)
 import { YardLayoutView } from '@/components/yard/layout/YardLayoutView'
-// ✨ PHASE 3: Pipeline (Kanban) view — default yard view
-import { PipelineView } from '@/components/features/dashboard/PipelineView'
+// Tabbed yard view (statuses-as-tabs + right rail) — fills the "pipeline" view
+// slot, replacing the old kanban PipelineView (still in the repo for revert).
+import { YardTabsView } from '@/components/features/dashboard/YardTabsView'
 
 interface ServiceBooking {
   id: string
@@ -456,7 +457,7 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
   if (currentViewMode === 'pipeline') {
     return (
       <div className={`${className} w-full`}>
-        <PipelineView
+        <YardTabsView
           vehicles={allFilteredVehicles || displayVehicles}
           outOnHireVehicles={outOnHireVehicles}
           onViewVehicle={onViewVehicle}
