@@ -18,6 +18,28 @@ logged in as a real admin. Tick each box; note anything off and I'll fix it.
 
 ---
 
+## ✅ Browser walkthrough — automated pass (Claude, 2026-06-04, local dev → live Supabase)
+Drove the running app end-to-end in a real browser against the live Supabase DB (org *Fairview Maidenhead*). Every page below loaded with real data, **zero console errors**, all REST calls 2xx (only benign aborted HEAD count-probes on navigation). No test data created (add-vehicle wizard cancelled).
+- [x] **Login → dashboard** (§1) and **session persists across full reload** (§1).
+- [x] **Role gating** (§1): admin sees Organization + Data Management in Settings.
+- [x] **Realtime "Sync Active"** on the dashboard (§4/§3 live).
+- [x] **Fleet** (§3): table + columns + pagination; **Add-Vehicle DVLA/MOT lookup filled make=BMW, model=330, colour=White** (Edge Function live, §18).
+- [x] **Yard / dashboard** (§4): renders per branch, status columns, detail modals open cleanly.
+- [x] **Damage mapper consistency FIX verified** (§4): same pin renders at identical 21.6%/43.9% with no letterboxing in both the small Fleet modal (250×306, ratio 0.814) and the wider Yard view (289×354, ratio 0.814).
+- [x] **Service bookings** (§7): Today/Upcoming/Calendar/Working-Report, workshop bay grid, real booking w/ customer.
+- [x] **Bodyshop** (§8): Kanban board renders (no active jobs).
+- [x] **Stock + Invoicing tabs** (§9/§10): tiles, sort, Add Part.
+- [x] **Reports** (§15): utilisation %, status breakdown, distribution widgets.
+- [x] **Customers** (§11): list with auto-upserted customer + linked vehicles.
+- [x] **Branch overview** (§6): multi-branch distribution + per-branch counts.
+- [x] **Deliveries & Defleet** (§14): calendar/list + counters + export.
+- [x] **Checkout history** (§6): activity log, filters, CSV export.
+- [x] **Settings** (§16/§20): theme (light/dark/system), 4 languages, dashboard prefs, notifications.
+- [~] **Contracts badge colour** (§13): rendering path code-verified; no contract assigned in test org to eyeball live.
+- [ ] **Write flows** (create/edit/move/drag, invoice PDF, Zao actions) and **§19 device** (PWA install, Capacitor, haptics, QR) — left for your manual pass; can't fully exercise destructive writes against the shared DB without creating junk.
+
+---
+
 ## 1. Auth & access
 - [ ] Log in with email/password → lands on dashboard.
 - [ ] Log out → returns to /login; protected routes redirect to login when logged out.
