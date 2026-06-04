@@ -76,6 +76,9 @@ interface DashboardVehicleListProps {
   allFilteredVehicles?: CheckedInVehicle[]
   // ✨ PHASE 3: filtered out-on-hire vehicles for the 5th pipeline column.
   outOnHireVehicles?: CheckedInVehicle[]
+  // Pipeline tabbed view renders the Filters control on the tabs row.
+  onToggleFilters?: () => void
+  filtersOpen?: boolean
 }
 
 export const DashboardVehicleList = React.memo(function DashboardVehicleList({
@@ -101,6 +104,8 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
   // ✨ PHASE 3
   allFilteredVehicles,
   outOnHireVehicles,
+  onToggleFilters,
+  filtersOpen,
 }: DashboardVehicleListProps) {
   const [localViewMode, setLocalViewMode] = useState<ViewMode>('table')
   const [hoveredVehicle, setHoveredVehicle] = useState<string | null>(null)
@@ -462,6 +467,10 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
           outOnHireVehicles={outOnHireVehicles}
           onViewVehicle={onViewVehicle}
           searchTerm={filters?.search || ''}
+          viewMode={currentViewMode as any}
+          onViewModeChange={onViewModeChange as any}
+          onToggleFilters={onToggleFilters}
+          filtersOpen={filtersOpen}
           className="w-full"
         />
       </div>

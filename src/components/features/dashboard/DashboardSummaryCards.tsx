@@ -113,6 +113,9 @@ interface DashboardSummaryCardsProps {
   // Mobile only: shown inline after the checked-out pill, before notes/check-in.
   // Desktop: not rendered here (tab toggle lives below the strip in DashboardContent).
   yardTabSlot?: React.ReactNode
+  // When true, show ONLY the Total pill (hide Ready/Pending/Repairs + progress).
+  // Used by the pipeline view, where the status tabs already carry those counts.
+  onlyTotal?: boolean
   className?: string
 }
 
@@ -179,8 +182,10 @@ export const DashboardSummaryCards = React.memo(function DashboardSummaryCards({
   onViewModeChange,
   checkedOutSlot,
   yardTabSlot,
+  onlyTotal = false,
   className = '',
 }: DashboardSummaryCardsProps) {
+  const visibleSegments = onlyTotal ? SEGMENTS.filter(s => s.key === 'total') : SEGMENTS
 
   const t = useT()
 
@@ -274,7 +279,7 @@ export const DashboardSummaryCards = React.memo(function DashboardSummaryCards({
       {/* ── DESKTOP: single row ────────────────────────────────────────────────── */}
       <div className="hidden sm:flex items-center gap-1.5 flex-wrap">
 
-        {SEGMENTS.map(seg => {
+        {visibleSegments.map(seg => {
           const count    = countByKey[seg.key]
           const isActive = activeSegmentKey === seg.key
           const handler  = handlers[seg.handler]
@@ -302,7 +307,7 @@ export const DashboardSummaryCards = React.memo(function DashboardSummaryCards({
         })}
 
         {/* progress bar */}
-        {totalCount > 0 && (
+        {totalCount > 0 && !onlyTotal && (
           <div className="flex items-center gap-1.5 ml-1 text-[10px] text-[#8a9e94] dark:text-white/40 font-medium" title={t('dashboard.summary.readyPctTitle', { readyPct })}>
             <div className="w-20 h-1.5 rounded-full bg-[#e2e8e5] dark:bg-white/10 overflow-hidden">
               <div className="h-full rounded-full bg-[#4ade80] transition-all duration-500" style={{ width: `${readyPct}%` }} />
@@ -361,7 +366,7 @@ export const DashboardSummaryCards = React.memo(function DashboardSummaryCards({
 
           {/* Scrollable group: summary pills + clear + checked-out + yard tab */}
           <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {SEGMENTS.map(seg => {
+          {visibleSegments.map(seg => {
             const count    = countByKey[seg.key]
             const isActive = activeSegmentKey === seg.key
             const handler  = handlers[seg.handler]

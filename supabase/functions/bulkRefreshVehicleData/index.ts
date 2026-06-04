@@ -54,6 +54,8 @@ class DvlaError extends Error {
 
 interface DvlaResult {
   registration: string
+  make: string
+  colour: string
   taxStatus: string
   taxExpiry: string
   motStatus: string
@@ -141,6 +143,8 @@ async function fetchDvlaVehicle(registration: string, apiKey: string): Promise<D
   const data = (await response.json()) as Record<string, any>
   return {
     registration: data.registrationNumber ?? registrationNumber,
+    make: data.make ?? '',
+    colour: data.colour ?? '',
     taxStatus: data.taxStatus ?? '',
     taxExpiry: data.taxDueDate ?? '',
     motStatus: data.motStatus ?? '',
@@ -332,7 +336,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // ── Load the org's active fleet ───────────────────────────────────────────
     const { data: fleetRows, error: fleetErr } = await admin
       .from('vehicles')
-      .select('id, registration, is_defleeted')
+      .select('id, registration, is_defleeted, make, model, colour')
       .eq('organization_id', organizationId)
     if (fleetErr) throw fleetErr
 
@@ -341,6 +345,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
         id: d.id as string,
         registration: (d.registration as string) || '',
         isDefleeted: d.is_defleeted === true,
+        make: (d.make as string) || '',
+        model: (d.model as string) || '',
+        colour: (d.colour as string) || '',
       }))
       .filter((v) => v.registration && !v.isDefleeted)
 
@@ -457,6 +464,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
           if (motExpiry) data.mot_expiry = motExpiry
           if (ves?.taxExpiry) data.tax_expiry = ves.taxExpiry
           if (mot && mot.hasOutstandingRecall) data.has_recall = mot.hasOutstandingRecall === 'Yes'
+
+          // Backfill identity fields ONLY when the vehicle has none — never
+          // overwrite a curated value. make/colour come from DVLA VES, model
+          // from the DVSA MOT history.
+          if (!v.make?.trim() && ves?.make) data.make = ves.make
+          if (!v.model?.trim() && mot?.model) data.model = mot.model
+          if (!v.colour?.trim() && ves?.colour) data.colour = ves.colour
 
           if (Object.keys(data).length > 0) {
             // Audit blob in last_tax_update jsonb (camelCase keys preserved),

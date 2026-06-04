@@ -10,6 +10,7 @@
 'use client'
 
 import React, { useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranches } from '@/hooks/useBranches'
 
@@ -84,6 +85,18 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
   const [viewMode, setViewMode] = React.useState<'table' | 'cards' | 'layout' | 'pipeline'>('pipeline')
   const hasAppliedDefaultView = React.useRef(false)
   const [yardTab, setYardTab] = React.useState<'in_yard' | 'on_hire'>('in_yard')
+  // Desktop-only gate for the floating check-in FAB (mobile uses the bottom nav).
+  // Driven by JS rather than a Tailwind `md:` class so it can't be hidden by a
+  // stale/ungenerated responsive class. Also doubles as the "mounted" guard for
+  // portaling to <body> (it's false during SSR/first paint).
+  const [isDesktop, setIsDesktop] = React.useState(false)
+  React.useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)')
+    const update = () => setIsDesktop(mq.matches)
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
 
   // Branches hook for transfer operations
   const { branches } = useBranches()
@@ -293,7 +306,7 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
       {/* ═══════════════════════════════════════════════════
           STICKY TOP BAR — Search + Actions
       ═══════════════════════════════════════════════════ */}
-      <div className="sticky top-0 md:top-0 z-30 bg-[#f6f8f7]/85 dark:bg-gray-900/85 backdrop-blur-xl border-b border-[#e2e8e5] dark:border-gray-700/50">
+      <div className="sticky top-20 md:top-0 z-30 bg-[#f6f8f7]/85 dark:bg-gray-900/85 backdrop-blur-xl border-b border-[#e2e8e5] dark:border-gray-700/50">
         <div className={`w-full max-w-[100vw] px-3 sm:px-4 lg:px-8 ${viewMode === 'pipeline' ? 'py-1.5' : 'py-3'}`}>
           <div className="flex items-center justify-between gap-3">
 
@@ -466,7 +479,9 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
             onStatusSizeFilter={dataLayer.dashboardLogic.handleStatusSizeFilter}
             onClearFilters={dataLayer.dashboardLogic.clearAllFilters}
             className="w-full"
-            onCheckIn={modalController.showCheckInForm}
+            onlyTotal={viewMode === 'pipeline'}
+            /* Pipeline view uses a floating check-in button instead. */
+            onCheckIn={viewMode === 'pipeline' ? undefined : modalController.showCheckInForm}
             onMobileFiltersOpen={modalController.toggleFilters}
             mobileFiltersBadge={
               [
@@ -537,7 +552,7 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
         <div className={`flex items-center gap-2 ${viewMode === 'pipeline' ? 'mb-1.5' : 'mb-3'}`}>
           <button
             onClick={modalController.toggleFilters}
-            className={`hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border shadow-sm transition-all ${
+            className={`${viewMode === 'pipeline' ? 'hidden' : 'hidden lg:inline-flex'} items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border shadow-sm transition-all ${
               modalController.uiModalStates.isFiltersExpanded
                 ? 'bg-[#012619] border-[#012619] text-white shadow-md'
                 : 'bg-white dark:bg-gray-800 border-[#e2e8e5] dark:border-gray-600 text-[#4a5e54] dark:text-gray-300 hover:border-[#c8d5ce]'
@@ -554,14 +569,15 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
 
           <div className="flex-1" />
 
-          {/* Desktop: Sync indicator + view toggle */}
-          <div className="hidden lg:flex items-center gap-2">
+          {/* Desktop: Sync indicator + view toggle — hidden in pipeline (the
+              tab row carries the view switcher + Filters; no wasted strip). */}
+          <div className={`${viewMode === 'pipeline' ? 'hidden' : 'hidden lg:flex'} items-center gap-2`}>
             <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#ecfdf5] dark:bg-green-900/10 rounded-lg border border-[#a7f3d0]/50 dark:border-green-800/20">
               <div className="w-1.5 h-1.5 bg-[#059669] rounded-full animate-pulse"></div>
               <span className="text-[10px] font-semibold text-[#059669] dark:text-green-300">{t('dashboard.status.syncActive')}</span>
             </div>
 
-            <div className="flex items-center gap-0.5 bg-white dark:bg-gray-800 rounded-lg p-0.5 border border-[#e2e8e5] dark:border-gray-600 shadow-sm">
+            <div className={`${viewMode === 'pipeline' ? 'hidden' : 'flex'} items-center gap-0.5 bg-white dark:bg-gray-800 rounded-lg p-0.5 border border-[#e2e8e5] dark:border-gray-600 shadow-sm`}>
               {/* ✨ PHASE 3: Pipeline (kanban) view button — default */}
               <button
                 onClick={() => setViewMode('pipeline')}
@@ -743,6 +759,9 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
                 allFilteredVehicles={dataLayer.enhancedFilteredVehicles}
                 /* ✨ PHASE 3: out-on-hire list for the 5th pipeline column. */
                 outOnHireVehicles={dataLayer.filteredVehiclesOutOnHire}
+                /* Pipeline tabbed view hosts the view-switcher + Filters on its tab row. */
+                onToggleFilters={modalController.toggleFilters}
+                filtersOpen={modalController.uiModalStates.isFiltersExpanded}
                 className="w-full"
               />
 
@@ -787,12 +806,41 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
         <VoiceCommandButton
           checkedInVehicles={dataLayer.checkedInVehicles as CheckedInVehicle[]}
           userDisplayName={dataLayer.userProfile?.displayName || 'User'}
-          floatingClassName="hidden md:fixed md:block bottom-6 left-[280px]"
+          floatingClassName="hidden md:fixed md:block bottom-24 right-6"
         />
       )}
 
-      {/* 🤖 AI Fleet Assistant */}
+      {/* 🤖 AI Fleet Assistant (now bottom-LEFT) */}
       <SpeechEnabledGroqAssistant />
+
+      {/* 🚗 Check-in floating button (pipeline view) — bottom-RIGHT, mirrors Zao.
+          Portalled to <body> so it anchors to the viewport (not a transformed
+          ancestor). Desktop only — mobile already has check-in in the bottom nav. */}
+      {isDesktop && viewMode === 'pipeline' && !modalController.uiModalStates.showCheckInForm && createPortal(
+        <button
+          onClick={modalController.showCheckInForm}
+          aria-label={t('dashboard.summary.checkInVehicleAria')}
+          title={t('dashboard.summary.checkInVehicleAria')}
+          className="rounded-full shadow-lg hover:shadow-xl transition-all duration-150 hover:scale-105 active:scale-95"
+          /* Inline styles (like Zao) so positioning never depends on Tailwind
+             class generation — guarantees bottom-RIGHT, mirroring Zao. */
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            zIndex: 9990,
+            width: '64px',
+            height: '64px',
+            padding: 0,
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          <img src="/Check In Button/check-in-button.png" alt={t('dashboard.summary.checkInImgAlt')} style={{ width: '64px', height: '64px', objectFit: 'contain' }} />
+        </button>,
+        document.body
+      )}
 
       {/* ===================================================== */}
       {/* MODALS SECTION - ALL PRESERVED EXACTLY                */}

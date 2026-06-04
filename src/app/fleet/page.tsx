@@ -133,16 +133,40 @@ function FleetHeaderExcelItems({ vehicles, filteredVehicles, onBulkUpload }: Fle
       const wb = XLSX.read(buffer, { type: 'array' })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const rows: any[] = XLSX.utils.sheet_to_json(ws)
+      // Normalise dates to ISO (YYYY-MM-DD). Postgres `date` columns reject the
+      // template's DD/MM/YYYY format (e.g. 22/12/2030 → "month 22") and also
+      // reject Excel serial-number date cells — both are handled here. Invalid
+      // or empty values become '' (coerced to NULL on write).
+      const toIsoDate = (input: any): string => {
+        if (input === null || input === undefined || input === '') return ''
+        if (typeof input === 'number' && isFinite(input)) {
+          const d = new Date(Math.round((input - 25569) * 86400000))
+          return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10)
+        }
+        const s = String(input).trim()
+        if (!s) return ''
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s                 // already ISO
+        const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/) // DD/MM/YYYY
+        if (m) {
+          const day = m[1].padStart(2, '0')
+          const mon = m[2].padStart(2, '0')
+          const year = m[3].length === 2 ? `20${m[3]}` : m[3]
+          if (+mon >= 1 && +mon <= 12 && +day >= 1 && +day <= 31) return `${year}-${mon}-${day}`
+          return ''
+        }
+        const d = new Date(s)
+        return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10)
+      }
       const processed = rows.map(row => ({
         registration: String(row['Registration'] || '').toUpperCase().trim(),
         make: String(row['Make'] || '').trim(),
         model: String(row['Model'] || '').trim(),
         colour: String(row['Colour'] || '').trim(),
         size: String(row['Size'] || '').trim(),
-        motExpiry: row['MOT Expiry'] ? String(row['MOT Expiry']) : '',
-        taxExpiry: row['Tax Expiry'] ? String(row['Tax Expiry']) : '',
+        motExpiry: toIsoDate(row['MOT Expiry']),
+        taxExpiry: toIsoDate(row['Tax Expiry']),
         comments: String(row['Comments'] || '').trim(),
-        dateAcquired: row['Date Acquired'] ? String(row['Date Acquired']) : '',
+        dateAcquired: toIsoDate(row['Date Acquired']),
         condition: 'Excellent',
       })).filter(v => v.registration)
       await onBulkUpload(processed)

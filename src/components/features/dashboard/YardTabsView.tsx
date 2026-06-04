@@ -19,8 +19,12 @@ import React, { useEffect, useMemo, useState } from 'react'
 import {
   CheckCircle, Clock, Wrench, XCircle, Truck, AlertTriangle, Plus,
   ArrowUpRight, ArrowDownLeft, Bell,
+  Columns3, LayoutList, LayoutGrid, Map as MapIcon, Filter,
 } from 'lucide-react'
+
+type ViewMode = 'table' | 'cards' | 'layout' | 'pipeline'
 import { CheckedInVehicle, VehicleStatus, normalizeVehicleStatus } from '@/types'
+import { useCheckoutHistory } from '@/hooks/useCheckoutHistory'
 
 interface YardTabsViewProps {
   vehicles: CheckedInVehicle[]
@@ -29,6 +33,11 @@ interface YardTabsViewProps {
   /** Current search term — when set, the view auto-selects the tab that holds
    *  the matching vehicle(s). */
   searchTerm?: string
+  /** View switcher + Filters live on the same row as the status tabs (desktop). */
+  viewMode?: ViewMode
+  onViewModeChange?: (mode: ViewMode) => void
+  onToggleFilters?: () => void
+  filtersOpen?: boolean
   className?: string
 }
 
@@ -185,9 +194,21 @@ export const YardTabsView = React.memo(function YardTabsView({
   outOnHireVehicles = [],
   onViewVehicle,
   searchTerm = '',
+  viewMode,
+  onViewModeChange,
+  onToggleFilters,
+  filtersOpen = false,
   className = '',
 }: YardTabsViewProps) {
+  const VIEW_BTNS: { mode: ViewMode; icon: typeof Columns3; label: string }[] = [
+    { mode: 'pipeline', icon: Columns3, label: 'Pipeline' },
+    { mode: 'table', icon: LayoutList, label: 'List' },
+    { mode: 'cards', icon: LayoutGrid, label: 'Cards' },
+    { mode: 'layout', icon: MapIcon, label: 'Map' },
+  ]
   const [activeTab, setActiveTab] = useState<TabKey>('Ready')
+  // Real movement feed (check-outs, hires, transfers, garage) with who + when.
+  const { checkoutHistory } = useCheckoutHistory()
 
   const grouped = useMemo(() => {
     const buckets: Record<TabKey, CheckedInVehicle[]> = {
@@ -253,23 +274,45 @@ export const YardTabsView = React.memo(function YardTabsView({
     return list.sort((a, b) => a.sort - b.sort).slice(0, 8)
   }, [vehicles, outOnHireVehicles])
 
-  // recent activity
+  // Recent activity = real check-out/hire/transfer/garage movements (from
+  // checkout history, with who performed them) merged with check-ins (derived
+  // from the in-yard vehicles). Newest first.
   const activity = useMemo(() => {
-    const ev: { id: string; t: number; kind: string; text: string; v: CheckedInVehicle }[] = []
-    const push = (date: any, kind: string, text: string, v: CheckedInVehicle, suffix: string) => {
-      const d = toDate(date); if (!d) return
-      ev.push({ id: v.id + suffix, t: d.getTime(), kind, text, v })
-    }
+    const norm = (r?: string) => (r || '').toUpperCase().replace(/\s+/g, '')
+    const byReg = new Map<string, CheckedInVehicle>()
+    for (const v of [...vehicles, ...outOnHireVehicles]) byReg.set(norm(v.registration), v)
+
+    const ev: { id: string; t: number; kind: string; text: string; by: string; v: CheckedInVehicle | null }[] = []
+
+    // check-ins (in-yard vehicles)
     for (const v of vehicles) {
-      push(v.createdAt || (v as any).checkInTime, 'checkin', `${v.registration} checked in to yard`, v, '-ci')
-      if (v.transferStatus === 'in_transit') push(v.transferInitiatedAt, 'transfer', `${v.registration} transfer to ${v.targetBranchName || 'branch'}`, v, '-tr')
-      if (v.transferStatus === 'at_external_garage') push(v.checkedOutToGarageAt, 'garage', `${v.registration} sent to ${v.externalGarageName || 'garage'}`, v, '-ga')
+      const d = toDate(v.createdAt || (v as any).checkInTime)
+      if (!d) continue
+      ev.push({
+        id: v.id + '-ci', t: d.getTime(), kind: 'checkin',
+        text: `${v.registration} checked in to yard`,
+        by: (v as any).parkedByName || (v as any).checkedInByName || '', v,
+      })
     }
-    for (const v of outOnHireVehicles) {
-      push(v.hiredAt, 'hire', `${v.registration} checked out — out on hire`, v, '-hi')
+
+    // out movements (real, attributed)
+    for (const r of checkoutHistory) {
+      const d = r.checkedOutDate instanceof Date ? r.checkedOutDate : new Date(r.checkedOutDate as any)
+      if (!d || isNaN(d.getTime())) continue
+      const kind =
+        r.activityType === 'hire' ? 'hire' :
+        r.activityType === 'external_garage' ? 'garage' :
+        r.activityType === 'transfer' ? 'transfer' : 'checkout'
+      ev.push({
+        id: r.id, t: d.getTime(), kind,
+        text: `${r.registration} · ${r.activityLabel}`,
+        by: r.checkedOutByName || '',
+        v: byReg.get(norm(r.registration)) || null,
+      })
     }
-    return ev.sort((a, b) => b.t - a.t).slice(0, 6)
-  }, [vehicles, outOnHireVehicles])
+
+    return ev.sort((a, b) => b.t - a.t).slice(0, 7)
+  }, [vehicles, outOnHireVehicles, checkoutHistory])
 
   const openCheckIn = () => window.dispatchEvent(new Event('yardao:open-checkin'))
 
@@ -278,9 +321,9 @@ export const YardTabsView = React.memo(function YardTabsView({
 
       {/* ════ LEFT: tabs + metrics + list ════ */}
       <div className="flex-1 min-w-0 bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-700 rounded-2xl shadow-sm overflow-hidden">
-        {/* tabs */}
-        <div className="flex gap-1 px-2 pt-1.5 border-b border-[#e2e8e5] dark:border-gray-700 overflow-x-auto"
-             style={{ scrollbarWidth: 'thin' }}>
+        {/* tabs + controls row */}
+        <div className="flex items-center gap-2 px-2 pt-1.5 border-b border-[#e2e8e5] dark:border-gray-700">
+          <div className="flex gap-1 overflow-x-auto flex-1 min-w-0" style={{ scrollbarWidth: 'thin' }}>
           {TABS.map(tab => {
             const on = tab.key === activeTab
             const btn = (
@@ -312,6 +355,31 @@ export const YardTabsView = React.memo(function YardTabsView({
             }
             return btn
           })}
+          </div>
+
+          {/* view switcher + Filters — same row as the status tabs (desktop) */}
+          {onViewModeChange && (
+            <div className="hidden lg:flex items-center gap-1.5 flex-shrink-0 pb-1.5">
+              <div className="flex items-center gap-0.5 bg-[#f0f4f2] dark:bg-gray-700/50 rounded-lg p-0.5">
+                {VIEW_BTNS.map(b => {
+                  const on = viewMode === b.mode
+                  const Icon = b.icon
+                  return (
+                    <button key={b.mode} onClick={() => onViewModeChange(b.mode)} title={b.label} aria-label={b.label}
+                      className={`p-1.5 rounded-md transition-colors ${on ? 'bg-[#012619] text-white shadow-sm' : 'text-[#8a9e94] hover:text-[#4a5e54] dark:hover:text-white'}`}>
+                      <Icon className="w-4 h-4" />
+                    </button>
+                  )
+                })}
+              </div>
+              {onToggleFilters && (
+                <button onClick={onToggleFilters} title="Filters" aria-label="Filters"
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${filtersOpen ? 'bg-[#012619] border-[#012619] text-white' : 'bg-white dark:bg-gray-800 border-[#e2e8e5] dark:border-gray-600 text-[#4a5e54] dark:text-gray-300 hover:border-[#c8d5ce]'}`}>
+                  <Filter className="w-3.5 h-3.5" /> Filters
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="p-4">
@@ -384,15 +452,17 @@ export const YardTabsView = React.memo(function YardTabsView({
                 const meta = ACTIVITY_META[e.kind] || ACTIVITY_META.checkin
                 const Icon = meta.icon
                 return (
-                  <button key={e.id} onClick={() => onViewVehicle(e.v)}
-                          className={`flex items-start gap-3 text-left py-2.5 ${i < activity.length - 1 ? 'border-b border-[#f1f5f3] dark:border-gray-700/60' : ''}`}>
-                    <span className="w-6.5 h-6.5 rounded-lg flex items-center justify-center flex-shrink-0"
+                  <button key={e.id} onClick={() => e.v && onViewVehicle(e.v)} disabled={!e.v}
+                          className={`flex items-start gap-3 text-left py-2.5 ${e.v ? '' : 'cursor-default'} ${i < activity.length - 1 ? 'border-b border-[#f1f5f3] dark:border-gray-700/60' : ''}`}>
+                    <span className="rounded-lg flex items-center justify-center flex-shrink-0"
                           style={{ background: meta.bg, color: meta.fg, width: 26, height: 26 }}>
                       <Icon className="w-3.5 h-3.5" />
                     </span>
                     <span className="min-w-0">
                       <span className="block text-[13px] text-[#0c1f17] dark:text-gray-200 leading-snug">{e.text}</span>
-                      <span className="block text-[11px] text-[#9fb0a8] mt-0.5">{relTime(new Date(e.t))}</span>
+                      <span className="block text-[11px] text-[#9fb0a8] mt-0.5">
+                        {e.by ? `${e.by} · ` : ''}{relTime(new Date(e.t))}
+                      </span>
                     </span>
                   </button>
                 )
@@ -406,9 +476,10 @@ export const YardTabsView = React.memo(function YardTabsView({
 })
 
 const ACTIVITY_META: Record<string, { icon: typeof ArrowUpRight; bg: string; fg: string }> = {
-  checkin:  { icon: Plus,          bg: '#eef0ef', fg: '#525f59' },
+  checkin:  { icon: ArrowDownLeft, bg: '#e7f6ee', fg: '#0e7a4f' },
+  checkout: { icon: ArrowUpRight,  bg: '#e9f2f8', fg: '#256089' },
   hire:     { icon: ArrowUpRight,  bg: '#e9f2f8', fg: '#256089' },
-  transfer: { icon: ArrowUpRight,  bg: '#e9f2f8', fg: '#256089' },
+  transfer: { icon: ArrowUpRight,  bg: '#eef0ef', fg: '#525f59' },
   garage:   { icon: Wrench,        bg: '#fdf3e2', fg: '#b5790a' },
   return:   { icon: ArrowDownLeft, bg: '#e7f6ee', fg: '#0e7a4f' },
 }
