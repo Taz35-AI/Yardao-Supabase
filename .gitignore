@@ -53,5 +53,3 @@ next-env.d.ts
 # Supabase CLI scratch
 supabase/.temp/
 
-# Windows-generated lock omits Linux native binaries (lightningcss); let CI resolve fresh
-package-lock.json
