@@ -15,7 +15,7 @@
 
 'use client'
 
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   CheckCircle, Clock, Wrench, XCircle, Truck, AlertTriangle, Plus, ChevronRight,
   ArrowUpRight, ArrowDownLeft, Bell,
@@ -26,6 +26,9 @@ interface YardTabsViewProps {
   vehicles: CheckedInVehicle[]
   outOnHireVehicles?: CheckedInVehicle[]
   onViewVehicle: (vehicle: CheckedInVehicle) => void
+  /** Current search term — when set, the view auto-selects the tab that holds
+   *  the matching vehicle(s). */
+  searchTerm?: string
   className?: string
 }
 
@@ -38,12 +41,14 @@ interface TabConfig {
   icon: typeof CheckCircle
 }
 
+// Order: the four in-yard statuses first, then On hire shown separately (a
+// divider is rendered before it because it represents vehicles OUT of the yard).
 const TABS: TabConfig[] = [
   { key: 'Ready', label: 'Ready', color: '#16a34a', icon: CheckCircle },
   { key: 'Pending checks', label: 'Pending', color: '#d97706', icon: Clock },
-  { key: 'on_hire', label: 'On hire', color: '#012619', icon: Truck },
   { key: 'Repairs needed', label: 'Repairs', color: '#dc2626', icon: Wrench },
   { key: 'Non-Starter', label: 'Non-starter', color: '#475569', icon: XCircle },
+  { key: 'on_hire', label: 'On hire', color: '#012619', icon: Truck },
 ]
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -160,6 +165,7 @@ export const YardTabsView = React.memo(function YardTabsView({
   vehicles,
   outOnHireVehicles = [],
   onViewVehicle,
+  searchTerm = '',
   className = '',
 }: YardTabsViewProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('Ready')
@@ -180,6 +186,18 @@ export const YardTabsView = React.memo(function YardTabsView({
     }
     return buckets
   }, [vehicles, outOnHireVehicles])
+
+  // When the user searches, jump to the tab that actually contains the match.
+  // (vehicles/outOnHireVehicles are already filtered upstream by the search, so
+  // a non-empty bucket = a hit.) We only move if the current tab has no hits,
+  // so manually browsing an empty tab without a search isn't disturbed.
+  useEffect(() => {
+    if (!searchTerm.trim()) return
+    if ((grouped[activeTab]?.length || 0) > 0) return
+    const order: TabKey[] = ['Ready', 'Pending checks', 'Repairs needed', 'Non-Starter', 'on_hire']
+    const firstHit = order.find(k => (grouped[k]?.length || 0) > 0)
+    if (firstHit) setActiveTab(firstHit)
+  }, [searchTerm, grouped, activeTab])
 
   const activeCfg = TABS.find(t => t.key === activeTab)!
   const items = grouped[activeTab] || []
@@ -254,7 +272,7 @@ export const YardTabsView = React.memo(function YardTabsView({
              style={{ scrollbarWidth: 'thin' }}>
           {TABS.map(tab => {
             const on = tab.key === activeTab
-            return (
+            const btn = (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
@@ -272,6 +290,16 @@ export const YardTabsView = React.memo(function YardTabsView({
                 </span>
               </button>
             )
+            // On hire is out of the yard — separate it from the in-yard tabs.
+            if (tab.key === 'on_hire') {
+              return (
+                <React.Fragment key="on_hire_group">
+                  <span aria-hidden className="self-center w-px h-6 mx-1.5 bg-[#e2e8e5] dark:bg-gray-700 flex-shrink-0" />
+                  {btn}
+                </React.Fragment>
+              )
+            }
+            return btn
           })}
         </div>
 

@@ -461,6 +461,7 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
           vehicles={allFilteredVehicles || displayVehicles}
           outOnHireVehicles={outOnHireVehicles}
           onViewVehicle={onViewVehicle}
+          searchTerm={filters?.search || ''}
           className="w-full"
         />
       </div>
