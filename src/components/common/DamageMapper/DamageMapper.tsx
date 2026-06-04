@@ -686,7 +686,7 @@ export function DamageMapper({
       {/* ── Diagram + pins ────────────────────────────────────────────── */}
       <div
   ref={imgRef}
-  className={`relative w-full rounded-2xl overflow-hidden border-2 select-none transition-colors
+  className={`relative w-full max-w-2xl mx-auto rounded-2xl overflow-hidden border-2 select-none transition-colors
     ${isPlacingPin
       ? 'border-[#b3f243] cursor-crosshair'
       : 'border-gray-200 dark:border-gray-700 cursor-default'
@@ -697,8 +697,7 @@ export function DamageMapper({
   <img
     src={diagramSrc}
     alt={`${diagramType} diagram`}
-    className="w-full block pointer-events-none select-none"
-    style={{ maxHeight: '60vh', objectFit: 'contain' }}
+    className="w-full h-auto block pointer-events-none select-none"
     draggable={false}
   />
 
