@@ -17,7 +17,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import {
-  CheckCircle, Clock, Wrench, XCircle, Truck, AlertTriangle, Plus, ChevronRight,
+  CheckCircle, Clock, Wrench, XCircle, Truck, AlertTriangle, Plus,
   ArrowUpRight, ArrowDownLeft, Bell,
 } from 'lucide-react'
 import { CheckedInVehicle, VehicleStatus, normalizeVehicleStatus } from '@/types'
@@ -94,56 +94,75 @@ const RegPlate = ({ registration }: { registration: string }) => (
   </span>
 )
 
-// ── vehicle row ──────────────────────────────────────────────────────────────
+// ── vehicle tile ─────────────────────────────────────────────────────────────
+// Compact vertical card so many fit per row. Shows plate, days, make/model,
+// size · colour, optional MOT alert, and a footer with contract + condition.
 const VehicleRow = ({
   vehicle, color, onView,
 }: { vehicle: CheckedInVehicle; color: string; onView: (v: CheckedInVehicle) => void }) => {
   const days = getDaysInYard(vehicle.createdAt || (vehicle as any).checkInTime)
   const motDays = getMotDaysLeft(vehicle.motExpiry)
   const daysColor = days >= 30 ? '#dc2626' : days >= 14 ? '#d97706' : '#6b7a70'
+  const contract = vehicle.contract
+  const contractColor = vehicle.contractColor
 
   return (
     <button
       type="button"
       onClick={() => onView(vehicle)}
-      className="group relative w-full text-left flex items-center gap-3 bg-white dark:bg-gray-800
-                 hover:bg-[#f7faf8] dark:hover:bg-gray-700/70 border border-[#e2e8e5] dark:border-gray-700
-                 rounded-xl pl-4 pr-3 py-3 transition-all duration-150 hover:shadow-md hover:-translate-y-[1px]
-                 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#025940]"
+      className="group flex flex-col text-left bg-white dark:bg-gray-800 hover:bg-[#f7faf8] dark:hover:bg-gray-700/70
+                 border border-[#e2e8e5] dark:border-gray-700 rounded-xl p-3 transition-all duration-150
+                 hover:shadow-md hover:-translate-y-[1px] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#025940]"
+      style={{ borderLeft: `3px solid ${color}` }}
     >
-      <span className="absolute left-0 top-2.5 bottom-2.5 w-1 rounded-full" style={{ background: color }} />
-      <RegPlate registration={vehicle.registration} />
-      <div className="flex-1 min-w-0">
-        <div className="text-[13.5px] font-semibold text-[#012619] dark:text-white leading-tight truncate">
-          {`${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'Unknown vehicle'}
-        </div>
-        <div className="text-[11.5px] text-[#6b7a70] dark:text-gray-400 truncate flex items-center gap-2 mt-0.5">
-          {vehicle.colour && (
-            <span className="inline-flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full border border-black/10 inline-block"
-                    style={{ background: colourToHex(vehicle.colour) }} />
-              {vehicle.colour}
-            </span>
-          )}
-          {vehicle.size && <span>· {vehicle.size}</span>}
-          {motDays !== null && motDays <= 30 && (
-            <span className={`inline-flex items-center gap-0.5 font-semibold ${motDays < 0 ? 'text-red-600' : 'text-amber-600'}`}>
-              <AlertTriangle className="w-3 h-3" />
-              {motDays < 0 ? 'MOT expired' : `MOT ${motDays}d`}
-            </span>
-          )}
-        </div>
+      {/* plate + days */}
+      <div className="flex items-center justify-between mb-2">
+        <RegPlate registration={vehicle.registration} />
+        <span className="text-[11px] font-bold tabular-nums leading-none" style={{ color: daysColor }}>{days}d</span>
       </div>
-      {vehicle.condition && (
-        <span className="hidden sm:inline-flex text-[11px] font-semibold px-2.5 py-1 rounded-full flex-shrink-0
-                         bg-[#f0f4f2] text-[#4a5e54] dark:bg-gray-700 dark:text-gray-300">
-          {vehicle.condition}
+
+      {/* make / model */}
+      <div className="text-[13px] font-semibold text-[#012619] dark:text-white leading-tight truncate">
+        {`${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'Unknown vehicle'}
+      </div>
+      {/* size · colour */}
+      <div className="text-[11px] text-[#6b7a70] dark:text-gray-400 truncate mt-0.5 flex items-center gap-1.5">
+        {vehicle.colour && (
+          <span className="inline-flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full border border-black/10 inline-block" style={{ background: colourToHex(vehicle.colour) }} />
+            {vehicle.colour}
+          </span>
+        )}
+        {vehicle.size && <span>· {vehicle.size}</span>}
+      </div>
+
+      {/* MOT alert */}
+      {motDays !== null && motDays <= 30 && (
+        <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border mt-2 self-start ${
+          motDays < 0
+            ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300'
+            : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300'}`}>
+          <AlertTriangle className="w-2.5 h-2.5" />
+          {motDays < 0 ? 'MOT expired' : `MOT ${motDays}d`}
         </span>
       )}
-      <span className="text-[12px] font-bold tabular-nums flex-shrink-0 w-8 text-right" style={{ color: daysColor }}>
-        {days}d
-      </span>
-      <ChevronRight className="w-4 h-4 text-[#c2cfc9] dark:text-gray-600 flex-shrink-0 group-hover:text-[#025940]" />
+
+      {/* footer: contract + condition */}
+      <div className="flex items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-[#eef3f0] dark:border-gray-700/60">
+        {contract ? (
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full border max-w-[62%] truncate"
+            style={{ backgroundColor: contractColor ? `${contractColor}15` : '#f0f4f2', borderColor: contractColor ? `${contractColor}40` : '#d8d6cd', color: contractColor || '#4a5e54' }}
+            title={contract}>
+            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: contractColor || '#8a9e94' }} />
+            <span className="truncate">{contract}</span>
+          </span>
+        ) : (
+          <span className="text-[10px] italic text-[#8a9e94] dark:text-gray-500">No contract</span>
+        )}
+        {vehicle.condition && (
+          <span className="text-[10px] font-semibold text-[#6b7a70] dark:text-gray-400 truncate flex-shrink-0">{vehicle.condition}</span>
+        )}
+      </div>
     </button>
   )
 }
@@ -201,14 +220,6 @@ export const YardTabsView = React.memo(function YardTabsView({
 
   const activeCfg = TABS.find(t => t.key === activeTab)!
   const items = grouped[activeTab] || []
-
-  // per-tab metrics
-  const metrics = useMemo(() => {
-    const dayList = items.map(v => getDaysInYard(v.createdAt || (v as any).checkInTime))
-    const avg = dayList.length ? (dayList.reduce((a, b) => a + b, 0) / dayList.length) : 0
-    const oldest = dayList.length ? Math.max(...dayList) : 0
-    return { count: items.length, avg: avg.toFixed(1), oldest }
-  }, [items])
 
   // Today stats (whole yard)
   const inYard = vehicles.length
@@ -304,45 +315,27 @@ export const YardTabsView = React.memo(function YardTabsView({
         </div>
 
         <div className="p-4">
-          {/* metrics */}
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="rounded-xl px-4 py-3"
-                 style={{ background: 'linear-gradient(135deg,#04231a,#013a29)' }}>
-              <div className="text-[22px] font-bold tracking-tight text-[#b3f243] leading-none">{metrics.count}</div>
-              <div className="text-[11px] text-[#a9c6b9] mt-1.5 font-medium">In {activeCfg.label.toLowerCase()}</div>
+          {items.length === 0 ? (
+            <div className="text-center py-14 px-4">
+              <activeCfg.icon className="w-8 h-8 text-[#c8d5ce] dark:text-gray-600 mx-auto mb-2" />
+              <p className="text-[13px] text-[#8a9e94] dark:text-gray-500">No vehicles in {activeCfg.label}</p>
+              <button onClick={openCheckIn}
+                      className="mt-3 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[#025940] hover:underline">
+                <Plus className="w-3.5 h-3.5" /> Check in a vehicle
+              </button>
             </div>
-            <div className="rounded-xl px-4 py-3 bg-[#fbfdfc] dark:bg-gray-900/40 border border-[#e7edea] dark:border-gray-700">
-              <div className="text-[22px] font-bold tracking-tight text-[#012619] dark:text-white leading-none">{metrics.avg}d</div>
-              <div className="text-[11px] text-[#6b7a70] dark:text-gray-400 mt-1.5 font-medium">Avg time in yard</div>
-            </div>
-            <div className="rounded-xl px-4 py-3 bg-[#fbfdfc] dark:bg-gray-900/40 border border-[#e7edea] dark:border-gray-700">
-              <div className="text-[22px] font-bold tracking-tight text-[#012619] dark:text-white leading-none">{metrics.oldest}d</div>
-              <div className="text-[11px] text-[#6b7a70] dark:text-gray-400 mt-1.5 font-medium">Longest waiting</div>
-            </div>
-          </div>
-
-          {/* list */}
-          <div className="flex flex-col gap-2.5">
-            {items.length === 0 ? (
-              <div className="text-center py-14 px-4">
-                <activeCfg.icon className="w-8 h-8 text-[#c8d5ce] dark:text-gray-600 mx-auto mb-2" />
-                <p className="text-[13px] text-[#8a9e94] dark:text-gray-500">No vehicles in {activeCfg.label}</p>
-                <button onClick={openCheckIn}
-                        className="mt-3 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[#025940] hover:underline">
-                  <Plus className="w-3.5 h-3.5" /> Check in a vehicle
-                </button>
-              </div>
-            ) : (
-              items.map(v => (
+          ) : (
+            <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+              {items.map(v => (
                 <VehicleRow key={v.id} vehicle={v} color={activeCfg.color} onView={onViewVehicle} />
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
       {/* ════ RIGHT RAIL ════ */}
-      <div className="w-full lg:w-80 lg:shrink-0 flex flex-col gap-4 lg:sticky lg:top-2 lg:self-start">
+      <div className="w-full lg:w-96 lg:shrink-0 flex flex-col gap-4 lg:sticky lg:top-2 lg:self-start">
         {/* Today */}
         <div className="bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-700 rounded-2xl shadow-sm p-4">
           <h3 className="text-[14px] font-bold text-[#012619] dark:text-white mb-3">Today</h3>
