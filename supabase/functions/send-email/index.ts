@@ -47,8 +47,8 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        // Default sender — replace yourdomain with a Resend-verified domain.
-        from: from || 'Yardao <noreply@yourdomain>',
+        // Default sender — Resend-verified domain (yardao.com).
+        from: from || 'Yardao <noreply@yardao.com>',
         to,
         subject,
         html,
