@@ -310,10 +310,36 @@ export function useDashboardDataLayer({ userId, branchId = 'main' }: DashboardDa
     }))
   }, [conditionCategories])
 
-  // Extract vehicle data
-  const checkedInVehicles = useMemo(() => yardData?.checkedInVehicles || [], [yardData?.checkedInVehicles])
-  const vehiclesInYard = useMemo(() => yardData?.vehiclesInYard || [], [yardData?.vehiclesInYard])
-  const vehiclesOutOnHire = useMemo(() => yardData?.vehiclesOutOnHire || [], [yardData?.vehiclesOutOnHire])
+  // A vehicle's identity (make / model / colour) lives on the FLEET record.
+  // The yard stores a snapshot taken at check-in, so if the fleet make/model is
+  // later corrected (e.g. via a DVLA lookup) the yard copy would stay stale.
+  // Re-derive these fields from the fleet record (matched by registration) so
+  // the yard always mirrors the fleet — this also fixes any already-stale rows.
+  const fleetByReg = useMemo(() => {
+    const m = new Map<string, any>()
+    for (const v of (fleetData?.vehicles || [])) {
+      const reg = (v.registration || '').toUpperCase().replace(/\s+/g, '')
+      if (reg) m.set(reg, v)
+    }
+    return m
+  }, [fleetData?.vehicles])
+
+  const enrichFromFleet = (v: any) => {
+    const reg = (v?.registration || '').toUpperCase().replace(/\s+/g, '')
+    const f = reg ? fleetByReg.get(reg) : null
+    if (!f) return v
+    return {
+      ...v,
+      make: f.make || v.make,
+      model: f.model || v.model,
+      colour: f.colour || v.colour,
+    }
+  }
+
+  // Extract vehicle data (with live fleet identity merged in)
+  const checkedInVehicles = useMemo(() => (yardData?.checkedInVehicles || []).map(enrichFromFleet), [yardData?.checkedInVehicles, fleetByReg])
+  const vehiclesInYard = useMemo(() => (yardData?.vehiclesInYard || []).map(enrichFromFleet), [yardData?.vehiclesInYard, fleetByReg])
+  const vehiclesOutOnHire = useMemo(() => (yardData?.vehiclesOutOnHire || []).map(enrichFromFleet), [yardData?.vehiclesOutOnHire, fleetByReg])
   const analytics = useMemo(() => yardData?.analytics || DEFAULT_ANALYTICS, [yardData?.analytics])
 
   // Dashboard logic hook
