@@ -47,3 +47,5 @@ next-env.d.ts
 
 # Firebase Hosting local cache — regenerated on every build, don't track
 .firebase/
+
+.vercel
