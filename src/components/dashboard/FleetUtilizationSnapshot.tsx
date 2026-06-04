@@ -289,7 +289,7 @@ export default function FleetUtilizationSnapshot({ vehicles, totalFleetCount }: 
                       padding: '12px 16px',
                       boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
                     }}
-                    formatter={(value: number, name: string) => [t('dashboard.fleetUtil.tooltipVehicles', { value }), name]}
+                    formatter={(value: any, name: any) => [t('dashboard.fleetUtil.tooltipVehicles', { value }), name]}
                     labelStyle={{ color: '#025940', fontWeight: 'bold', fontSize: '14px', marginBottom: '6px' }}
                   />
                 </PieChart>
@@ -338,7 +338,7 @@ export default function FleetUtilizationSnapshot({ vehicles, totalFleetCount }: 
                       padding: '12px 16px',
                       boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
                     }}
-                    formatter={(value: number, name: string) => [t('dashboard.fleetUtil.tooltipVehicles', { value }), name]}
+                    formatter={(value: any, name: any) => [t('dashboard.fleetUtil.tooltipVehicles', { value }), name]}
                     labelStyle={{ color: '#025940', fontWeight: 'bold', fontSize: '14px', marginBottom: '6px' }}
                   />
                 </PieChart>
