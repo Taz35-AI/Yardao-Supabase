@@ -5,8 +5,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
-import { organizationService, userProfileService } from '@/lib/firestore'
-import { branchService } from '@/lib/services/branchService'
+import { completePendingOrgSetup } from '@/lib/orgSetup'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -45,7 +44,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [agreedToTerms, setAgreedToTerms] = useState(false)
-  const { signUp, sendVerificationEmail } = useAuth()
+  const { signUp } = useAuth()
   const router = useRouter()
 
   // Animated vehicles state
@@ -117,54 +116,39 @@ export default function RegisterPage() {
     setLoading(true)
 
     try {
-      const userCredential = await signUp(email, password)
-      const user = userCredential.user
-
-      await userProfileService.updateUserDisplayName(user, displayName.trim())
-
-      const newOrganization = await organizationService.createOrganization({
-        name: organizationName.trim(),
-        description: `${organizationName.trim()} fleet management`,
-        createdBy: user.uid
-      })
-
-      await branchService.createMainBranch(
-        newOrganization.id!,
-        user.uid,
-        displayName.trim()
-      )
-
-      await userProfileService.createProfile({
-        uid: user.uid,
+      // Sign up, stashing the display name + org name in user metadata. Supabase
+      // emails a confirmation link; when email confirmation is ON, no session is
+      // returned yet, so the organisation is created on first login after the
+      // user confirms (see completePendingOrgSetup).
+      const userCredential = await signUp(email, password, {
         displayName: displayName.trim(),
-        email: user.email!,
-        organizationId: newOrganization.id!,
-        organizationName: newOrganization.name,
-        themePreference: 'system',
-        role: 'admin',
-        emailVerified: false,
-        requiresPasswordReset: false,
-        isActive: true,
-        isDeleted: false
+        organizationName: organizationName.trim(),
       })
 
-      await sendVerificationEmail()
+      if (userCredential.session) {
+        // Email confirmation is OFF → we already have a session; finish the
+        // organisation setup now and go straight to the dashboard.
+        await completePendingOrgSetup()
+        router.push('/dashboard')
+        return
+      }
 
+      // Email confirmation is ON → show the "check your email" screen.
       setSuccess(true)
-      
       setTimeout(() => {
         router.push('/login?registered=true')
-      }, 2000)
+      }, 4000)
 
     } catch (error: any) {
       logger.error('Registration error:', error)
-      
-      if (error.code === 'auth/email-already-in-use') {
-        setError('An account with this email already exists')
-      } else if (error.code === 'auth/invalid-email') {
+      const msg = (error?.message || '').toLowerCase()
+
+      if (msg.includes('already registered') || msg.includes('already exists') || error.code === 'auth/email-already-in-use') {
+        setError('An account with this email already exists. Try signing in instead.')
+      } else if (msg.includes('invalid') && msg.includes('email')) {
         setError('Please enter a valid email address')
-      } else if (error.code === 'auth/weak-password') {
-        setError('Password is too weak. Please choose a stronger password.')
+      } else if (msg.includes('password')) {
+        setError(error.message || 'Password is too weak. Please choose a stronger password.')
       } else if (error.code === 'auth/network-request-failed') {
         setError('Network error. Please check your connection and try again.')
       } else {
@@ -228,10 +212,11 @@ export default function RegisterPage() {
                 Registration Successful!
               </h2>
               <p className="text-[#025940] dark:text-slate-400 mb-4">
-                Your account has been created successfully. A verification email has been sent to {email}.
+                We've sent a confirmation link to <span className="font-semibold">{email}</span>. Click it to verify your email,
+                then sign in — your organization will be set up automatically on your first login.
               </p>
               <p className="text-sm text-[#72A68E] dark:text-teal-400">
-                Redirecting to login page...
+                Taking you to the sign-in page…
               </p>
             </CardContent>
           </Card>

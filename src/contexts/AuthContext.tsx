@@ -26,6 +26,8 @@ export interface AppUser {
 
 export interface AppUserCredential {
   user: AppUser
+  // null when email confirmation is required (signUp returns no session yet).
+  session?: Session | null
 }
 
 const mapUser = (u: SupabaseUser | null | undefined): AppUser | null => {
@@ -44,7 +46,7 @@ type Profile = Awaited<ReturnType<typeof userProfileService.getProfile>>
 interface AuthContextType {
   user: AppUser | null
   loading: boolean
-  signUp: (email: string, password: string) => Promise<AppUserCredential>
+  signUp: (email: string, password: string, metadata?: { displayName?: string; organizationName?: string }) => Promise<AppUserCredential>
   signIn: (email: string, password: string) => Promise<AppUserCredential>
   logout: () => Promise<void>
   resetPassword: (email: string) => Promise<void>
@@ -297,10 +299,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user?.uid, refreshProfile])
 
-  const signUp = async (email: string, password: string): Promise<AppUserCredential> => {
-    const { data, error } = await supabase.auth.signUp({ email, password })
+  const signUp = async (
+    email: string,
+    password: string,
+    metadata?: { displayName?: string; organizationName?: string },
+  ): Promise<AppUserCredential> => {
+    // Stash the display name + org name in user_metadata. When email
+    // confirmation is ON, signUp returns no session, so the organization can't
+    // be created yet — it's created on first login after the user confirms
+    // (see completePendingOrgSetup). When confirmation is OFF, data.session is
+    // present and the caller finishes setup immediately.
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          pending_display_name: metadata?.displayName ?? null,
+          pending_org_name: metadata?.organizationName ?? null,
+        },
+      },
+    })
     if (error) throw error
-    return { user: mapUser(data.user) as AppUser }
+    return { user: mapUser(data.user) as AppUser, session: data.session }
   }
 
   const signIn = async (email: string, password: string): Promise<AppUserCredential> => {

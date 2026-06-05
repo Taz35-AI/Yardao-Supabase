@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
+import { completePendingOrgSetup } from '@/lib/orgSetup'
+import { logger } from '@/lib/logger'
 import { isUserActive, isUserDeleted } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -141,7 +143,18 @@ export default function LoginPage() {
     try {
       const userCredential = await signIn(email, password)
       const user = userCredential.user
-      
+
+      // Finish a deferred signup's organisation setup, if any (no-op for normal
+      // logins). This runs on first login after email confirmation.
+      try {
+        await completePendingOrgSetup()
+      } catch (orgErr) {
+        logger.error('Deferred org setup failed on login:', orgErr)
+        setError('We could not finish setting up your organization. Please try signing in again.')
+        setLoading(false)
+        return
+      }
+
       // Check if user profile exists and is active
       const profile = await userProfileService.getProfile(user.uid)
       
