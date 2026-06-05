@@ -1468,7 +1468,9 @@ useEffect(() => {
           style={{
             position: 'fixed',
             bottom: isMobile ? `${bottomOffset + 12}px` : `${bottomOffset + 16}px`,
-            right: '24px',
+            // Desktop: bottom-left (just right of the nav). Mobile: bottom-right (unchanged).
+            right: isMobile ? '24px' : 'auto',
+            left: isMobile ? 'auto' : '280px',
             width: '64px', height: '64px',
             borderRadius: '50%',
             background: 'transparent', border: 'none',
@@ -1492,8 +1494,9 @@ useEffect(() => {
         <div style={{
           position: 'fixed',
           bottom: isMobile ? `${bottomOffset + 80}px` : `${bottomOffset + 84}px`,
-          right: isMobile ? '12px' : '24px',
-          left: isMobile ? '12px' : 'auto',
+          // Desktop: anchor the panel bottom-left; mobile: bottom (unchanged).
+          right: isMobile ? '12px' : 'auto',
+          left: isMobile ? '12px' : '280px',
           top: 'auto',
           width: isMobile ? 'auto' : '380px',
           maxHeight: isMobile ? 'calc(100dvh - 160px)' : '540px',

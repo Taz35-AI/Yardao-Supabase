@@ -113,6 +113,10 @@ interface DashboardSummaryCardsProps {
   // Mobile only: shown inline after the checked-out pill, before notes/check-in.
   // Desktop: not rendered here (tab toggle lives below the strip in DashboardContent).
   yardTabSlot?: React.ReactNode
+  // DESKTOP-ONLY: show just the Total pill (hide Ready/Pending/Repairs + progress
+  // + the inline check-in). Used by the desktop tabbed pipeline view, whose tabs
+  // already carry the status counts. Mobile is unaffected.
+  onlyTotal?: boolean
   className?: string
 }
 
@@ -179,10 +183,13 @@ export const DashboardSummaryCards = React.memo(function DashboardSummaryCards({
   onViewModeChange,
   checkedOutSlot,
   yardTabSlot,
+  onlyTotal = false,
   className = '',
 }: DashboardSummaryCardsProps) {
 
   const t = useT()
+  // Desktop strip segments (Total-only when the desktop tabbed view asks for it).
+  const desktopSegments = onlyTotal ? SEGMENTS.filter(s => s.key === 'total') : SEGMENTS
 
   // 🎤 Long-press on the Check In button opens the voice overlay.
   // Single hook instance shared by both the desktop and mobile buttons —
@@ -274,7 +281,7 @@ export const DashboardSummaryCards = React.memo(function DashboardSummaryCards({
       {/* ── DESKTOP: single row ────────────────────────────────────────────────── */}
       <div className="hidden sm:flex items-center gap-1.5 flex-wrap">
 
-        {SEGMENTS.map(seg => {
+        {desktopSegments.map(seg => {
           const count    = countByKey[seg.key]
           const isActive = activeSegmentKey === seg.key
           const handler  = handlers[seg.handler]
@@ -302,7 +309,7 @@ export const DashboardSummaryCards = React.memo(function DashboardSummaryCards({
         })}
 
         {/* progress bar */}
-        {totalCount > 0 && (
+        {totalCount > 0 && !onlyTotal && (
           <div className="flex items-center gap-1.5 ml-1 text-[10px] text-[#8a9e94] dark:text-white/40 font-medium" title={t('dashboard.summary.readyPctTitle', { readyPct })}>
             <div className="w-20 h-1.5 rounded-full bg-[#e2e8e5] dark:bg-white/10 overflow-hidden">
               <div className="h-full rounded-full bg-[#4ade80] transition-all duration-500" style={{ width: `${readyPct}%` }} />
@@ -337,10 +344,11 @@ export const DashboardSummaryCards = React.memo(function DashboardSummaryCards({
           </div>
         )}
 
-        {/* notes + check-in */}
+        {/* notes + check-in (check-in hidden in the desktop Total-only strip —
+            the tabbed view uses a floating check-in button instead) */}
         <div className={`flex items-center gap-2 ${hasActiveFilters ? '' : 'ml-auto'}`}>
           <UserNotesButton />
-          {onCheckIn && (
+          {onCheckIn && !onlyTotal && (
             <button
               {...voiceHold.bind}
               aria-label={t('dashboard.summary.checkInVehicleAria')}

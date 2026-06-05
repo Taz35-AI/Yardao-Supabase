@@ -28,8 +28,11 @@ import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
 // ✨ PHASE 2: Yard layout view (read-only dashboard map of branch parking spaces)
 import { YardLayoutView } from '@/components/yard/layout/YardLayoutView'
-// ✨ PHASE 3: Pipeline (Kanban) view — default yard view
+// ✨ PHASE 3: Pipeline (Kanban) view — used on MOBILE in the pipeline view
 import { PipelineView } from '@/components/features/dashboard/PipelineView'
+// Tabbed yard view (statuses-as-tabs + right rail) — used on DESKTOP in the
+// pipeline view. Mobile keeps the lane view above.
+import { YardTabsView } from '@/components/features/dashboard/YardTabsView'
 
 interface ServiceBooking {
   id: string
@@ -75,6 +78,9 @@ interface DashboardVehicleListProps {
   allFilteredVehicles?: CheckedInVehicle[]
   // ✨ PHASE 3: filtered out-on-hire vehicles for the 5th pipeline column.
   outOnHireVehicles?: CheckedInVehicle[]
+  // Desktop tabbed view renders the Filters control on its tab row.
+  onToggleFilters?: () => void
+  filtersOpen?: boolean
 }
 
 export const DashboardVehicleList = React.memo(function DashboardVehicleList({
@@ -100,6 +106,8 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
   // ✨ PHASE 3
   allFilteredVehicles,
   outOnHireVehicles,
+  onToggleFilters,
+  filtersOpen,
 }: DashboardVehicleListProps) {
   const [localViewMode, setLocalViewMode] = useState<ViewMode>('table')
   const [hoveredVehicle, setHoveredVehicle] = useState<string | null>(null)
@@ -456,12 +464,29 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
   if (currentViewMode === 'pipeline') {
     return (
       <div className={`${className} w-full`}>
-        <PipelineView
-          vehicles={allFilteredVehicles || displayVehicles}
-          outOnHireVehicles={outOnHireVehicles}
-          onViewVehicle={onViewVehicle}
-          className="w-full"
-        />
+        {/* Desktop (lg+): tabbed yard view + right rail. */}
+        <div className="hidden lg:block">
+          <YardTabsView
+            vehicles={allFilteredVehicles || displayVehicles}
+            outOnHireVehicles={outOnHireVehicles}
+            onViewVehicle={onViewVehicle}
+            searchTerm={filters?.search || ''}
+            viewMode={currentViewMode as any}
+            onViewModeChange={onViewModeChange as any}
+            onToggleFilters={onToggleFilters}
+            filtersOpen={filtersOpen}
+            className="w-full"
+          />
+        </div>
+        {/* Mobile (<lg): original lane/kanban view (unchanged backup). */}
+        <div className="lg:hidden">
+          <PipelineView
+            vehicles={allFilteredVehicles || displayVehicles}
+            outOnHireVehicles={outOnHireVehicles}
+            onViewVehicle={onViewVehicle}
+            className="w-full"
+          />
+        </div>
       </div>
     )
   }
