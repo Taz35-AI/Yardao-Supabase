@@ -21,6 +21,8 @@ import { parseBookingDate, matchWorkTypes, calculateNewMOTExpiry } from '@/lib/z
 import { fetchFleetData, findVehicles, buildSmartSummary, resolveBranchName } from '@/lib/zao/fleetQueries'
 import { parseMessageWithGroq } from '@/lib/groqNoteParser'
 import { getApiKey, callGroq, buildSystemPrompt, fetchWeather, type GroqMessage } from '@/lib/zao/groqClient'
+import { askZao } from '@/lib/zao/agent'
+import { logger } from '@/lib/logger'
 
 // Types
 import type { GroqResponse, UseGroqAssistantReturn, ConfirmBookingParams } from '@/types/zao.types'
@@ -1034,6 +1036,15 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
       catch { return ok(raw || "Sorry, I didn't quite catch that — could you rephrase it?", 'query') }
 
       if (intent.intent === 'query') {
+        // SQL-native answer: hand the question to the tool-calling agent, which
+        // queries the database directly (org-scoped via RLS) instead of answering
+        // from a prompt summary. Falls back to the classifier's answer on error.
+        try {
+          const answer = await askZao(userMessage, history)
+          if (answer) return ok(answer, 'query')
+        } catch (err) {
+          logger.error('Zao agent failed; falling back to summary answer', err)
+        }
         return ok(intent.answer && intent.answer !== 'null' ? intent.answer : "I couldn't find that — try being more specific!", 'query')
       }
 
