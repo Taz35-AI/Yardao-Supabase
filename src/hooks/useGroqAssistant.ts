@@ -1039,11 +1039,20 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
         return ok(`Which vehicle is coming back from hire?\n\n${hiredOut.map((v: any) => `• **${v.registration}** — ${v.make || ''} ${v.model || ''}`).join('\n')}\n\nSay the reg and I'll confirm it.`)
       }
 
-      // ── 7. PURE CODE QUERY RESOLVER ─────────────────────────────────────────
-      // Handles location, status, count, list, and booking date queries without
-      // touching Groq. Every query type it can answer returns immediately —
-      // Groq only fires for genuinely ambiguous messages like free-text comments
-      // or unknown intents.
+      // ── 7. AGENT (questions + simple actions) ───────────────────────────────
+      // Anything not caught by the specific multi-step commands above (booking,
+      // checkout, check-in, hire, MOT-done) goes to the SQL-native agent FIRST.
+      // It has read tools AND simple write tools (set status, add comment), and
+      // resolves "it"/"that one" from the conversation — so "move it to ready"
+      // works. Falls through to the local resolver / classifier only on error.
+      try {
+        const agentAnswer = await askZao(userMessage, history)
+        if (agentAnswer) return ok(agentAnswer, 'query')
+      } catch (err) {
+        logger.error('Zao agent (fallback) failed; using local resolver', err)
+      }
+
+      // ── 7b. PURE CODE QUERY RESOLVER (last-ditch fallback) ──────────────────
       const localAnswer = resolveQueryLocally(userMessage, fleetData)
       if (localAnswer !== null) return ok(localAnswer, 'query')
 

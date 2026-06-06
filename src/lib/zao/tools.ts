@@ -126,6 +126,37 @@ export const ZAO_TOOLS: ToolSpec[] = [
   {
     type: 'function',
     function: {
+      name: 'set_status',
+      description:
+        'Change a yard vehicle\'s status. Valid: "Ready", "Pending checks", "Repairs needed", "Non-Starter". Use for commands like "move it to ready", "mark YB67 as repairs", "it\'s done" (done → Ready). If the user says "it"/"that one", resolve which vehicle from the recent conversation. Reversible.',
+      parameters: {
+        type: 'object',
+        properties: {
+          reg: { type: 'string', description: 'The vehicle registration' },
+          status: { type: 'string', enum: ['Ready', 'Pending checks', 'Repairs needed', 'Non-Starter'] },
+        },
+        required: ['reg', 'status'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'add_comment',
+      description: 'Add a note/comment to a yard vehicle. Use for "add a note to YB67: needs tyres", "comment on it that …".',
+      parameters: {
+        type: 'object',
+        properties: {
+          reg: { type: 'string', description: 'The vehicle registration' },
+          comment: { type: 'string', description: 'The note text' },
+        },
+        required: ['reg', 'comment'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'run_query',
       description:
         'ESCAPE HATCH for analytical questions the other tools cannot answer (grouping, counting, joins, custom filters). Provide a SINGLE read-only PostgreSQL SELECT. It is automatically scoped to this organisation, so do NOT add organization_id filters. Only use when no other tool fits.\n' +
@@ -171,6 +202,10 @@ export async function executeZaoTool(name: string, args: Record<string, unknown>
       return rpc('zao_bookings', { p_from: (args?.from as string) ?? null, p_to: (args?.to as string) ?? null })
     case 'at_external_garages':
       return rpc('zao_at_external_garages')
+    case 'set_status':
+      return rpc('zao_set_status', { p_reg: String(args?.reg ?? ''), p_status: String(args?.status ?? '') })
+    case 'add_comment':
+      return rpc('zao_add_comment', { p_reg: String(args?.reg ?? ''), p_comment: String(args?.comment ?? '') })
     case 'run_query':
       return rpc('zao_run_query', { p_sql: String(args?.sql ?? '') })
     default:
