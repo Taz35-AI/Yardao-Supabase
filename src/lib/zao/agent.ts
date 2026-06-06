@@ -26,6 +26,7 @@ interface GroqToolResponse {
   content: string
   tool_calls: ChatMessage['tool_calls'] | null
   finish_reason: string | null
+  tool_use_failed?: boolean
 }
 
 const SYSTEM_PROMPT = `You are Zao, the AI assistant for Yardao, a UK vehicle yard management system.
@@ -78,8 +79,25 @@ export async function askZao(
     { role: 'user', content: question },
   ]
 
+  let nudges = 0
   for (let hop = 0; hop < MAX_HOPS; hop++) {
     const res = await callGroqTools(messages, true)
+
+    // The model emitted a malformed/unknown tool call (Groq tool_use_failed).
+    // Nudge it with the exact tool names and retry, rather than failing.
+    if (res.tool_use_failed) {
+      if (nudges++ < 2) {
+        messages.push({
+          role: 'system',
+          content:
+            'Your last tool call was invalid. Use ONLY these exact tool names: ' +
+            ZAO_TOOLS.map((t) => t.function.name).join(', ') +
+            '. Call the correct tool now.',
+        })
+        continue
+      }
+      break // give up on tools after repeated failures → final synthesis below
+    }
 
     if (res.tool_calls && res.tool_calls.length > 0) {
       // Record the assistant's tool-call turn verbatim (required by the API).

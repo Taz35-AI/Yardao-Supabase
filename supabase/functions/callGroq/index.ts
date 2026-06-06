@@ -46,6 +46,15 @@ Deno.serve(async (req) => {
     if (!resp.ok) {
       const errorText = await resp.text()
       console.error('Groq API error:', resp.status, errorText)
+      // Groq returns 400 `tool_use_failed` when the model emits a malformed or
+      // unknown tool call (e.g. a slightly-wrong name like "yards_vehicles").
+      // Return it as a SOFT 200 signal so the client can self-correct (nudge +
+      // retry) instead of treating the whole turn as a hard failure.
+      let parsed: any = null
+      try { parsed = JSON.parse(errorText) } catch { /* not json */ }
+      if (resp.status === 400 && parsed?.error?.code === 'tool_use_failed') {
+        return json({ content: '', tool_calls: null, finish_reason: 'tool_use_failed', tool_use_failed: true }, 200)
+      }
       // Surface Groq's actual rejection reason (truncated) so failures are
       // diagnosable instead of just a status code.
       return json({ error: `Groq API error: ${resp.status}`, detail: errorText.slice(0, 600) }, 500)
