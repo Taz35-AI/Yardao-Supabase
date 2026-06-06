@@ -645,6 +645,27 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
         }
       }
 
+      // ── 1d. DATA QUESTION → SQL-native agent ─────────────────────────────────
+      // A clear data question goes straight to the tool-calling agent, BEFORE the
+      // action detectors below — which otherwise misfire on questions (e.g.
+      // "which one is in pending?" was being parsed as a check-in). Action
+      // commands and anything ambiguous fall through unchanged. On any error the
+      // agent silently falls through to the existing flow.
+      const qTrim = userMessage.trim()
+      const isQuestion =
+        /\?\s*$/.test(qTrim) ||
+        /^(what|which|how|how many|where|who|whose|why|when|is there|are there|do we|does|did|have we|got any|any\b|list\b|show\b|tell me|give me)/i.test(qTrim)
+      const looksLikeAction =
+        /\b(check\s*in|check\s*out|checkout|book|schedule|set\s+.*hire|hire\s+out|put\s+.*hire|return|mark|defleet|remove|send\s+.*to|move\s+.*to)\b/i.test(qTrim)
+      if (isQuestion && !looksLikeAction) {
+        try {
+          const answer = await askZao(userMessage, history)
+          if (answer) return ok(answer, 'query')
+        } catch (err) {
+          logger.error('Zao agent (early route) failed; falling through', err)
+        }
+      }
+
       // Fetch fleet data once — shared by all branches below
       const fleetData = await fetchFleetData(organizationId)
 
