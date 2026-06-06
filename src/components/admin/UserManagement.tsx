@@ -269,7 +269,9 @@ function UserManagement() {
         organizationId: userProfile.organizationId,
         organizationName: userProfile.organizationName || '',
         role: newUser.role,
-        requiresPasswordReset: false,
+        // Force the new user to set their own password on first login (the temp
+        // password is one-time). Enforced globally by PasswordResetGuard.
+        requiresPasswordReset: true,
         isActive: true,
         isDeleted: false,
         createdBy: user!.uid,

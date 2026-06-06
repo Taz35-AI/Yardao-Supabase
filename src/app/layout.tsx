@@ -6,6 +6,7 @@ import { Toaster } from 'sonner'
 import './globals.css'
 import { SpeechEnabledGroqAssistant } from '@/components/common/SpeechEnabledGroqAssistant'
 import { ZaoGuard } from '@/components/common/ZaoGuard'
+import { PasswordResetGuard } from '@/components/common/PasswordResetGuard'
 
 // ─── Fonts ────────────────────────────────────────────────────────────────────
 // Geist: clean, geometric, excellent at all weights on mobile and desktop
@@ -225,6 +226,8 @@ export default function RootLayout({
           {children}
           {/* ✅ Zao AI assistant — only shown when user is signed in */}
           <ZaoGuard />
+          {/* 🔒 Force a password change on first login (admin-created / migrated users) */}
+          <PasswordResetGuard />
         </ConditionalProviders>
         
         {/* Sonner Toast Notifications - Dark Theme Optimized */}

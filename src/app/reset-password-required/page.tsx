@@ -36,7 +36,7 @@ export default function ResetPasswordRequiredPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const { user } = useAuth()
+  const { user, refreshProfile } = useAuth()
   const router = useRouter()
 
   // Animated vehicles state
@@ -110,7 +110,11 @@ export default function ResetPasswordRequiredPage() {
       await userProfileService.updateProfile(user.uid, {
         requiresPasswordReset: false
       })
-      
+
+      // Refresh the cached profile so the global PasswordResetGuard sees the
+      // cleared flag — without this it would immediately bounce us back here.
+      await refreshProfile()
+
       // Redirect to dashboard
       router.push('/dashboard')
     } catch (error: any) {

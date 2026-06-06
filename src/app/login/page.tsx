@@ -178,9 +178,15 @@ export default function LoginPage() {
         return
       }
 
-      // REMOVED: Password reset requirement check
-      // Users can now log in directly and change password from profile page
-      
+      // Force a password change on first login for admin-created / migrated
+      // users (the temp password is one-time). The global PasswordResetGuard
+      // also enforces this on every protected page, but redirect immediately
+      // here so they never momentarily land on the dashboard.
+      if (profile.requiresPasswordReset) {
+        router.push('/reset-password-required')
+        return
+      }
+
       // Successful login - redirect to dashboard
       router.push('/dashboard')
     } catch (error: any) {
