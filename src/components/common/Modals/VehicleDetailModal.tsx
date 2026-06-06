@@ -437,7 +437,10 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
   }
 
   const handleCheckout = () => {
-    if (!canPerformAction(localInsuranceStatus)) {
+    // Insurance gate is FLEET-only. A non-fleet vehicle (visitor / external
+    // garage customer) has no fleet vehicleId and was never on our insurance,
+    // so it can always be checked out. Fleet vehicles keep the gate.
+    if (vehicle.vehicleId && !canPerformAction(localInsuranceStatus)) {
       setBlockedAction('checkout')
       setShowInsuranceWarning(true)
       return
