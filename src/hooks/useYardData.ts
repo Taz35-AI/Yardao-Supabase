@@ -942,8 +942,10 @@ export function useYardDataInternal(props?: UseYardDataProps) {
         throw new Error('Vehicle not found')
       }
 
-      // Check insurance status before allowing checkout
-      if (!canPerformAction(vehicle.insuranceStatus)) {
+      // Insurance gate is FLEET-only. A non-fleet vehicle (visitor / external
+      // garage customer) has no fleet vehicleId and was never on your insurance,
+      // so it can always be checked out of the yard. Fleet vehicles keep the gate.
+      if (vehicle.vehicleId && !canPerformAction(vehicle.insuranceStatus)) {
         throw new Error(`INSURANCE_REQUIRED:${vehicle.registration}`)
       }
 
@@ -1314,7 +1316,9 @@ if (updates.damagePins !== undefined && vehicleIdForSync) {
       vehicleIds.forEach(id => {
         const vehicle = checkedInVehicles.find(v => v.id === id)
         if (vehicle) {
-          if (!canPerformAction(vehicle.insuranceStatus)) {
+          // Insurance gate is FLEET-only — non-fleet (visitor/customer) vehicles
+          // have no fleet vehicleId and were never your liability → always allow.
+          if (vehicle.vehicleId && !canPerformAction(vehicle.insuranceStatus)) {
             uninsuredVehicles.push(vehicle.registration)
           } else {
             validVehicles.push(vehicle)
