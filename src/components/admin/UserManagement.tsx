@@ -244,7 +244,20 @@ function UserManagement() {
           createdBy: user!.uid,
         },
       })
-      if (createError) throw createError
+      if (createError) {
+        // supabase-js wraps a non-2xx Edge Function response in a
+        // FunctionsHttpError whose `.message` is generic ("non-2xx status
+        // code"). The real reason is in the response body — surface it.
+        let realMsg = createError.message
+        try {
+          const ctx = (createError as any).context
+          if (ctx && typeof ctx.json === 'function') {
+            const body = await ctx.json()
+            if (body?.error) realMsg = body.error
+          }
+        } catch { /* fall back to the generic message */ }
+        throw new Error(realMsg)
+      }
 
       const createdUid = (createResult as any)?.uid ?? (createResult as any)?.id ?? (createResult as any)?.user?.id
       if (!createdUid) throw new Error('Failed to create user')
