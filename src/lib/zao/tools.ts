@@ -222,6 +222,94 @@ export const ZAO_TOOLS: ToolSpec[] = [
   {
     type: 'function',
     function: {
+      name: 'list_branches',
+      description: 'List this organisation\'s branches (name + slug). Use to resolve which branch the user means before a transfer.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_garages',
+      description: 'List the external garages set up for this organisation. Use to resolve which garage the user means before sending a vehicle there.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'transfer_to_branch',
+      description: 'Transfer a yard vehicle to another branch (marks it in-transit; it appears in that branch\'s incoming transfers). Use for "check out YB67 to Fairview", "send it to the Bray branch".',
+      parameters: {
+        type: 'object',
+        properties: { reg: { type: 'string' }, branch: { type: 'string', description: 'Branch name or slug' } },
+        required: ['reg', 'branch'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'send_to_garage',
+      description: 'Send a yard vehicle to an external garage (marks it "at garage"). Use for "send YB67 to Joe\'s Garage", "YB67 out to the bodyshop garage".',
+      parameters: {
+        type: 'object',
+        properties: { reg: { type: 'string' }, garage: { type: 'string', description: 'Garage name' } },
+        required: ['reg', 'garage'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'book_service',
+      description: 'Create a service booking for a vehicle. Use for "book YB67 in for a service on Friday", "MOT booking for AB12 next Tuesday".',
+      parameters: {
+        type: 'object',
+        properties: {
+          reg: { type: 'string' },
+          date: { type: 'string', description: 'Date YYYY-MM-DD' },
+          work: { type: 'string', description: 'What work, e.g. "MOT", "Full service", "Tyres x4"' },
+          time: { type: 'string', description: 'Optional time slot, e.g. "09:00"' },
+        },
+        required: ['reg', 'date', 'work'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'add_to_fleet',
+      description: 'Add a vehicle to the fleet (master inventory). Use for "add YB67 to the fleet", "new vehicle: AB12CDE, Ford Transit".',
+      parameters: {
+        type: 'object',
+        properties: {
+          reg: { type: 'string' }, make: { type: 'string' }, model: { type: 'string' },
+          mot: { type: 'string', description: 'MOT expiry YYYY-MM-DD' },
+          tax: { type: 'string', description: 'Tax expiry YYYY-MM-DD' },
+        },
+        required: ['reg'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'defleet',
+      description: 'Defleet a vehicle — remove it from the fleet (reversible soft-delete). DESTRUCTIVE: only call after the user has confirmed. Use for "defleet YB67", "YB67 has been sold".',
+      parameters: {
+        type: 'object',
+        properties: {
+          reg: { type: 'string' },
+          reason: { type: 'string', enum: ['Sold', 'Scrapped', 'Trade-In', 'End of Lease', 'Accident Write-Off', 'Theft', 'Other'] },
+        },
+        required: ['reg'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'run_query',
       description:
         'ESCAPE HATCH for analytical questions the other tools cannot answer (grouping, counting, joins, custom filters). Provide a SINGLE read-only PostgreSQL SELECT. It is automatically scoped to this organisation, so do NOT add organization_id filters. Only use when no other tool fits.\n' +
@@ -286,6 +374,31 @@ export async function executeZaoTool(name: string, args: Record<string, unknown>
       return rpc('zao_set_hire', { p_reg: String(args?.reg ?? ''), p_on_hire: Boolean(args?.on_hire) })
     case 'mark_mot_done':
       return rpc('zao_mark_mot_done', { p_reg: String(args?.reg ?? ''), p_months: Number(args?.months ?? 12) })
+    case 'list_branches':
+      return rpc('zao_branches')
+    case 'list_garages':
+      return rpc('zao_garages')
+    case 'transfer_to_branch':
+      return rpc('zao_transfer_to_branch', { p_reg: String(args?.reg ?? ''), p_branch: String(args?.branch ?? '') })
+    case 'send_to_garage':
+      return rpc('zao_send_to_garage', { p_reg: String(args?.reg ?? ''), p_garage: String(args?.garage ?? '') })
+    case 'book_service':
+      return rpc('zao_book_service', {
+        p_reg: String(args?.reg ?? ''),
+        p_date: args?.date != null ? String(args.date) : null,
+        p_work: args?.work != null ? String(args.work) : 'Service',
+        p_time: args?.time != null ? String(args.time) : null,
+      })
+    case 'add_to_fleet':
+      return rpc('zao_add_to_fleet', {
+        p_reg: String(args?.reg ?? ''),
+        p_make: args?.make != null ? String(args.make) : null,
+        p_model: args?.model != null ? String(args.model) : null,
+        p_mot: args?.mot != null ? String(args.mot) : null,
+        p_tax: args?.tax != null ? String(args.tax) : null,
+      })
+    case 'defleet':
+      return rpc('zao_defleet', { p_reg: String(args?.reg ?? ''), p_reason: args?.reason != null ? String(args.reason) : 'Other' })
     case 'run_query':
       return rpc('zao_run_query', { p_sql: String(args?.sql ?? '') })
     default:

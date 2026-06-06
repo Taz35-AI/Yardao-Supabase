@@ -655,25 +655,24 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
       const isQuestion =
         /\?\s*$/.test(qTrim) ||
         /^(what|which|how|how many|where|who|whose|why|when|is there|are there|do we|does|did|have we|got any|any\b|list\b|show\b|tell me|give me)/i.test(qTrim)
-      // Simple, REVERSIBLE commands the agent does directly (status / comment).
-      const isSimpleAction =
+      // The agent now owns the whole yard, so route questions AND commands to
+      // it. The old intent detectors below remain only as a fallback (reached if
+      // the agent errors). The agent picks the right tool from the phrasing —
+      // e.g. "check out X" → remove; "check out X to garage/branch" → send/transfer.
+      const isYardCommand =
         (/\b(status|mark|move|set|change|make|put)\b/i.test(qTrim) &&
           /\b(ready|pending|repair|repairs|non[- ]?start|starter|fixed|done)\b/i.test(qTrim)) ||
-        /\b(add a note|leave a note|note on|note that|comment on|add comment)\b/i.test(qTrim)
-      // Everyday lifecycle the agent now runs directly: check in / out, hire,
-      // MOT done. (Destination-based checkouts are excluded below.)
-      const isLifecycleAction =
-        /\b(check\s*in|checkin)\b/i.test(qTrim) ||
-        /\b(check\s*out|checkout)\b/i.test(qTrim) ||
+        /\b(add a note|leave a note|note on|note that|comment on|add comment)\b/i.test(qTrim) ||
+        /\b(check\s*in|checkin|check\s*out|checkout)\b/i.test(qTrim) ||
         /\b(on hire|out on hire|hire out|back from hire|return(ed)?\s+from\s+hire)\b/i.test(qTrim) ||
         /\b(mot\s+(is\s+)?done|passed\s+(its|the)\s+mot|done\s+(its|the)?\s*mot)\b/i.test(qTrim) ||
+        /\b(book|schedule|booking|appointment)\b/i.test(qTrim) ||
+        /\b(transfer|send)\b/i.test(qTrim) ||
+        /\bto\s+(the\s+)?(garage|branch)\b/i.test(qTrim) ||
+        /\bdefleet\b/i.test(qTrim) ||
+        /\b(add\b.*\bfleet|new vehicle)\b/i.test(qTrim) ||
         /\b(remove|take)\b.*\byard\b/i.test(qTrim)
-      // COMPLEX / destination / reporting-heavy commands stay on their UI flows:
-      // bookings (slots), defleet, branch transfer, send-to-garage.
-      const isComplexCommand =
-        /\b(book|schedule|appointment|defleet|deliver|transfer)\b/i.test(qTrim) ||
-        /\bto\s+(the\s+)?(garage|branch|external)/i.test(qTrim)
-      if ((isQuestion || isSimpleAction || isLifecycleAction) && !isComplexCommand) {
+      if (isQuestion || isYardCommand) {
         try {
           const answer = await askZao(userMessage, history)
           if (answer) return ok(answer, 'query')
