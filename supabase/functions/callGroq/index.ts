@@ -46,7 +46,9 @@ Deno.serve(async (req) => {
     if (!resp.ok) {
       const errorText = await resp.text()
       console.error('Groq API error:', resp.status, errorText)
-      return json({ error: `Groq API error: ${resp.status}` }, 500)
+      // Surface Groq's actual rejection reason (truncated) so failures are
+      // diagnosable instead of just a status code.
+      return json({ error: `Groq API error: ${resp.status}`, detail: errorText.slice(0, 600) }, 500)
     }
 
     const data = await resp.json()
