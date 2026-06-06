@@ -7,7 +7,7 @@
 'use client'
 
 import React, { useState, useMemo } from 'react'
-import { X, Truck, Wrench, ArrowRight } from 'lucide-react'
+import { X, Truck, Wrench, ArrowRight, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Branch } from '@/types/branch'
 import { CheckoutDestination } from '@/types/transfer'
@@ -20,6 +20,9 @@ interface CheckoutDestinationModalProps {
   currentBranchId: string
   availableBranches: Branch[]
   loading?: boolean
+  // When true, offer a "Remove from Yard" option (for non-fleet vehicles:
+  // visitors / external garage customers that are simply leaving).
+  allowRemove?: boolean
 }
 
 export function CheckoutDestinationModal({
@@ -29,9 +32,10 @@ export function CheckoutDestinationModal({
   vehicleRegistration,
   currentBranchId,
   availableBranches,
-  loading = false
+  loading = false,
+  allowRemove = false
 }: CheckoutDestinationModalProps) {
-  const [selectedType, setSelectedType] = useState<'branch_transfer' | 'external_garage' | null>(null)
+  const [selectedType, setSelectedType] = useState<'branch_transfer' | 'external_garage' | 'remove' | null>(null)
   const [selectedBranchId, setSelectedBranchId] = useState<string>('')
 
   // Filter out current branch from available branches
@@ -61,12 +65,15 @@ export function CheckoutDestinationModal({
     } else if (selectedType === 'external_garage') {
       // ✅ External garage — triggers GarageCheckoutModal in parent
       onConfirm({ type: 'external_garage' })
+    } else if (selectedType === 'remove') {
+      // Non-fleet vehicle leaving the yard — plain remove (logs to history)
+      onConfirm({ type: 'remove' })
     }
   }
 
   const canConfirm = useMemo(() => {
     if (selectedType === 'branch_transfer') return Boolean(selectedBranchId)
-    return selectedType === 'external_garage'
+    return selectedType === 'external_garage' || selectedType === 'remove'
   }, [selectedType, selectedBranchId])
 
   if (!isOpen) return null
@@ -181,6 +188,36 @@ export function CheckoutDestinationModal({
             </div>
           </div>
 
+          {/* Remove from Yard card — non-fleet (visitor / customer) vehicles only */}
+          {allowRemove && (
+            <div
+              onClick={() => !loading && setSelectedType('remove')}
+              className={`p-5 rounded-xl border-2 cursor-pointer transition-all ${
+                selectedType === 'remove'
+                  ? 'border-[#025940] bg-[#f0f4f2] dark:bg-[#025940]/10'
+                  : 'border-[#e2e8e5] dark:border-gray-700 hover:border-[#72A68E]'
+              } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <div className="flex items-start gap-4">
+                <div className={`p-2.5 rounded-lg flex-shrink-0 ${
+                  selectedType === 'remove'
+                    ? 'bg-[#025940] text-white'
+                    : 'bg-[#f0f4f2] dark:bg-gray-700 text-[#8a9e94]'
+                }`}>
+                  <LogOut className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-bold text-[#012619] dark:text-white mb-1">
+                    Remove from Yard
+                  </h3>
+                  <p className="text-xs text-[#8a9e94] dark:text-gray-400">
+                    Vehicle is leaving — remove it from the yard. For visitors and external customers, not in your fleet. Logged in checkout history.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
 
         {/* ── Action bar ── */}
@@ -201,6 +238,8 @@ export function CheckoutDestinationModal({
           >
             {loading ? (
               <span>Processing...</span>
+            ) : selectedType === 'remove' ? (
+              <><LogOut className="w-4 h-4" /><span>Remove from Yard</span></>
             ) : selectedType === 'external_garage' ? (
               <><Wrench className="w-4 h-4" /><span>Next: Select Garage</span></>
             ) : (

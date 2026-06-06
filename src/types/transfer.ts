@@ -30,7 +30,7 @@ export interface VehicleTransfer {
 }
 
 export interface CheckoutDestination {
-  type: 'branch_transfer' | 'external_garage'
+  type: 'branch_transfer' | 'external_garage' | 'remove'
   branchId?: string
   branchName?: string
   sourceBranchId?: string      // ✅ NEW: Source branch ID

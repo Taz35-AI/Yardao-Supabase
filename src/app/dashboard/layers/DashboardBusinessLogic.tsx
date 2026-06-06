@@ -345,6 +345,23 @@ showSuccess(t('dashboard.success.vehicleCheckedIn', { registration: cleanRegistr
         return true
       }
 
+      // ✅ Handle REMOVE - a non-fleet vehicle (visitor / customer) simply
+      // leaving the yard: plain checkout (logs to history, frees the space,
+      // removes the yard row). No transfer, no garage.
+      if (destination.type === 'remove') {
+        if (!yardData?.checkOutVehicle) {
+          showError(t('dashboard.errors.checkoutFnUnavailable'))
+          return false
+        }
+        await yardData.checkOutVehicle(vehicleId)
+        if (dashboardLogic.selectedVehicle?.id === vehicleId) {
+          dashboardLogic.handleCloseDetailModal()
+        }
+        modalController.closeCheckoutDestinationModal()
+        showSuccess(t('dashboard.success.vehicleCheckedOut', { registration: vehicle.registration }))
+        return true
+      }
+
       showError(t('dashboard.errors.invalidCheckoutDestination'))
       return false
     } catch (error) {
@@ -352,7 +369,7 @@ showSuccess(t('dashboard.success.vehicleCheckedIn', { registration: cleanRegistr
       showError(error instanceof Error ? error.message : t('dashboard.errors.checkoutVehicleFailed'))
       return false
     }
-  }, [initiateCheckout, checkedInVehicles, dashboardLogic, modalController, showError, showSuccess])
+  }, [initiateCheckout, checkedInVehicles, dashboardLogic, modalController, showError, showSuccess, yardData])
 
   // ✅ FIXED: Handle cancel transfer - triggers confirmation modal
 const handleCancelTransfer = useCallback(async (vehicleId: string): Promise<boolean> => {

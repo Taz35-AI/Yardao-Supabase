@@ -853,6 +853,7 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
         currentBranchId={branchId}
         availableBranches={branches}
         loading={businessLogic.transferLoading}
+        allowRemove={!modalController.modalStates.checkoutDestinationVehicle?.vehicleId}
       />
 
       <GarageCheckoutModal
