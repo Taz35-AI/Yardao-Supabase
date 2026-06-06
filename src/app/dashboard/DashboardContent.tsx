@@ -47,6 +47,7 @@ import { VehicleEditModal } from '@/components/yard/VehicleEditModal'
 import { VehicleDetailModal } from '@/components/common/Modals/VehicleDetailModal'
 import { BreakdownModal } from '@/components/common/Modals/BreakdownModal'
 import { NotesCleanupModal } from '@/components/features/dashboard/NotesCleanupModal'
+import { OnlineMembers } from '@/components/features/dashboard/OnlineMembers'
 import { SetOutOnHireModal, QuickCheckInModal } from '@/components/features/dashboard/HireModals'
 import { InsuranceWarningPopup } from '@/components/features/dashboard/InsuranceWarningPopup'
 
@@ -348,6 +349,9 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
 
             {/* Right: Actions */}
             <div className="flex items-center gap-2 flex-shrink-0">
+
+              {/* Live presence — who's online now (desktop only) */}
+              <OnlineMembers organizationId={dataLayer.userProfile?.organizationId} />
 
               {/* Desktop actions */}
               <div className="hidden md:flex items-center gap-2">

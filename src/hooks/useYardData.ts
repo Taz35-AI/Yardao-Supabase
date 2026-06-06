@@ -355,6 +355,19 @@ export function useYardDataInternal(props?: UseYardDataProps) {
 
       refresh()
 
+      // Coalesce bursts of changes into ONE refetch. Behaviour-preserving:
+      // refresh() always reads current DB state, so the end result is identical
+      // — rapid/bulk changes just batch into a single fetch instead of
+      // re-downloading the whole branch once per change (egress + CPU saver).
+      let refreshTimer: ReturnType<typeof setTimeout> | null = null
+      const scheduleRefresh = () => {
+        if (refreshTimer) clearTimeout(refreshTimer)
+        refreshTimer = setTimeout(() => {
+          refreshTimer = null
+          refresh()
+        }, 250)
+      }
+
       const channel = supabase
         .channel(`checked_in_vehicles:${orgId}:${listenBranchId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
         .on(
@@ -366,12 +379,13 @@ export function useYardDataInternal(props?: UseYardDataProps) {
             filter: `organization_id=eq.${orgId}`,
           },
           () => {
-            refresh()
+            scheduleRefresh()
           },
         )
         .subscribe()
 
       unsubscribeRef.current = () => {
+        if (refreshTimer) clearTimeout(refreshTimer)
         supabase.removeChannel(channel)
       }
     }

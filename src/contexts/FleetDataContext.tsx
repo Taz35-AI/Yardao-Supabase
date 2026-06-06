@@ -398,17 +398,26 @@ export function FleetDataProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user?.uid || !organizationId) return
+    // Coalesce bursts of changes into ONE silent refetch. Behaviour-preserving
+    // (the refetch reads current DB state); avoids re-downloading the whole
+    // vehicles collection once per change during bulk ops / rapid edits.
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null
     const channel = supabase
       .channel(`vehicles:${organizationId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'vehicles', filter: `organization_id=eq.${organizationId}` },
         () => {
-          loadDataRef.current(true, true) // silent: no loading flash on live updates
+          if (refreshTimer) clearTimeout(refreshTimer)
+          refreshTimer = setTimeout(() => {
+            refreshTimer = null
+            loadDataRef.current(true, true) // silent: no loading flash on live updates
+          }, 250)
         },
       )
       .subscribe()
     return () => {
+      if (refreshTimer) clearTimeout(refreshTimer)
       supabase.removeChannel(channel)
     }
   }, [user?.uid, organizationId])

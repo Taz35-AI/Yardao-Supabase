@@ -331,7 +331,17 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
       // initial fetch
       fetchBookings()
 
-      // refetch on any change to this org's service_bookings
+      // refetch on any change to this org's service_bookings.
+      // Coalesce bursts into ONE refetch (behaviour-preserving: fetchBookings
+      // reads current DB state, so the end result is identical).
+      let refreshTimer: ReturnType<typeof setTimeout> | null = null
+      const scheduleFetch = () => {
+        if (refreshTimer) clearTimeout(refreshTimer)
+        refreshTimer = setTimeout(() => {
+          refreshTimer = null
+          fetchBookings()
+        }, 250)
+      }
       const channel = supabase
         .channel(`service_bookings:${orgId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
         .on(
@@ -343,12 +353,13 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
             filter: `organization_id=eq.${orgId}`,
           },
           () => {
-            fetchBookings()
+            scheduleFetch()
           }
         )
         .subscribe()
 
       unsubscribeRef.current = () => {
+        if (refreshTimer) clearTimeout(refreshTimer)
         supabase.removeChannel(channel)
       }
     }
