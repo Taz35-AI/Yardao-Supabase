@@ -655,9 +655,18 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
       const isQuestion =
         /\?\s*$/.test(qTrim) ||
         /^(what|which|how|how many|where|who|whose|why|when|is there|are there|do we|does|did|have we|got any|any\b|list\b|show\b|tell me|give me)/i.test(qTrim)
-      const looksLikeAction =
-        /\b(check\s*in|check\s*out|checkout|book|schedule|set\s+.*hire|hire\s+out|put\s+.*hire|return|mark|defleet|remove|send\s+.*to|move\s+.*to)\b/i.test(qTrim)
-      if (isQuestion && !looksLikeAction) {
+      // Simple, REVERSIBLE commands the agent does directly (status / comment).
+      // Routed to the agent so the greedy checkout/check-in detectors below don't
+      // grab them — e.g. "status X to ready" was being read as "check X out to
+      // garage 'ready'".
+      const isSimpleAction =
+        (/\b(status|mark|move|set|change|make|put)\b/i.test(qTrim) &&
+          /\b(ready|pending|repair|repairs|non[- ]?start|starter|fixed|done)\b/i.test(qTrim)) ||
+        /\b(add a note|leave a note|note on|note that|comment on|add comment)\b/i.test(qTrim)
+      // COMPLEX multi-step commands stay on the dedicated flows below.
+      const isComplexCommand =
+        /\b(book|schedule|appointment|check\s*in|check\s*out|checkout|garage|on hire|hire out|out on hire|defleet|deliver|transfer)\b/i.test(qTrim)
+      if ((isQuestion || isSimpleAction) && !isComplexCommand) {
         try {
           const answer = await askZao(userMessage, history)
           if (answer) return ok(answer, 'query')
