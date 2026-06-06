@@ -23,8 +23,20 @@ export const ZAO_TOOLS: ToolSpec[] = [
     function: {
       name: 'fleet_summary',
       description:
-        'A live snapshot of the whole yard: fleet total, how many are in the yard, counts by status, how many are on hire, at external garages, in transit, uninsured, MOT/tax due or expired, and bookings today. Use for overviews and overall counts ("how\'s the yard", "give me a rundown", "how many vehicles do we have").',
+        'A live snapshot of the whole yard as COUNTS ONLY (no registrations): fleet total, how many are in the yard, counts by status, on hire, at external garages, in transit, uninsured, MOT/tax due or expired, bookings today. Use ONLY for overview numbers ("how many vehicles", "give me a rundown"). It cannot name specific vehicles — for that use yard_vehicles.',
       parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'yard_vehicles',
+      description:
+        'List the actual vehicles currently in the yard WITH their registration plates, make/model, status and location. This is the right tool for "what vehicles are in the yard", "which one(s)", "list what we have", or any question that needs to NAME the vehicles rather than just count them.',
+      parameters: {
+        type: 'object',
+        properties: { limit: { type: 'integer', description: 'Max results (default 50, max 200)' } },
+      },
     },
   },
   {
@@ -145,6 +157,8 @@ export async function executeZaoTool(name: string, args: Record<string, unknown>
   switch (name) {
     case 'fleet_summary':
       return rpc('zao_fleet_summary')
+    case 'yard_vehicles':
+      return rpc('zao_yard_vehicles', { p_limit: Number(args?.limit ?? 50) })
     case 'search_vehicles':
       return rpc('zao_search_vehicles', { p_query: String(args?.query ?? ''), p_limit: Number(args?.limit ?? 20) })
     case 'vehicles_by_status':
