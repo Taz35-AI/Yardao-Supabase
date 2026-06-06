@@ -108,10 +108,14 @@ export function StockTab() {
           if (profile?.organizationId) {
             setOrganizationId(profile.organizationId)
             setUserName(profile.displayName || 'Unknown')
+          } else {
+            // No org → stop the "Loading parts…" spinner instead of hanging.
+            setLoading(false)
           }
         } catch (error) {
           logger.error('Error fetching organization:', error)
           toast.error(t('stock.tab.loadOrgFail'))
+          setLoading(false)
         }
       }
     }

@@ -11,8 +11,20 @@ import { logger } from '@/lib/logger'
 /**
  * @returns true if it created the organisation this call, false otherwise.
  * Throws if creation fails (caller should surface a retryable error).
+ *
+ * Concurrency-safe: the login/register pages AND AuthContext both call this on
+ * sign-in. Without a guard, two concurrent callers could each pass the
+ * "no organization yet" check and create TWO organizations. We dedupe by
+ * sharing a single in-flight promise so only one run ever executes at a time.
  */
-export async function completePendingOrgSetup(): Promise<boolean> {
+let inFlight: Promise<boolean> | null = null
+export function completePendingOrgSetup(): Promise<boolean> {
+  if (inFlight) return inFlight
+  inFlight = runCompletePendingOrgSetup().finally(() => { inFlight = null })
+  return inFlight
+}
+
+async function runCompletePendingOrgSetup(): Promise<boolean> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return false
 

@@ -127,11 +127,14 @@ export function FleetDataProvider({ children }: { children: ReactNode }) {
         if (profile?.organizationId) {
           setOrganizationId(profile.organizationId)
         } else {
+          // No org → fail loud, don't leave the UI spinning forever.
           setError('No organization found')
+          setLoading(false)
         }
       } catch (err) {
         logger.error('[useFleetData] Error loading organization:', err)
         setError('Failed to load user organization')
+        setLoading(false)
       }
     }
 

@@ -73,13 +73,21 @@ export function useBodyshopJobs() {
   // ── Bootstrap user/org ──────────────────────────────────────────────────────
   useEffect(() => {
     if (!user?.uid) return
-    userProfileService.getProfile(user.uid).then(profile => {
-      if (profile?.organizationId) {
-        setOrganizationId(profile.organizationId)
-        setUserDisplayName(profile.displayName || 'Unknown')
-        setUserRole(profile.role === 'admin' ? 'admin' : 'member')
-      }
-    })
+    userProfileService.getProfile(user.uid)
+      .then(profile => {
+        if (profile?.organizationId) {
+          setOrganizationId(profile.organizationId)
+          setUserDisplayName(profile.displayName || 'Unknown')
+          setUserRole(profile.role === 'admin' ? 'admin' : 'member')
+        } else {
+          // No org → stop the kanban spinner instead of hanging forever.
+          setLoadingJobs(false)
+        }
+      })
+      .catch(err => {
+        logger.error('useBodyshopJobs: failed to load organization', err)
+        setLoadingJobs(false)
+      })
   }, [user])
 
   // ── Load all jobs ───────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@ import { createContext, useContext, useEffect, useState, useCallback, useRef } f
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabaseClient'
 import { userProfileService } from '@/lib/firestore'
+import { completePendingOrgSetup } from '@/lib/orgSetup'
 import { PushNotifications } from '@capacitor/push-notifications'
 import { LocalNotifications } from '@capacitor/local-notifications'
 import { Capacitor } from '@capacitor/core'
@@ -74,6 +75,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profileLoading, setProfileLoading] = useState(false)
   const [profileError, setProfileError] = useState(false)
   const uidRef = useRef<string | null>(null)
+  // Tracks the uid we've already run deferred org-setup for, so it runs at most
+  // once per signed-in user (token refreshes re-fire onAuthStateChange).
+  const orgSetupAttempted = useRef<string | null>(null)
 
   // Persist the FCM token onto the signed-in user's profile.
   const saveFcmToken = async (uid: string) => {
@@ -100,6 +104,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       logger.error('AuthContext: profile refresh failed', err)
     }
   }, [])
+
+  // Create + link the organisation for a user who reached the app WITHOUT going
+  // through the login-page handler — e.g. via the email-confirmation redirect or
+  // an already-persisted session. The login/register pages call
+  // completePendingOrgSetup() themselves; this is the safety net for every other
+  // entry path. It's the reason a new org's creator otherwise landed unlinked
+  // (no organization_id, role still 'member'), freezing every org-gated screen.
+  //
+  // Idempotent + ref-guarded so it runs at most once per uid; concurrent calls
+  // with the login page are deduped by an in-flight guard inside orgSetup.
+  const ensureOrgSetup = useCallback(async (uid: string) => {
+    if (orgSetupAttempted.current === uid) return
+    orgSetupAttempted.current = uid
+    try {
+      const created = await completePendingOrgSetup()
+      if (created) await refreshProfile()
+    } catch (err) {
+      logger.error('AuthContext: deferred org setup failed', err)
+      orgSetupAttempted.current = null // allow a retry on the next auth event
+    }
+  }, [refreshProfile])
 
   // Initialize FCM at app startup (native only). Unchanged from the original.
   useEffect(() => {
@@ -198,19 +223,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let active = true
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!active) return
       const mapped = mapUser(session?.user)
       uidRef.current = mapped?.uid ?? null
       setUser(mapped)
-      setLoading(false)
+      // Finish org setup BEFORE clearing loading, so protected pages (which gate
+      // on profile.organizationId) never mount against an unlinked profile.
+      if (mapped) await ensureOrgSetup(mapped.uid)
+      if (active) setLoading(false)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event: string, session: Session | null) => {
+      async (event: string, session: Session | null) => {
         const mapped = mapUser(session?.user)
         uidRef.current = mapped?.uid ?? null
         setUser(mapped)
+        if (!mapped) orgSetupAttempted.current = null // reset on sign-out
+        // Skip TOKEN_REFRESHED: it re-fires with the same user (and our own
+        // refreshSession() inside org setup triggers it), so there's nothing new
+        // to set up — the ref guard would no-op anyway, but this avoids the call.
+        if (mapped && event !== 'TOKEN_REFRESHED') await ensureOrgSetup(mapped.uid)
         setLoading(false)
 
         if (mapped && Capacitor.isNativePlatform()) {

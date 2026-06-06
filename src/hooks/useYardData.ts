@@ -237,7 +237,9 @@ export function useYardDataInternal(props?: UseYardDataProps) {
       }
 
       if (!userOrganizationId) {
+        // No org → stop the "Loading yard…" spinner instead of hanging forever.
         logger.log('⚠️ No organization ID, cannot setup yard listener')
+        setLoading(false)
         return
       }
 
