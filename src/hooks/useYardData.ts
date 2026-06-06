@@ -951,6 +951,14 @@ export function useYardDataInternal(props?: UseYardDataProps) {
 
       logger.log(`Checking out vehicle ${vehicle.registration} from branch: ${branchId}`)
 
+      // Resolve the branch name for the history record (best-effort).
+      const checkoutBranchId = vehicle.branchId || branchId
+      let checkoutBranchName = checkoutBranchId
+      try {
+        const br = await branchService.getBranchBySlug(userOrganizationId, checkoutBranchId)
+        if (br?.name) checkoutBranchName = br.name
+      } catch { /* fall back to the id */ }
+
       // Build checkout record - FIXED: Now includes insurance status
       const checkoutRecord: any = {
         registration: vehicle.registration,
@@ -959,7 +967,8 @@ export function useYardDataInternal(props?: UseYardDataProps) {
         size: vehicle.size,
         condition: vehicle.condition,
         status: vehicle.status,
-        originalBranchId: vehicle.branchId || branchId,
+        originalBranchId: checkoutBranchId,
+        originalBranchName: checkoutBranchName,
         checkedOutDate: new Date(),
         checkedOutBy: user.uid,
         checkedOutByName: userDisplayName,
@@ -1335,6 +1344,13 @@ if (updates.damagePins !== undefined && vehicleIdForSync) {
 
       const auditLog = createCheckOutAuditLog(userDisplayName, user.uid)
 
+      // Resolve the current branch name once for the history records (best-effort).
+      let bulkBranchName = branchId
+      try {
+        const br = await branchService.getBranchBySlug(userOrganizationId, branchId)
+        if (br?.name) bulkBranchName = br.name
+      } catch { /* fall back to the id */ }
+
       for (const vehicle of validVehicles) {
         // Build checkout record - FIXED: Now includes insurance status
         const checkoutRecord: any = {
@@ -1345,6 +1361,7 @@ if (updates.damagePins !== undefined && vehicleIdForSync) {
           condition: vehicle.condition,
           status: vehicle.status,
           originalBranchId: vehicle.branchId || branchId,
+          originalBranchName: bulkBranchName,
           checkedOutDate: new Date(),
           checkedOutBy: user.uid,
           checkedOutByName: userDisplayName,
