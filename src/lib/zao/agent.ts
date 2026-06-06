@@ -9,9 +9,10 @@ import { supabase } from '@/lib/supabaseClient'
 import { ZAO_TOOLS, executeZaoTool } from './tools'
 import { logger } from '@/lib/logger'
 
-// Strong tool-calling model on Groq (better at choosing/filling tools than the
-// 8b instant model used for the lightweight intent classifier).
-const MODEL = 'llama-3.3-70b-versatile'
+// Strong tool-calling model on Groq. gpt-oss-120b is purpose-built for agentic
+// tool use and far more reliable at it than the Llama models (which tend to
+// narrate tool calls instead of emitting them).
+const MODEL = 'openai/gpt-oss-120b'
 const MAX_HOPS = 5
 
 interface ChatMessage {
@@ -51,14 +52,17 @@ STYLE
 - Never say "certainly", "of course", "absolutely", "great question". Don't apologise unless something actually went wrong.
 - Give the answer first, then a tiny bit of useful detail. Use short lists for multiple vehicles. Don't show raw JSON or SQL.`
 
-async function callGroqTools(messages: ChatMessage[], withTools: boolean): Promise<GroqToolResponse> {
+async function callGroqTools(
+  messages: ChatMessage[],
+  toolChoice: 'auto' | 'required' | 'none',
+): Promise<GroqToolResponse> {
   const { data, error } = await supabase.functions.invoke('callGroq', {
     body: {
       model: MODEL,
       messages,
       temperature: 0.1,
       max_tokens: 700,
-      ...(withTools ? { tools: ZAO_TOOLS, tool_choice: 'auto' } : {}),
+      ...(toolChoice !== 'none' ? { tools: ZAO_TOOLS, tool_choice: toolChoice } : {}),
     },
   })
   if (error) throw error
@@ -80,8 +84,12 @@ export async function askZao(
   ]
 
   let nudges = 0
+  let toolsUsed = false
   for (let hop = 0; hop < MAX_HOPS; hop++) {
-    const res = await callGroqTools(messages, true)
+    // Force a tool call until the model has actually fetched data. Left on
+    // 'auto', Llama tends to NARRATE ("Calling yard_vehicles tool…") instead of
+    // calling it. Once it has results, switch to 'auto' so it can answer.
+    const res = await callGroqTools(messages, toolsUsed ? 'auto' : 'required')
 
     // The model emitted a malformed/unknown tool call (Groq tool_use_failed).
     // Nudge it with the exact tool names and retry, rather than failing.
@@ -100,6 +108,7 @@ export async function askZao(
     }
 
     if (res.tool_calls && res.tool_calls.length > 0) {
+      toolsUsed = true
       // Record the assistant's tool-call turn verbatim (required by the API).
       messages.push({ role: 'assistant', content: res.content || null, tool_calls: res.tool_calls })
 
@@ -137,7 +146,7 @@ export async function askZao(
   try {
     const final = await callGroqTools(
       [...messages, { role: 'user', content: 'Give your best final answer now from what the tools returned.' }],
-      false,
+      'none',
     )
     if (final.content) return final.content
   } catch (err) {
