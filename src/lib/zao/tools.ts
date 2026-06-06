@@ -157,6 +157,59 @@ export const ZAO_TOOLS: ToolSpec[] = [
   {
     type: 'function',
     function: {
+      name: 'check_in',
+      description:
+        'Check a vehicle INTO the yard (add it). Use for "check in YB67", "book AB12 into the yard". If the reg is in the fleet, make/model auto-fill. Status defaults to "Pending checks".',
+      parameters: {
+        type: 'object',
+        properties: {
+          reg: { type: 'string', description: 'Registration' },
+          make: { type: 'string' },
+          model: { type: 'string' },
+          status: { type: 'string', enum: ['Ready', 'Pending checks', 'Repairs needed', 'Non-Starter'] },
+        },
+        required: ['reg'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'check_out',
+      description:
+        'Check a vehicle OUT of the yard (remove it). Logs it to checkout history and frees its space. Use for "check out YB67", "YB67 is leaving", "remove it from the yard".',
+      parameters: { type: 'object', properties: { reg: { type: 'string' } }, required: ['reg'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'set_hire',
+      description:
+        'Put a yard vehicle OUT on hire, or bring it BACK. on_hire=true = out on hire; on_hire=false = returned. Use for "YB67 out on hire", "YB67 is back from hire".',
+      parameters: {
+        type: 'object',
+        properties: { reg: { type: 'string' }, on_hire: { type: 'boolean' } },
+        required: ['reg', 'on_hire'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'mark_mot_done',
+      description:
+        'Mark a vehicle\'s MOT as done — rolls its MOT expiry forward (default 12 months). Use for "MOT done on YB67", "YB67 passed its MOT".',
+      parameters: {
+        type: 'object',
+        properties: { reg: { type: 'string' }, months: { type: 'integer', description: 'Months until next MOT (default 12)' } },
+        required: ['reg'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'run_query',
       description:
         'ESCAPE HATCH for analytical questions the other tools cannot answer (grouping, counting, joins, custom filters). Provide a SINGLE read-only PostgreSQL SELECT. It is automatically scoped to this organisation, so do NOT add organization_id filters. Only use when no other tool fits.\n' +
@@ -206,6 +259,19 @@ export async function executeZaoTool(name: string, args: Record<string, unknown>
       return rpc('zao_set_status', { p_reg: String(args?.reg ?? ''), p_status: String(args?.status ?? '') })
     case 'add_comment':
       return rpc('zao_add_comment', { p_reg: String(args?.reg ?? ''), p_comment: String(args?.comment ?? '') })
+    case 'check_in':
+      return rpc('zao_check_in', {
+        p_reg: String(args?.reg ?? ''),
+        p_make: args?.make != null ? String(args.make) : null,
+        p_model: args?.model != null ? String(args.model) : null,
+        p_status: args?.status != null ? String(args.status) : 'Pending checks',
+      })
+    case 'check_out':
+      return rpc('zao_check_out', { p_reg: String(args?.reg ?? '') })
+    case 'set_hire':
+      return rpc('zao_set_hire', { p_reg: String(args?.reg ?? ''), p_on_hire: Boolean(args?.on_hire) })
+    case 'mark_mot_done':
+      return rpc('zao_mark_mot_done', { p_reg: String(args?.reg ?? ''), p_months: Number(args?.months ?? 12) })
     case 'run_query':
       return rpc('zao_run_query', { p_sql: String(args?.sql ?? '') })
     default:
