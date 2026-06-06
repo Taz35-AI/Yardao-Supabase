@@ -48,6 +48,7 @@ import { VehicleDetailModal } from '@/components/common/Modals/VehicleDetailModa
 import { BreakdownModal } from '@/components/common/Modals/BreakdownModal'
 import { NotesCleanupModal } from '@/components/features/dashboard/NotesCleanupModal'
 import { OnlineMembers } from '@/components/features/dashboard/OnlineMembers'
+import { DashboardTour } from '@/components/features/dashboard/DashboardTour'
 import { SetOutOnHireModal, QuickCheckInModal } from '@/components/features/dashboard/HireModals'
 import { InsuranceWarningPopup } from '@/components/features/dashboard/InsuranceWarningPopup'
 
@@ -328,7 +329,7 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
             </div>
 
             {/* Center: Search bar */}
-            <div className="flex-1 relative">
+            <div className="flex-1 relative" data-tour="search">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#8a9e94] w-4 h-4" />
               <input
                 type="text"
@@ -353,9 +354,13 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
               {/* Live presence — who's online now (desktop only) */}
               <OnlineMembers organizationId={dataLayer.userProfile?.organizationId} />
 
+              {/* Guided tour — "?" help button + auto-start for new users (desktop) */}
+              <DashboardTour ready={!dataLayer.isLoading} />
+
               {/* Desktop actions */}
               <div className="hidden md:flex items-center gap-2">
                 <button
+                  data-tour="refresh"
                   onClick={dataLayer.forceDataRefresh}
                   disabled={dataLayer.isRefreshing}
                   className="inline-flex items-center gap-1.5 px-3 py-2 bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-600 text-[#4a5e54] dark:text-gray-300 font-semibold rounded-lg shadow-sm hover:border-[#c8d5ce] hover:shadow-md transition-all text-sm disabled:opacity-50"
@@ -365,6 +370,7 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
                 </button>
 
                 <button
+                  data-tour="clean"
                   onClick={handleCleanNotesClick}
                   className="inline-flex items-center gap-1.5 px-3 py-2 bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-600 text-[#4a5e54] dark:text-gray-300 font-semibold rounded-lg shadow-sm hover:border-[#c8d5ce] hover:shadow-md transition-all text-sm"
                 >
@@ -372,13 +378,15 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
                   <span className="hidden lg:inline">{t('dashboard.actions.clean')}</span>
                 </button>
 
-                <ExportToExcelButton
-                  vehicles={dataLayer.enhancedFilteredVehicles}
-                  filename="yard-dashboard-vehicles"
-                  variant="outline"
-                  size="sm"
-                  className="border-[#e2e8e5] text-[#4a5e54] hover:border-[#c8d5ce] hover:shadow-md bg-white shadow-sm"
-                />
+                <span data-tour="export">
+                  <ExportToExcelButton
+                    vehicles={dataLayer.enhancedFilteredVehicles}
+                    filename="yard-dashboard-vehicles"
+                    variant="outline"
+                    size="sm"
+                    className="border-[#e2e8e5] text-[#4a5e54] hover:border-[#c8d5ce] hover:shadow-md bg-white shadow-sm"
+                  />
+                </span>
               </div>
 
               {/* Mobile: view toggle + three-dots menu */}

@@ -349,6 +349,7 @@ export interface UserProfile {
   defaultView?: 'pipeline' | 'table' | 'cards' | 'layout' // Preferred yard view on load
   defaultBranchSlug?: string // Branch slug (e.g. "fairview-bray") to land on by default
   languagePreference?: 'en' | 'ro' | 'bg' | 'pl' // 🌐 App language (cross-device; instant pref is localStorage)
+  hasCompletedTour?: boolean // 🧭 Whether the user has seen the guided dashboard tour
 }
 
 export interface Organization {

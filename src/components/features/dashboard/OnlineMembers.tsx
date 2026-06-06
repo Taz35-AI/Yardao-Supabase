@@ -26,6 +26,7 @@ export function OnlineMembers({ organizationId }: { organizationId?: string | nu
 
   return (
     <div
+      data-tour="presence"
       className="hidden lg:flex items-center mr-1"
       title={`Online now: ${members.map((m) => m.name).join(', ')}`}
       aria-label={`${members.length} member${members.length === 1 ? '' : 's'} online`}

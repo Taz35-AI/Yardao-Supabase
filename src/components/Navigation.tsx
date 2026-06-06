@@ -269,6 +269,7 @@ export function Navigation() {
                       return (
                         <Link
                           key={item.href}
+                          data-tour={`nav-${item.href}`}
                           href={item.href}
                           onClick={() => { handleNavClick(); closeMobileMenu() }}
                           className={`flex items-center px-3 py-2 text-sm font-semibold transition-all duration-150 rounded-r-lg mr-4 ${
@@ -296,6 +297,7 @@ export function Navigation() {
                       return (
                         <Link
                           key={item.href}
+                          data-tour={`nav-${item.href}`}
                           href={item.href}
                           onClick={() => { handleNavClick(); closeMobileMenu() }}
                           className={`flex items-center px-3 py-2 text-sm font-semibold transition-all duration-150 rounded-r-lg mr-4 ${
@@ -323,6 +325,7 @@ export function Navigation() {
                       return (
                         <Link
                           key={item.href}
+                          data-tour={`nav-${item.href}`}
                           href={item.href}
                           onClick={() => { handleNavClick(); closeMobileMenu() }}
                           className={`flex items-center px-3 py-2 text-sm font-semibold transition-all duration-150 rounded-r-lg mr-4 ${
