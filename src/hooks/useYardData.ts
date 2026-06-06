@@ -887,7 +887,7 @@ export function useYardDataInternal(props?: UseYardDataProps) {
           colour: safeString(vehicleData.colour),
           size: safeString(vehicleData.size),
           condition: safeString(vehicleData.condition),
-          status: vehicleData.status,
+          status: normalizeStatus(vehicleData.status),
           mileage: safeString(vehicleData.mileage),
           notes: safeString(vehicleData.notes),
           comments: safeString(vehicleData.comments),

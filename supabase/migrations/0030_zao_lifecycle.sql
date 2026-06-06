@@ -32,8 +32,10 @@ declare
   v_model text := p_model;
 begin
   if reg = '' then raise exception 'Registration required'; end if;
-  if p_status not in ('Ready', 'Pending checks', 'Repairs needed', 'Non-Starter') then
-    raise exception 'Invalid status';
+  -- coerce any unknown/odd status to the safe default — never error or insert
+  -- something the status check constraint would reject.
+  if p_status is null or p_status not in ('Ready', 'Pending checks', 'Repairs needed', 'Non-Starter') then
+    p_status := 'Pending checks';
   end if;
   if exists (select 1 from checked_in_vehicles
              where organization_id = v_org and replace(upper(registration), ' ', '') = reg) then
@@ -129,7 +131,10 @@ begin
            duration_in_days = greatest(0, extract(day from (now() - hire_start_date))::int), updated_at = now()
      where id = c.current_hire_history_id;
     update checked_in_vehicles
-       set hire_status = 'In Yard', status = coalesce(c.original_status, c.status), original_status = null,
+       set hire_status = 'In Yard',
+           status = case when coalesce(c.original_status, '') in ('Ready', 'Pending checks', 'Repairs needed', 'Non-Starter')
+                         then c.original_status else 'Pending checks' end,
+           original_status = null,
            hired_at = null, hired_by = null, hired_by_name = null, current_hire_history_id = null, updated_at = now()
      where id = c.id;
     return jsonb_build_object('ok', true, 'registration', c.registration, 'hire_status', 'In Yard');
