@@ -38,8 +38,9 @@ interface ColumnConfig {
   icon: typeof CheckCircle
 }
 
-// Order requested by product: Ready · Pending · On Hire · Repairs · Non-Starter.
-// On mobile, pairs snap together: (0+1) → (2+3) → (4 standalone, full width).
+// Order: Ready · Pending · Repairs · Non-Starter · On Hire (On Hire LAST — it's
+// out of the yard, so it sits after the in-yard statuses, matching the lane-tab
+// view). On mobile, pairs snap together: (0+1) → (2+3) → (4 standalone, full width).
 const COLUMNS: ColumnConfig[] = [
   {
     key: 'Ready',
@@ -58,16 +59,6 @@ const COLUMNS: ColumnConfig[] = [
     icon: Clock,
   },
   {
-    key: 'on_hire',
-    label: 'On Hire',
-    // Matches the "Checked Out" pill in the metric strip — dark forest brand,
-    // signals "out of yard" without introducing a purple that's off-theme.
-    dot: '#012619',
-    headerBg: 'from-[#e8efeb] dark:from-[#012619]/40',
-    borderLeft: '#012619',
-    icon: Truck,
-  },
-  {
     key: 'Repairs needed',
     label: 'Repairs',
     dot: '#dc2626',
@@ -82,6 +73,16 @@ const COLUMNS: ColumnConfig[] = [
     headerBg: 'from-slate-50 dark:from-slate-800/40',
     borderLeft: '#475569',
     icon: XCircle,
+  },
+  {
+    key: 'on_hire',
+    label: 'On Hire',
+    // Matches the "Checked Out" pill in the metric strip — dark forest brand,
+    // signals "out of yard" without introducing a purple that's off-theme.
+    dot: '#012619',
+    headerBg: 'from-[#e8efeb] dark:from-[#012619]/40',
+    borderLeft: '#012619',
+    icon: Truck,
   },
 ]
 
@@ -135,10 +136,15 @@ const VehicleCard = ({
   onView: (v: CheckedInVehicle) => void
 }) => {
   const t = useT()
-  const days = getDaysInYard(vehicle.createdAt || (vehicle as any).checkInTime)
+  // On-hire vehicles show days OUT ON HIRE (from hired_at) with a truck icon;
+  // in-yard vehicles show days in the yard (from check-in).
+  const onHire = (vehicle as any).hireStatus === 'Out on Hire'
+  const days = onHire && (vehicle as any).hiredAt
+    ? getDaysInYard((vehicle as any).hiredAt)
+    : getDaysInYard(vehicle.createdAt || (vehicle as any).checkInTime)
   const motDays = getDaysLeft(vehicle.motExpiry)
   const taxDays = getDaysLeft((vehicle as any).taxExpiry)
-  const daysColor = days >= 30 ? '#dc2626' : days >= 14 ? '#d97706' : '#6b7a70'
+  const daysColor = onHire ? '#256089' : days >= 30 ? '#dc2626' : days >= 14 ? '#d97706' : '#6b7a70'
   const daysWeight = days >= 14 ? 700 : 500
 
   const contract = vehicle.contract
@@ -158,9 +164,11 @@ const VehicleCard = ({
       <div className="flex items-center justify-between mb-2">
         <RegPlate registration={vehicle.registration} />
         <span
-          className="text-[11px] tabular-nums leading-none"
+          className="inline-flex items-center gap-0.5 text-[11px] tabular-nums leading-none"
           style={{ color: daysColor, fontWeight: daysWeight, fontFamily: "'DM Mono', monospace" }}
+          title={onHire ? `${days} day${days === 1 ? '' : 's'} out on hire` : `${days} day${days === 1 ? '' : 's'} in yard`}
         >
+          {onHire && <Truck className="w-2.5 h-2.5" />}
           {t('dashboard.pipeline.daysInYardSuffix', { days })}
         </span>
       </div>

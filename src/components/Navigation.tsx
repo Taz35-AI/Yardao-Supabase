@@ -448,7 +448,7 @@ export function Navigation() {
             as wide as the logo (not minimised to a thin strip). */}
         <div className="relative flex flex-col items-center px-3 py-4 border-b border-[#025940] flex-shrink-0">
           <Link href="/dashboard" className="group" onClick={handleNavClick}>
-            <img src="/logo-yardao.png" alt="Yardao" className="h-28 sm:h-36 w-auto max-w-full object-contain group-hover:scale-105 transition-transform" />
+            <img src="/logo-yardao.png" alt="Yardao" className="h-16 sm:h-20 w-auto max-w-full object-contain group-hover:scale-105 transition-transform" />
           </Link>
           <button
             onClick={handleToggleSidebar}
@@ -489,6 +489,7 @@ export function Navigation() {
                   return (
                     <Link
                       key={item.href}
+                      data-tour={`nav-${item.href}`}
                       href={item.href}
                       onClick={handleNavClick}
                       className={`group relative flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
@@ -529,6 +530,7 @@ export function Navigation() {
                   return (
                     <Link
                       key={item.href}
+                      data-tour={`nav-${item.href}`}
                       href={item.href}
                       onClick={handleNavClick}
                       className={`group relative flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
@@ -569,6 +571,7 @@ export function Navigation() {
                   return (
                     <Link
                       key={item.href}
+                      data-tour={`nav-${item.href}`}
                       href={item.href}
                       onClick={handleNavClick}
                       className={`group relative flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${

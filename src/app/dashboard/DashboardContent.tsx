@@ -34,7 +34,6 @@ import { DashboardVehicleList } from '@/components/features/dashboard/DashboardV
 import { DashboardPagination } from '@/components/features/dashboard/DashboardPagination'
 import { OutOnHireSection } from '@/components/features/dashboard/OutOnHireSection'
 import { DashboardActionsMenu } from '@/components/features/dashboard/DashboardActionsMenu'
-import { ExportToExcelButton } from '@/components/common/Buttons/ExportToExcelButton'
 
 // NEW: Transfer and checkout destination components
 import { CheckoutDestinationModal } from '@/components/yard/CheckoutDestinationModal'
@@ -64,7 +63,7 @@ import { SpeechEnabledGroqAssistant } from '@/components/common/SpeechEnabledGro
 // Icons
 // ✨ PHASE 2: added `Map` for the layout-view toggle button
 // ✨ PHASE 3: added `Columns3` for the pipeline (kanban) view toggle button
-import { ChevronDown, Search, X, RefreshCw, Sparkles, Filter, LayoutList, LayoutGrid, Map, Columns3 } from 'lucide-react'
+import { ChevronDown, Search, X, Filter, LayoutList, LayoutGrid, Map, Columns3 } from 'lucide-react'
 
 // Types
 import { CheckedInVehicle } from '@/types'
@@ -348,36 +347,15 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
               {/* Guided tour — "?" help button + auto-start for new users (desktop) */}
               <DashboardTour ready={!dataLayer.isLoading} />
 
-              {/* Desktop actions */}
-              <div className="hidden md:flex items-center gap-2">
-                <button
-                  data-tour="refresh"
-                  onClick={dataLayer.forceDataRefresh}
-                  disabled={dataLayer.isRefreshing}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-600 text-[#4a5e54] dark:text-gray-300 font-semibold rounded-lg shadow-sm hover:border-[#c8d5ce] hover:shadow-md transition-all text-sm disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${dataLayer.isRefreshing ? 'animate-spin' : ''}`} />
-                  <span className="hidden lg:inline">{dataLayer.isRefreshing ? t('dashboard.actions.refreshing') : t('dashboard.actions.refresh')}</span>
-                </button>
-
-                <button
-                  data-tour="clean"
-                  onClick={handleCleanNotesClick}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-600 text-[#4a5e54] dark:text-gray-300 font-semibold rounded-lg shadow-sm hover:border-[#c8d5ce] hover:shadow-md transition-all text-sm"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span className="hidden lg:inline">{t('dashboard.actions.clean')}</span>
-                </button>
-
-                <span data-tour="export">
-                  <ExportToExcelButton
-                    vehicles={dataLayer.enhancedFilteredVehicles}
-                    filename="yard-dashboard-vehicles"
-                    variant="outline"
-                    size="sm"
-                    className="border-[#e2e8e5] text-[#4a5e54] hover:border-[#c8d5ce] hover:shadow-md bg-white shadow-sm"
-                  />
-                </span>
+              {/* Desktop actions — Refresh / Clean / Export to Excel now live
+                  inside the three-dot menu to keep the toolbar uncluttered. */}
+              <div data-tour="actions-menu" className="hidden md:flex items-center">
+                <DashboardActionsMenu
+                  onRefresh={dataLayer.forceDataRefresh}
+                  onClean={handleCleanNotesClick}
+                  onExport={businessLogic.handleExport}
+                  isRefreshing={dataLayer.isRefreshing}
+                />
               </div>
 
               {/* Mobile: view toggle + three-dots menu */}
@@ -439,13 +417,6 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
                 />
               </div>
 
-              {/* Desktop vehicle count badge */}
-              <span className="hidden md:inline text-xs font-semibold text-[#4a5e54] dark:text-gray-400 bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-600 px-3 py-1.5 rounded-lg shadow-sm whitespace-nowrap">
-                {dataLayer.pagination.totalItems > 0
-                  ? t('dashboard.count.rangeOfTotal', { start: dataLayer.pagination.startIndex + 1, end: Math.min(dataLayer.pagination.endIndex, dataLayer.pagination.totalItems), total: dataLayer.pagination.totalItems })
-                  : t('dashboard.count.zeroVehicles')
-                }
-              </span>
             </div>
           </div>
         </div>

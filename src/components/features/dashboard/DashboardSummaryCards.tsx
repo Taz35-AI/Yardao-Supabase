@@ -189,7 +189,7 @@ export const DashboardSummaryCards = React.memo(function DashboardSummaryCards({
 
   const t = useT()
   // Desktop strip segments (Total-only when the desktop tabbed view asks for it).
-  const desktopSegments = onlyTotal ? SEGMENTS.filter(s => s.key === 'total') : SEGMENTS
+  const visibleSegments = onlyTotal ? SEGMENTS.filter(s => s.key === 'total') : SEGMENTS
 
   // 🎤 Long-press on the Check In button opens the voice overlay.
   // Single hook instance shared by both the desktop and mobile buttons —
@@ -281,7 +281,7 @@ export const DashboardSummaryCards = React.memo(function DashboardSummaryCards({
       {/* ── DESKTOP: single row ────────────────────────────────────────────────── */}
       <div className="hidden sm:flex items-center gap-1.5 flex-wrap">
 
-        {desktopSegments.map(seg => {
+        {visibleSegments.map(seg => {
           const count    = countByKey[seg.key]
           const isActive = activeSegmentKey === seg.key
           const handler  = handlers[seg.handler]
@@ -367,9 +367,11 @@ export const DashboardSummaryCards = React.memo(function DashboardSummaryCards({
 
         <div className="flex items-center gap-1.5">
 
-          {/* Scrollable group: summary pills + clear + checked-out + yard tab */}
+          {/* Scrollable group: summary pills + clear + checked-out + yard tab.
+              Respects onlyTotal (same as desktop): in the lane/tabbed view the
+              per-status counts live on the lane tabs, so only the Total pill shows. */}
           <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {SEGMENTS.map(seg => {
+          {visibleSegments.map(seg => {
             const count    = countByKey[seg.key]
             const isActive = activeSegmentKey === seg.key
             const handler  = handlers[seg.handler]
@@ -419,19 +421,12 @@ export const DashboardSummaryCards = React.memo(function DashboardSummaryCards({
 
           </div>{/* end scrollable summary/filters group */}
 
-          {/* notes + check-in — pinned on the same row as the summary cards/filters */}
-          <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Notes — pinned to the right of the row. The check-in button is
+              intentionally NOT shown here on mobile: the bottom navigation bar
+              already provides check-in, so dropping it frees the space and lets
+              the summary pills sit fully visible without horizontal scrolling. */}
+          <div className="flex items-center flex-shrink-0">
             <UserNotesButton />
-            {onCheckIn && (
-              <button
-                {...voiceHold.bind}
-                aria-label="Check in vehicle"
-                title="Check in vehicle (hold 3s for voice)"
-                className={`flex-shrink-0 w-9 h-9 rounded-full shadow-md hover:shadow-lg transition-all duration-150 active:scale-95 bg-transparent border-none p-0 ${voiceHold.pressing ? 'ring-4 ring-[#b3f243]/70 scale-110' : 'hover:scale-105'}`}
-              >
-                <img src="/Check In Button/check-in-button.png" alt="Check in" className="w-full h-full object-contain" />
-              </button>
-            )}
           </div>
         </div>{/* end mobile single row */}
 

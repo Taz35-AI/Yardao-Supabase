@@ -66,10 +66,10 @@ export function ConfirmationModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] animate-in fade-in duration-200"
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[10000] animate-in fade-in duration-200"
       onClick={handleBackdropClick}
     >
-      <div className="fixed left-[50%] top-[50%] translate-x-[-50%] translate-y-[-50%] z-[100] w-full max-w-md animate-in fade-in zoom-in-95 duration-200">
+      <div className="fixed left-[50%] top-[50%] translate-x-[-50%] translate-y-[-50%] z-[10000] w-full max-w-md animate-in fade-in zoom-in-95 duration-200">
         <div className={`bg-gray-900 border ${styles.border} rounded-xl shadow-2xl`}>
           {/* Header */}
           <div className="flex items-start justify-between p-6 pb-4">

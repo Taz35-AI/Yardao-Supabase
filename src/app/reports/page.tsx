@@ -225,7 +225,11 @@ function AnalyticsDashboardContent() {
   // render a nonsensical negative count.
   const notCheckedIn = Math.max(0, totalFleetCount - yardVehicles.length)
   const outOnHire = yardVehicles.filter(v => v.hireStatus === 'Out on Hire').length
-  const inYard = yardVehicles.filter(v => v.hireStatus === 'In Yard').length
+  // Transfer states (vehicles physically away but still checked in).
+  const inTransit = yardVehicles.filter(v => (v as any).transferStatus === 'in_transit').length
+  const atGarage  = yardVehicles.filter(v => (v as any).transferStatus === 'at_external_garage').length
+  // "In Yard" = physically present: In Yard hire-state AND no transfer in progress.
+  const inYard = yardVehicles.filter(v => v.hireStatus === 'In Yard' && !(v as any).transferStatus).length
 
   if (loading) {
     return (
@@ -307,11 +311,11 @@ function AnalyticsDashboardContent() {
                     </span>
                   </div>
 
-                  {/* IN YARD */}
+                  {/* IN YARD — physically in the yard only (excludes Out on Hire) */}
                   <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">In Yard</span>
                     <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                      {yardVehicles.length}
+                      {inYard}
                     </span>
                   </div>
 
@@ -320,6 +324,22 @@ function AnalyticsDashboardContent() {
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Out on Hire</span>
                     <span className="text-2xl font-bold text-green-600 dark:text-green-400">
                       {outOnHire}
+                    </span>
+                  </div>
+
+                  {/* AT EXTERNAL GARAGE */}
+                  <div className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">At Garage</span>
+                    <span className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+                      {atGarage}
+                    </span>
+                  </div>
+
+                  {/* IN TRANSIT */}
+                  <div className="flex items-center justify-between p-3 bg-sky-50 dark:bg-sky-900/20 rounded-lg">
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">In Transit</span>
+                    <span className="text-2xl font-bold text-sky-600 dark:text-sky-400">
+                      {inTransit}
                     </span>
                   </div>
 

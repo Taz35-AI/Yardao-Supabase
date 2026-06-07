@@ -17,6 +17,7 @@
 
 import { supabase } from '@/lib/supabaseClient'
 import { toCamel } from '@/lib/dbMap'
+import { activityLogService } from '@/lib/services/activityLogService'
 import {
   CheckedInVehicle,
   VehicleHireStatus,
@@ -135,6 +136,12 @@ export class VehicleHireService {
 
       if (updateError) throw updateError
 
+      activityLogService.log({
+        organizationId: vehicleData.organizationId, actorId: userId, actorName: userDisplayName,
+        actionType: 'hire', registration: vehicleData.registration, entityId: vehicleId, branchId: vehicleData.branchId,
+        summary: `Out on hire${hireNotes ? ` — ${hireNotes}` : ''}`,
+      })
+
       logger.log(`✅ Vehicle ${vehicleData.registration} set out on hire (parking space released)`)
     } catch (error) {
       logger.error('Error setting vehicle out on hire:', error)
@@ -252,6 +259,12 @@ export class VehicleHireService {
         .eq('id', vehicleId)
 
       if (updateError) throw updateError
+
+      activityLogService.log({
+        organizationId: vehicleData.organizationId, actorId: userId, actorName: userDisplayName,
+        actionType: 'return', registration: vehicleData.registration, entityId: vehicleId, branchId: vehicleData.branchId,
+        summary: `Returned from hire`,
+      })
 
       logger.log(`✅ Vehicle ${vehicleData.registration} returned from hire — Days in Yard reset to 0, unparked`)
     } catch (error) {

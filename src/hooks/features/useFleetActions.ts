@@ -19,6 +19,7 @@ import { logger } from '@/lib/logger'
 import type { ContractSyncNotification } from '@/components/common/notifications/contractSyncNotification'
 import { RegistrationUpdateService } from '@/services/RegistrationUpdateService'
 import { MotTaxSyncService } from '@/services/motTaxSyncService'
+import { activityLogService } from '@/lib/services/activityLogService'
 
 interface SyncNotification {
   type: 'success' | 'warning' | 'error' | 'info'
@@ -283,7 +284,13 @@ export function useFleetActions(fleetData: FleetDataHook | any) {
       }
       
       await fleetData.addVehicle(processedVehicleData)
-      
+
+      activityLogService.log({
+        organizationId: userProfile.organizationId, actorId: user.uid, actorName: userProfile.displayName || user.email || 'Unknown User',
+        actionType: 'vehicle_added', registration: processedVehicleData.registration,
+        summary: `Vehicle added to fleet: ${[processedVehicleData.make, processedVehicleData.model].filter(Boolean).join(' ') || processedVehicleData.registration}`,
+      })
+
       // Show success notification
       setSyncNotification({
         type: 'success',
@@ -386,7 +393,14 @@ export function useFleetActions(fleetData: FleetDataHook | any) {
         
         // Update the registration in the updates object
         updates.registration = newRegistration
-        
+
+        activityLogService.log({
+          organizationId: userProfile.organizationId, actorId: user.uid, actorName: userDisplayName,
+          actionType: 'registration_changed', registration: newRegistration, entityId: vehicleId,
+          summary: `Registration changed: ${oldRegistration} → ${newRegistration}`,
+          details: { from: oldRegistration, to: newRegistration },
+        })
+
         // Show cascade success notification
         setSyncNotification({
           type: 'success',
@@ -437,6 +451,16 @@ export function useFleetActions(fleetData: FleetDataHook | any) {
       
       // Update the vehicle in fleet
       await fleetData.updateVehicle(vehicleId, processedUpdates)
+
+      // ── Activity feed: fleet-side field changes (with the actor) ──
+      {
+        const actor = { organizationId: userProfile.organizationId, actorId: user.uid, actorName: userDisplayName, registration: currentVehicle.registration, entityId: vehicleId }
+        if (conditionChanged) activityLogService.log({ ...actor, actionType: 'condition_changed', summary: `Condition: ${currentVehicle.condition || '—'} → ${processedUpdates.condition}`, details: { from: currentVehicle.condition, to: processedUpdates.condition } })
+        if (contractChanged) activityLogService.log({ ...actor, actionType: 'contract_changed', summary: processedUpdates.contract ? `Contract set to ${processedUpdates.contract}` : 'Contract removed', details: { from: currentVehicle.contract, to: processedUpdates.contract } })
+        if (insuranceChanged) activityLogService.log({ ...actor, actionType: 'insurance_changed', summary: `Insurance: ${processedUpdates.insuranceStatus}`, details: { from: currentVehicle.insuranceStatus, to: processedUpdates.insuranceStatus } })
+        if (motChanged) activityLogService.log({ ...actor, actionType: 'status_changed', summary: `MOT expiry set to ${processedUpdates.motExpiry || '—'}`, details: { motExpiry: processedUpdates.motExpiry } })
+        if (taxChanged) activityLogService.log({ ...actor, actionType: 'status_changed', summary: `Road tax expiry set to ${processedUpdates.taxExpiry || '—'}`, details: { taxExpiry: processedUpdates.taxExpiry } })
+      }
 
       // CONDITION SYNC
       if (conditionChanged) {

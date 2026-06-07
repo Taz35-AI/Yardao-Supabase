@@ -15,16 +15,20 @@
 
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState, useCallback } from 'react'
 import {
   CheckCircle, Clock, Wrench, XCircle, Truck, Plus,
   ArrowUpRight, ArrowDownLeft, Bell,
   Columns3, LayoutList, LayoutGrid, Map as MapIcon, Filter,
+  FileText, Tag, Shield, Trash2, Pencil, StickyNote,
 } from 'lucide-react'
 
 type ViewMode = 'table' | 'cards' | 'layout' | 'pipeline'
 import { CheckedInVehicle, VehicleStatus, normalizeVehicleStatus } from '@/types'
 import { useCheckoutHistory } from '@/hooks/useCheckoutHistory'
+import { activityLogService, type ActivityRecord } from '@/lib/services/activityLogService'
+import { useAuth } from '@/contexts/AuthContext'
+import { supabase } from '@/lib/supabaseClient'
 
 interface YardTabsViewProps {
   vehicles: CheckedInVehicle[]
@@ -117,10 +121,14 @@ const RegPlate = ({ registration }: { registration: string }) => (
 const VehicleRow = ({
   vehicle, color, onView,
 }: { vehicle: CheckedInVehicle; color: string; onView: (v: CheckedInVehicle) => void }) => {
-  const days = getDaysInYard(vehicle.createdAt || (vehicle as any).checkInTime)
+  // On-hire vehicles show days OUT ON HIRE (from hired_at); in-yard vehicles show
+  // days in the yard (from check-in). The small truck icon disambiguates the two.
+  const onHire = (vehicle as any).hireStatus === 'Out on Hire'
+  const hireDays = getDaysInYard((vehicle as any).hiredAt)
+  const days = onHire && (vehicle as any).hiredAt ? hireDays : getDaysInYard(vehicle.createdAt || (vehicle as any).checkInTime)
   const motDays = getDaysLeft(vehicle.motExpiry)
   const taxDays = getDaysLeft((vehicle as any).taxExpiry)
-  const daysColor = days >= 30 ? '#dc2626' : days >= 14 ? '#d97706' : '#9aa3ab'
+  const daysColor = onHire ? '#256089' : days >= 30 ? '#dc2626' : days >= 14 ? '#d97706' : '#9aa3ab'
   const contract = vehicle.contract
   const contractColor = vehicle.contractColor
 
@@ -142,7 +150,14 @@ const VehicleRow = ({
       {/* plate + days */}
       <div className="flex items-center justify-between gap-2 mb-1">
         <RegPlate registration={vehicle.registration} />
-        <span className="text-[10px] font-semibold tabular-nums leading-none flex-shrink-0" style={{ color: daysColor }}>{days}d</span>
+        <span
+          className="inline-flex items-center gap-0.5 text-[10px] font-semibold tabular-nums leading-none flex-shrink-0"
+          style={{ color: daysColor }}
+          title={onHire ? `${days} day${days === 1 ? '' : 's'} out on hire` : `${days} day${days === 1 ? '' : 's'} in yard`}
+        >
+          {onHire && <Truck className="w-2.5 h-2.5" />}
+          {days}d
+        </span>
       </div>
 
       {/* make / model */}
@@ -219,6 +234,56 @@ export const YardTabsView = React.memo(function YardTabsView({
   // Real movement feed (check-outs, hires, transfers, garage) with who + when.
   const { checkoutHistory } = useCheckoutHistory()
 
+  // Full activity feed — every logged action (check-in/out, status, comment,
+  // garage, hire, condition/contract/insurance, defleet, reg change…) with who.
+  const orgId = (vehicles[0] as any)?.organizationId ?? (outOnHireVehicles[0] as any)?.organizationId ?? null
+  const [activityRows, setActivityRows] = useState<ActivityRecord[]>([])
+  useEffect(() => {
+    if (!orgId) return
+    let alive = true
+    const load = () => activityLogService.getRecent(orgId, 12).then((r) => { if (alive) setActivityRows(r) })
+    load()
+    const unsub = activityLogService.subscribe(orgId, load)
+    return () => { alive = false; unsub() }
+  }, [orgId])
+
+  // My personal notes due today (per-user — only the signed-in user sees these).
+  const { user } = useAuth()
+  const [myNotes, setMyNotes] = useState<{ id: string; text: string; priority: string; scheduledTime: string | null }[]>([])
+  const loadMyNotes = useCallback(async () => {
+    if (!user?.uid) { setMyNotes([]); return }
+    const today = new Date().toISOString().slice(0, 10)
+    const { data } = await supabase
+      .from('user_notes')
+      .select('id, text, priority, scheduled_time')
+      .eq('user_id', user.uid)
+      .eq('date', today)
+      .eq('done', false)
+    const order: Record<string, number> = { urgent: 0, medium: 1, low: 2 }
+    setMyNotes((data ?? [])
+      .map((n: any) => ({ id: n.id, text: n.text, priority: n.priority || 'medium', scheduledTime: n.scheduled_time }))
+      .sort((a, b) => (order[a.priority] ?? 1) - (order[b.priority] ?? 1)))
+  }, [user?.uid])
+
+  useEffect(() => {
+    loadMyNotes()
+    // Stay in sync when notes change anywhere (the sticky-note panel dispatches
+    // this after add/delete/toggle) — no page refresh needed.
+    const onChange = () => loadMyNotes()
+    window.addEventListener('yardao:notes-changed', onChange)
+    return () => window.removeEventListener('yardao:notes-changed', onChange)
+  }, [loadMyNotes])
+
+  // Mark a note done straight from the rail. Optimistic; reverts on failure.
+  const markNoteDone = useCallback(async (id: string) => {
+    if (!user?.uid) return
+    setMyNotes(prev => prev.filter(n => n.id !== id))
+    try {
+      await supabase.from('user_notes').update({ done: true, archived_at: new Date().toISOString() }).eq('id', id).eq('user_id', user.uid)
+      window.dispatchEvent(new Event('yardao:notes-changed')) // keep the popup list in sync too
+    } catch { loadMyNotes() }
+  }, [user?.uid, loadMyNotes])
+
   const grouped = useMemo(() => {
     const buckets: Record<TabKey, CheckedInVehicle[]> = {
       'Ready': [], 'Pending checks': [], 'Repairs needed': [], 'Non-Starter': [], 'on_hire': [],
@@ -288,17 +353,29 @@ export const YardTabsView = React.memo(function YardTabsView({
     return list.sort((a, b) => a.sort - b.sort).slice(0, 8)
   }, [vehicles, outOnHireVehicles])
 
-  // Recent activity = real check-out/hire/transfer/garage movements (from
-  // checkout history, with who performed them) merged with check-ins (derived
-  // from the in-yard vehicles). Newest first.
+  // Recent activity. Primary source = the activity_log (every logged action,
+  // with who did it). Until that table has accumulated events it falls back to
+  // the derived movement feed (check-ins + checkout history) so the panel is
+  // never blank. Newest first.
   const activity = useMemo(() => {
     const norm = (r?: string) => (r || '').toUpperCase().replace(/\s+/g, '')
     const byReg = new Map<string, CheckedInVehicle>()
     for (const v of [...vehicles, ...outOnHireVehicles]) byReg.set(norm(v.registration), v)
 
-    const ev: { id: string; t: number; kind: string; text: string; by: string; v: CheckedInVehicle | null }[] = []
+    // ── Primary: activity_log ──
+    if (activityRows.length > 0) {
+      return activityRows.map((r) => ({
+        id: r.id,
+        t: new Date(r.createdAt).getTime(),
+        kind: r.actionType as string,
+        text: r.registration ? `${r.registration} · ${r.summary}` : r.summary,
+        by: r.actorName || '',
+        v: r.registration ? (byReg.get(norm(r.registration)) || null) : null,
+      })).slice(0, 8)
+    }
 
-    // check-ins (in-yard vehicles)
+    // ── Fallback: derived movements (pre-activity-log) ──
+    const ev: { id: string; t: number; kind: string; text: string; by: string; v: CheckedInVehicle | null }[] = []
     for (const v of vehicles) {
       const d = toDate(v.createdAt || (v as any).checkInTime)
       if (!d) continue
@@ -308,8 +385,6 @@ export const YardTabsView = React.memo(function YardTabsView({
         by: (v as any).parkedByName || (v as any).checkedInByName || '', v,
       })
     }
-
-    // out movements (real, attributed)
     for (const r of checkoutHistory) {
       const d = r.checkedOutDate instanceof Date ? r.checkedOutDate : new Date(r.checkedOutDate as any)
       if (!d || isNaN(d.getTime())) continue
@@ -324,9 +399,8 @@ export const YardTabsView = React.memo(function YardTabsView({
         v: byReg.get(norm(r.registration)) || null,
       })
     }
-
     return ev.sort((a, b) => b.t - a.t).slice(0, 7)
-  }, [vehicles, outOnHireVehicles, checkoutHistory])
+  }, [vehicles, outOnHireVehicles, checkoutHistory, activityRows])
 
   const openCheckIn = () => window.dispatchEvent(new Event('yardao:open-checkin'))
 
@@ -452,6 +526,42 @@ export const YardTabsView = React.memo(function YardTabsView({
           </div>
         </div>
 
+        {/* My Notes — personal reminders due today (only the signed-in user sees these) */}
+        {myNotes.length > 0 && (
+          <div className="bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-700 rounded-2xl shadow-sm p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <StickyNote className="w-4 h-4 text-[#025940] dark:text-[#72A68E]" />
+              <h3 className="text-[14px] font-bold text-[#012619] dark:text-white">My Notes</h3>
+              <span className="text-[11px] font-extrabold bg-[#025940] text-white rounded-full px-2 py-[1px]">{myNotes.length}</span>
+              <span className="text-[10.5px] text-[#8a9e94] dark:text-gray-500 ml-auto">Today</span>
+            </div>
+            <div className="flex flex-col">
+              {myNotes.map((n, i) => (
+                <div key={n.id}
+                     className={`group flex items-start gap-2.5 py-2.5 ${i < myNotes.length - 1 ? 'border-b border-[#f1f5f3] dark:border-gray-700/60' : ''}`}>
+                  <span className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
+                        style={{ background: n.priority === 'urgent' ? '#dc2626' : n.priority === 'low' ? '#72A68E' : '#d97706' }} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] text-[#0c1f17] dark:text-gray-200 leading-snug">{n.text}</span>
+                    {n.scheduledTime && (
+                      <span className="block text-[11px] font-semibold text-[#025940] dark:text-[#72A68E] mt-0.5">{n.scheduledTime}</span>
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => markNoteDone(n.id)}
+                    title="Mark done"
+                    aria-label="Mark note done"
+                    className="flex-shrink-0 -m-1 p-1 rounded-md text-[#b6c2bb] hover:text-[#025940] hover:bg-[#025940]/8 transition-colors"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Alerts */}
         <div className="bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-700 rounded-2xl shadow-sm p-4">
           <div className="flex items-center gap-2 mb-3">
@@ -511,10 +621,21 @@ export const YardTabsView = React.memo(function YardTabsView({
 })
 
 const ACTIVITY_META: Record<string, { icon: typeof ArrowUpRight; bg: string; fg: string }> = {
-  checkin:  { icon: ArrowDownLeft, bg: '#e7f6ee', fg: '#0e7a4f' },
-  checkout: { icon: ArrowUpRight,  bg: '#e9f2f8', fg: '#256089' },
-  hire:     { icon: ArrowUpRight,  bg: '#e9f2f8', fg: '#256089' },
-  transfer: { icon: ArrowUpRight,  bg: '#eef0ef', fg: '#525f59' },
-  garage:   { icon: Wrench,        bg: '#fdf3e2', fg: '#b5790a' },
-  return:   { icon: ArrowDownLeft, bg: '#e7f6ee', fg: '#0e7a4f' },
+  checkin:              { icon: ArrowDownLeft, bg: '#e7f6ee', fg: '#0e7a4f' },
+  checkout:             { icon: ArrowUpRight,  bg: '#e9f2f8', fg: '#256089' },
+  hire:                 { icon: Truck,         bg: '#e9f2f8', fg: '#256089' },
+  return:               { icon: ArrowDownLeft, bg: '#e7f6ee', fg: '#0e7a4f' },
+  transfer:             { icon: Truck,         bg: '#eef0ef', fg: '#525f59' },
+  garage:               { icon: Wrench,        bg: '#fdf3e2', fg: '#b5790a' },
+  garage_booking:       { icon: Wrench,        bg: '#fdf3e2', fg: '#b5790a' },
+  garage_out:           { icon: Wrench,        bg: '#fdf3e2', fg: '#b5790a' },
+  garage_return:        { icon: ArrowDownLeft, bg: '#e7f6ee', fg: '#0e7a4f' },
+  status_changed:       { icon: Pencil,        bg: '#eef0ef', fg: '#525f59' },
+  comment:              { icon: FileText,      bg: '#eef0ef', fg: '#525f59' },
+  condition_changed:    { icon: Pencil,        bg: '#eef0ef', fg: '#525f59' },
+  contract_changed:     { icon: Tag,           bg: '#eef2f6', fg: '#3a6ea5' },
+  insurance_changed:    { icon: Shield,        bg: '#eef2f6', fg: '#3a6ea5' },
+  vehicle_added:        { icon: Plus,          bg: '#e7f6ee', fg: '#0e7a4f' },
+  defleet:              { icon: Trash2,        bg: '#fdecec', fg: '#c0392b' },
+  registration_changed: { icon: Pencil,        bg: '#eef0ef', fg: '#525f59' },
 }

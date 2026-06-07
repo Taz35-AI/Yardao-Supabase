@@ -509,7 +509,7 @@ export function UserNotesButton({ className = '' }: UserNotesButtonProps) {
       })
       if (error) throw error
       setNewText(''); setNewDate(getTodayString()); setNewScheduledTime(''); setNewPriority('medium'); setNewCategory('work'); setNewRecurrence('none'); setNewVehicleReg(''); setVehicleSearchTerm(''); setShowAdvanced(false)
-      await loadNotes(); toast.success(t('dashboard.notes.noteSaved'))
+      await loadNotes(); window.dispatchEvent(new Event('yardao:notes-changed')); toast.success(t('dashboard.notes.noteSaved'))
     } catch { toast.error(t('dashboard.notes.failedSaveNote')) }
     finally  { setLoading(false) }
   }
@@ -553,7 +553,7 @@ export function UserNotesButton({ className = '' }: UserNotesButtonProps) {
         }))
       )
       if (error) throw error
-      await loadNotes()
+      await loadNotes(); window.dispatchEvent(new Event('yardao:notes-changed'))
       toast.success(parsedNotes.length > 1 ? t('dashboard.notes.notesSavedPlural', { count: parsedNotes.length }) : t('dashboard.notes.noteSavedCheck'))
     } catch { toast.error(t('dashboard.notes.failedSaveNotes')) }
     finally { setLoading(false) }
@@ -583,13 +583,13 @@ export function UserNotesButton({ className = '' }: UserNotesButtonProps) {
         const next = nextRecurringDate(note.date, note.recurrence)
         if (next) { const col = notesCol(); if (col) { const { error: insertError } = await supabase.from('user_notes').insert({ user_id: col.userId, organization_id: col.orgId, text: note.text, date: next, scheduled_time: note.scheduledTime || null, priority: note.priority, category: note.category, recurrence: note.recurrence, vehicle_reg: note.vehicleReg || null, done: false, created_at: new Date().toISOString(), scheduled_notification_at: buildScheduledNotificationAt(next, note.scheduledTime), notification_sent: false }); if (insertError) throw insertError; toast.success(t('dashboard.notes.doneNextReminder', { date: next })) } }
       } else { toast.success(nowDone ? t('dashboard.notes.markedAsDone') : t('dashboard.notes.reopened')) }
-      await loadNotes()
+      await loadNotes(); window.dispatchEvent(new Event('yardao:notes-changed'))
     } catch { toast.error(t('dashboard.notes.failedUpdateNote')) }
   }
 
   const handleDelete = async (noteId: string) => {
     if (!user?.uid) return
-    try { const { error } = await supabase.from('user_notes').delete().eq('id', noteId).eq('user_id', user.uid); if (error) throw error; setNotes(prev => prev.filter(n => n.id !== noteId)); toast.success(t('dashboard.notes.noteDeleted')) }
+    try { const { error } = await supabase.from('user_notes').delete().eq('id', noteId).eq('user_id', user.uid); if (error) throw error; setNotes(prev => prev.filter(n => n.id !== noteId)); window.dispatchEvent(new Event('yardao:notes-changed')); toast.success(t('dashboard.notes.noteDeleted')) }
     catch { toast.error(t('dashboard.notes.failedDeleteNote')) }
   }
 
@@ -1157,7 +1157,6 @@ export function UserNotesButton({ className = '' }: UserNotesButtonProps) {
         <button onClick={() => setIsOpen(p => !p)}
           className={`relative flex items-center gap-1.5 px-3 py-2 rounded-xl font-semibold text-xs transition-all ${isOpen ? 'bg-[#012619] text-[#b3f243] border-2 border-[#b3f243]' : 'bg-gradient-to-br from-[#025940] to-[#012619] text-[#b3f243] border border-[#72A68E]/40'} shadow-sm`}>
           <StickyNote className="w-4 h-4" />
-          <span>{t('dashboard.notes.notesLabelMobile')}</span>
           {urgentCount > 0 && !isOpen && <span className="bg-red-500 text-white text-[9px] font-bold px-1 rounded-full animate-pulse">{urgentCount}</span>}
           {urgentCount === 0 && upcomingNotes.length > 0 && !isOpen && <span className="bg-[#b3f243] text-[#012619] text-[9px] font-bold px-1 rounded-full">{upcomingNotes.length}</span>}
         </button>

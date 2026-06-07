@@ -36,9 +36,7 @@ const STEP_DEFS: StepDef[] = [
   { sel: '[data-tour="check-in"]', title: 'Check in a vehicle', description: 'The main action — click here to add a vehicle to the yard. Type its registration and the make, model and colour auto-fill from DVLA.' },
   { sel: '[data-tour="search"]', title: 'Search', description: 'Quickly find any vehicle in the yard by registration, make or model.' },
   { sel: '[data-tour="presence"]', title: "Who's online", description: 'See which of your team members are using the app right now, live.' },
-  { sel: '[data-tour="refresh"]', title: 'Refresh', description: 'Force a refresh of the yard. It already updates live, so you rarely need this.' },
-  { sel: '[data-tour="clean"]', title: 'Clean', description: 'Tidy up old notes and stale data across the yard in one click.' },
-  { sel: '[data-tour="export"]', title: 'Export to Excel', description: 'Download the current vehicle list as an Excel spreadsheet.' },
+  { sel: '[data-tour="actions-menu"]', title: 'More actions', description: 'The three-dot menu holds the extra tools: refresh the yard, clean up old notes, and export the current list to Excel.' },
   { sel: '[data-tour="tour-help"]', title: 'Replay this tour', description: 'You can re-open this tour any time from here. That is the end — enjoy Yardao!' },
 ]
 

@@ -3,6 +3,7 @@
 // signatures and return shapes are identical to the Firestore version.
 
 import { supabase } from '@/lib/supabaseClient'
+import { activityLogService } from '@/lib/services/activityLogService'
 import { toCamel, toCamelList, toSnake } from '@/lib/dbMap'
 import { Vehicle, DefleetReason } from '@/types'
 import { logger } from '@/lib/logger'
@@ -142,6 +143,13 @@ export const enhancedVehicleService = {
       if (upErr) throw upErr
       result.defleeted = true
       logger.log(`✅ Marked as defleeted in fleet inventory`)
+
+      activityLogService.log({
+        organizationId: orgId, actorId: options.userId, actorName: options.userDisplayName,
+        actionType: 'defleet', registration: fleetVehicle.registration, entityId: vehicleId,
+        summary: `Defleeted: ${options.reason}${options.reasonDetails ? ` — ${options.reasonDetails}` : ''}`,
+        details: { reason: options.reason, details: options.reasonDetails || '' },
+      })
 
       // Step 6: Flag any service bookings for this vehicle
       try {

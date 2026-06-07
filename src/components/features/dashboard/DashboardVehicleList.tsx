@@ -16,7 +16,7 @@ import {
   CheckCircle, Clock, Wrench, XCircle, AlertTriangle,
   Car, Calendar, History, FileText,
   ArrowUpDown, ArrowUp, ArrowDown,
-  MessageSquare, Edit3, AlertCircle
+  MessageSquare, Edit3, AlertCircle, Truck
 } from 'lucide-react'
 import { CheckedInVehicle, FilterConfig, SortConfig } from '@/types'
 import { getConditionColor, getConditionTextColor, getConditionDisplayName } from '@/lib/conditionUtils'
@@ -186,13 +186,16 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
 
   // ─── DAYS IN YARD CELL ────────────────────────────────────────────────────────
   // Green < 14d | Amber 14–29d | Red 30d+
-  const DaysInYardCell = ({ createdAt }: { createdAt: any }) => {
-    const days = getDaysInYard(createdAt)
-    const color  = days >= 30 ? '#dc2626' : days >= 14 ? '#d97706' : '#16a34a'
+  // On-hire vehicles show days OUT ON HIRE (from hiredAt) with a truck icon;
+  // in-yard vehicles show days in the yard (from check-in).
+  const DaysInYardCell = ({ createdAt, hireStatus, hiredAt }: { createdAt: any; hireStatus?: string; hiredAt?: any }) => {
+    const onHire = hireStatus === 'Out on Hire'
+    const days = onHire && hiredAt ? getDaysInYard(hiredAt) : getDaysInYard(createdAt)
+    const color  = onHire ? '#256089' : days >= 30 ? '#dc2626' : days >= 14 ? '#d97706' : '#16a34a'
     const barPct = Math.min((days / 45) * 100, 100)
 
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" title={onHire ? `${days} day${days === 1 ? '' : 's'} out on hire` : `${days} day${days === 1 ? '' : 's'} in yard`}>
         <div className="w-12 h-1.5 rounded-full overflow-hidden flex-shrink-0" style={{ background: '#e2e8e4' }}>
           <div
             className="h-full rounded-full transition-all"
@@ -200,9 +203,10 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
           />
         </div>
         <span
-          className="text-[12px] font-bold tabular-nums leading-none"
+          className="inline-flex items-center gap-0.5 text-[12px] font-bold tabular-nums leading-none"
           style={{ color, fontFamily: "'DM Mono', monospace" }}
         >
+          {onHire && <Truck className="w-3 h-3" />}
           {t('dashboard.vehicleList.daysInYardSuffix', { days })}
         </span>
       </div>
@@ -530,9 +534,11 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
             <div className="flex flex-col gap-2">
               {displayVehicles.map((vehicle) => {
                 const statusConfig = getStatusConfig(vehicle.status)
-                const days = getDaysInYard(vehicle.createdAt)
-                const daysColor  = days >= 30 ? '#dc2626' : days >= 14 ? '#d97706' : '#16a34a'
-                const daysBg     = days >= 30 ? '#fff5f5' : days >= 14 ? '#fffbeb' : '#f0fdf4'
+                // On-hire vehicles show days OUT ON HIRE (from hiredAt); others show days in yard.
+                const onHire = (vehicle as any).hireStatus === 'Out on Hire'
+                const days = onHire && (vehicle as any).hiredAt ? getDaysInYard((vehicle as any).hiredAt) : getDaysInYard(vehicle.createdAt)
+                const daysColor  = onHire ? '#256089' : days >= 30 ? '#dc2626' : days >= 14 ? '#d97706' : '#16a34a'
+                const daysBg     = onHire ? '#eef2f7' : days >= 30 ? '#fff5f5' : days >= 14 ? '#fffbeb' : '#f0fdf4'
                 const daysBorder = days >= 30 ? '#fecaca' : days >= 14 ? '#fde68a' : '#bbf7d0'
 
                 // Left border gradient matches status colour
@@ -615,16 +621,18 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
                             {safeString(vehicle.colour)}
                           </span>
                         )}
-                        {/* Days in yard tag */}
+                        {/* Days tag — in yard, or out on hire (truck icon) */}
                         <span
-                          className="text-[10px] font-bold px-1.5 py-[2px] rounded-[5px]"
+                          className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-[2px] rounded-[5px]"
                           style={{
                             background: daysBg,
                             color: daysColor,
-                            border: `1px solid ${daysBorder}`,
+                            border: `1px solid ${onHire ? '#cdd9e6' : daysBorder}`,
                             fontFamily: "'DM Mono',monospace",
                           }}
+                          title={onHire ? `${days} day${days === 1 ? '' : 's'} out on hire` : `${days} day${days === 1 ? '' : 's'} in yard`}
                         >
+                          {onHire && <Truck className="w-2.5 h-2.5" />}
                           {t('dashboard.vehicleList.daysInYardSuffix', { days })}
                         </span>
                       </div>
@@ -767,7 +775,7 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
                           {/* ── Days in Yard — colour-coded bar ── */}
                           {/* Green <14d | Amber 14-29d | Red 30d+ */}
                           <td className="py-3 px-4">
-                            <DaysInYardCell createdAt={vehicle.createdAt} />
+                            <DaysInYardCell createdAt={vehicle.createdAt} hireStatus={(vehicle as any).hireStatus} hiredAt={(vehicle as any).hiredAt} />
                           </td>
 
                           {/* ── Check-in date ── */}

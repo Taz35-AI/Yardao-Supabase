@@ -100,7 +100,8 @@ export default function FleetUtilizationSnapshot({ vehicles, totalFleetCount }: 
     const totalVehicles = vehicles.length
 
     const outOnHire = vehicles.filter(v => v.hireStatus === 'Out on Hire').length
-    const inYard = vehicles.filter(v => v.hireStatus !== 'Out on Hire').length
+    // Physically in the yard: In Yard hire-state AND not away at a garage / in transit.
+    const inYard = vehicles.filter(v => v.hireStatus === 'In Yard' && !v.transferStatus).length
 
     const readyToRent = vehicles.filter(
       v => v.status === 'Ready' && v.hireStatus === 'In Yard'
@@ -243,7 +244,7 @@ export default function FleetUtilizationSnapshot({ vehicles, totalFleetCount }: 
             <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 rounded-xl p-3 sm:p-4 border border-blue-200 dark:border-blue-600">
               <p className="text-xs font-medium text-blue-600 dark:text-blue-400 mb-1">{t('dashboard.fleetUtil.inYard')}</p>
               <p className="text-2xl sm:text-3xl font-bold text-blue-900 dark:text-blue-300">
-                {snapshot.totalVehicles}
+                {snapshot.inYard}
               </p>
               <p className="text-xs text-blue-700 dark:text-blue-500 mt-1">{t('dashboard.fleetUtil.checkedIn')}</p>
             </div>

@@ -36,6 +36,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { userProfileService } from '@/lib/firestore'
 import { toCamel } from '@/lib/dbMap'
 import { logger } from '@/lib/logger'
+import { activityLogService } from '@/lib/services/activityLogService'
 
 import type { ServiceBooking } from '@/types/serviceBookings'
 
@@ -428,6 +429,15 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
     if (insertError) throw insertError
     const newId = data.id as string
 
+    activityLogService.log({
+      organizationId, actorId: user.uid, actorName: user.displayName || user.email || 'Unknown',
+      actionType: 'garage_booking', entityType: 'booking', entityId: newId, registration: bookingData.registration,
+      summary: bookingData.isExternalProvider
+        ? `Booked to external garage${bookingData.externalProvider?.garageName ? `: ${bookingData.externalProvider.garageName}` : ''}`
+        : `Booked to workshop${bookingData.date ? ` for ${bookingData.date}` : ''}`,
+      details: { date: bookingData.date, timeSlot: bookingData.timeSlot, external: !!bookingData.isExternalProvider },
+    })
+
     // 👥 Upsert the customer record so the contact details are reusable across
     // future bookings. Fire-and-forget — a transient hiccup here must NOT roll
     // back a successful booking save.
@@ -816,6 +826,12 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
         .eq('id', booking.id)
       if (bookingUpdateError) throw bookingUpdateError
 
+      activityLogService.log({
+        organizationId, actorId: user.uid, actorName: user.displayName || user.email || 'Unknown User',
+        actionType: 'garage_out', entityType: 'booking', entityId: booking.id, registration: booking.registration,
+        summary: `Sent to garage${booking.externalProvider?.garageName ? `: ${booking.externalProvider.garageName}` : ''}`,
+      })
+
       if (branchInfo) {
         logger.log(
           `✅ Vehicle ${booking.registration} checked into ${booking.externalProvider?.garageName || 'external garage'} and marked in Dashboard External Garage section`,
@@ -864,6 +880,12 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
           })
           .eq('id', booking.id)
         if (bookingUpdateError) throw bookingUpdateError
+
+        activityLogService.log({
+          organizationId, actorId: user.uid, actorName: user.displayName || user.email || 'Unknown User',
+          actionType: 'garage_return', entityType: 'booking', entityId: booking.id, registration: booking.registration,
+          summary: booking.isExternalProvider ? 'Returned from external garage (service completed)' : 'Service completed in workshop',
+        })
 
         if (shouldCheckBackIn) {
           const originalBranch = booking.originalBranchName || 'Main Branch'

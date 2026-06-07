@@ -263,7 +263,7 @@ export default function LoginPage() {
               <img
                 src="/logo-yardao.png"
                 alt="Yardao Logo"
-                className="h-28 sm:h-48 w-auto max-w-full object-contain transition-transform duration-200 group-hover:scale-105"
+                className="h-24 sm:h-40 w-auto max-w-full object-contain transition-transform duration-200 group-hover:scale-105"
               />
               <div className="absolute -inset-2 bg-gradient-to-r from-[#b3f243]/20 to-[#72A68E]/20 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10"></div>
             </div>

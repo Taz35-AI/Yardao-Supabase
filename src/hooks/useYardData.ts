@@ -18,6 +18,7 @@ import { contractService } from '@/lib/contractService'
 import { buildContractColorIndex, resolveVehicleContractColor, type ContractColorIndex } from '@/lib/contractUtils'
 import { branchService } from '@/lib/services/branchService'
 import { VehicleHireService } from '@/lib/services/vehicleHireService'
+import { activityLogService } from '@/lib/services/activityLogService'
 import { 
   Analytics, 
   AuditLog, 
@@ -920,6 +921,12 @@ export function useYardDataInternal(props?: UseYardDataProps) {
         if (insertError) throw insertError
         logger.log(`New vehicle checked into branch: ${branchId}`)
 
+        activityLogService.log({
+          organizationId: userOrganizationId, actorId: user.uid, actorName: userDisplayName,
+          actionType: 'checkin', registration: normalizedReg, entityId: fleetVehicleId || null, branchId,
+          summary: `Checked in to yard${vehicleData.status ? ` as ${normalizeStatus(vehicleData.status)}` : ''}`,
+        })
+
         // Handle sync using vehicle ID if available - INCLUDING CONDITION
         await syncToFleet(fleetVehicleId, normalizedReg, contractValue, contractColorValue, insuranceValue, conditionValue)
       }
@@ -1012,6 +1019,13 @@ export function useYardDataInternal(props?: UseYardDataProps) {
           .eq('id', vehicleId)
         if (updError) throw updError
       }
+
+      activityLogService.log({
+        organizationId: userOrganizationId, actorId: user.uid, actorName: userDisplayName,
+        actionType: 'checkout', registration: vehicle.registration, entityId: vehicle.vehicleId || null,
+        branchId: checkoutBranchId,
+        summary: `Checked out of yard${checkoutBranchName ? ` (${checkoutBranchName})` : ''}`,
+      })
 
       // Small delay to ensure audit log is saved, then delete
       setTimeout(async () => {
@@ -1199,6 +1213,28 @@ export function useYardDataInternal(props?: UseYardDataProps) {
         if (updError) throw updError
       }
       logger.log(`✅ Vehicle updated in branch: ${branchId}`)
+
+      // ── Activity feed: one entry per meaningful change (with the actor) ──
+      {
+        const actor = { organizationId: userOrganizationId, actorId: user.uid, actorName: userDisplayName, registration, entityId: vehicleId, branchId }
+        if (updates.status !== undefined && updates.status !== vehicleData.status) {
+          activityLogService.log({ ...actor, actionType: 'status_changed', summary: `Status: ${vehicleData.status || '—'} → ${updates.status}`, details: { from: vehicleData.status, to: updates.status } })
+        }
+        if (conditionChanged) {
+          activityLogService.log({ ...actor, actionType: 'condition_changed', summary: `Condition: ${vehicleData.condition || '—'} → ${updateData.condition}`, details: { from: vehicleData.condition, to: updateData.condition } })
+        }
+        if (contractChanged) {
+          activityLogService.log({ ...actor, actionType: 'contract_changed', summary: updateData.contract ? `Contract set to ${updateData.contract}` : 'Contract removed', details: { from: vehicleData.contract, to: updateData.contract } })
+        }
+        if (insuranceChanged) {
+          activityLogService.log({ ...actor, actionType: 'insurance_changed', summary: `Insurance: ${updateData.insuranceStatus}`, details: { from: vehicleData.insuranceStatus, to: updateData.insuranceStatus } })
+        }
+        const noteAdded = updates.notes !== undefined && (updates.notes || '').trim() && (updates.notes || '').trim() !== (vehicleData.notes || '').trim()
+        const commentAdded = updates.comments !== undefined && (updates.comments || '').trim() && (updates.comments || '').trim() !== (vehicleData.comments || '').trim()
+        if (noteAdded || commentAdded) {
+          activityLogService.log({ ...actor, actionType: 'comment', summary: `${noteAdded ? 'Note' : 'Comment'} added`, details: { text: (noteAdded ? updates.notes : updates.comments) } })
+        }
+      }
 
       // CONDITION SYNC - FIXED SECTION
       if (conditionChanged && registration) {
