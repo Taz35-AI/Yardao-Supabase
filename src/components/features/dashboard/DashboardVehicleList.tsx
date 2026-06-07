@@ -232,10 +232,10 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
     <span
       className="inline-flex items-center rounded-[4px] px-2 py-[3px] select-none"
       style={{
-        background: '#f5c800',          // rich yellow — much more vibrant than before
-        border: '1.5px solid #c8a000',  // strong amber border
+        background: '#ffffff',          // UK front-plate white
+        border: '1.5px solid #111111',  // black border
         fontFamily: "'DM Mono', 'JetBrains Mono', 'SF Mono', monospace",
-        boxShadow: '0 1px 3px rgba(200,160,0,0.25)',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.18)',
       }}
     >
       <span
@@ -560,10 +560,10 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
                       <span
                         className="inline-flex items-center rounded-[4px] px-2 py-[4px]"
                         style={{
-                          background: '#f5c800',
-                          border: '1.5px solid #c8a000',
+                          background: '#ffffff',
+                          border: '1.5px solid #111111',
                           fontFamily: "'DM Mono','JetBrains Mono',monospace",
-                          boxShadow: '0 1px 3px rgba(200,160,0,0.2)',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.18)',
                           minWidth: '80px',
                           justifyContent: 'center',
                         }}
