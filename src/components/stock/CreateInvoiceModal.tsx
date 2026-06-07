@@ -205,6 +205,9 @@ const loadServiceBookingHoursAndCustomer = async () => {
     // Latest booking carrying make/model — used to backfill a custom
     // (non-fleet) vehicle's make/model on the invoice so it isn't blank.
     let latestVehicleInfo: { date: string; make: string; model: string } | null = null
+    // Latest booking carrying an odometer reading (captured at "Mark Complete")
+    // — used to auto-fill the invoice ODO so it isn't entered by hand.
+    let latestMileage: { date: string; mileage: string } | null = null
 
     bookings.forEach((b: any) => {
       const status = b.status as string | undefined
@@ -250,6 +253,14 @@ const loadServiceBookingHoursAndCustomer = async () => {
           }
         }
       }
+
+      // Track most-recent booking that recorded an odometer reading at
+      // completion → auto-fills the invoice ODO.
+      if (b.mileage != null && String(b.mileage).trim() !== '' && b.date) {
+        if (!latestMileage || b.date > latestMileage.date) {
+          latestMileage = { date: b.date, mileage: String(b.mileage).trim() }
+        }
+      }
     })
 
     // Build labour lines from the per-work-type hour totals.
@@ -292,6 +303,14 @@ const loadServiceBookingHoursAndCustomer = async () => {
           ? { ...prev, make: info.make, model: info.model }
           : prev,
       )
+    }
+
+    // Auto-fill the ODO from the most-recent booking's completion mileage —
+    // this is the reading the mechanic entered at "Mark Complete", which is the
+    // most relevant odometer for the invoice (overrides the fleet record's
+    // older value).
+    if (latestMileage) {
+      setMileage((latestMileage as { date: string; mileage: string }).mileage)
     }
 
     // Surface the most-recent booking's customer as a to-company option.

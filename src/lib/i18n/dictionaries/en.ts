@@ -460,6 +460,8 @@ export const en = {
       cancel: 'Cancel',
       start: 'Start refresh',
       running: 'Looking up {processed} of {total}…',
+      checkingDvla: 'Checking DVLA… this can take a moment',
+      working: 'Working…',
       updatedCount: '{count} updated',
       dontClose: 'Keep this window open until it finishes.',
       doneTitle: 'Refresh complete',

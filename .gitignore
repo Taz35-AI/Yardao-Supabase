@@ -53,3 +53,7 @@ next-env.d.ts
 # Supabase CLI scratch
 supabase/.temp/
 
+
+# Capacitor native project (regenerated via cap add + @capacitor/assets)
+android/
+ios/

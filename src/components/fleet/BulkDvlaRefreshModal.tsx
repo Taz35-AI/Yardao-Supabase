@@ -144,16 +144,31 @@ export function BulkDvlaRefreshModal({
             <>
               <div className="flex items-center gap-2 text-sm text-[#012619] dark:text-gray-200">
                 <Loader2 className="w-4 h-4 animate-spin text-[#025940]" />
-                {t('fleet.bulkDvla.running', { processed, total })}
+                {processed > 0
+                  ? t('fleet.bulkDvla.running', { processed, total })
+                  : t('fleet.bulkDvla.checkingDvla')}
               </div>
               <div className="mt-3 h-2.5 w-full bg-[#e2e8e5] dark:bg-gray-700 rounded-full overflow-hidden">
-                <div className="h-full bg-[#025940] transition-all duration-300" style={{ width: `${pct}%` }} />
+                {processed > 0 ? (
+                  // Real per-vehicle progress once the server reports it.
+                  <div className="h-full bg-[#025940] transition-all duration-300" style={{ width: `${pct}%` }} />
+                ) : (
+                  // No granular count yet → indeterminate sliding bar so it's
+                  // clearly working (not frozen) while DVLA is queried.
+                  <div className="h-full w-2/5 rounded-full bg-[#025940]" style={{ animation: 'dvlaIndeterminate 1.2s ease-in-out infinite' }} />
+                )}
               </div>
               <div className="flex justify-between text-[11px] text-[#8a9e94] mt-1.5">
-                <span>{pct}%</span>
+                <span>{processed > 0 ? `${pct}%` : t('fleet.bulkDvla.working')}</span>
                 <span>{t('fleet.bulkDvla.updatedCount', { count: progress?.updated || 0 })}</span>
               </div>
               <p className="text-[11px] text-[#8a9e94] mt-3">{t('fleet.bulkDvla.dontClose')}</p>
+              <style jsx>{`
+                @keyframes dvlaIndeterminate {
+                  0%   { margin-left: -40%; }
+                  100% { margin-left: 100%; }
+                }
+              `}</style>
             </>
           )}
 
