@@ -273,8 +273,11 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
     <div className="min-h-screen overflow-x-hidden bg-[#edf1ee] dark:bg-gray-900 pt-0">
       <Navigation />
 
-      {/* System Notifications */}
-      {dataLayer.yardData?.syncNotification && (
+      {/* System Notifications — sync runs silently now (it's reliable + live),
+          so the "synced to N yard record" success/info confirmations are
+          suppressed; only genuine problems (warning/error) still surface. */}
+      {dataLayer.yardData?.syncNotification &&
+        (dataLayer.yardData.syncNotification.type === 'error' || dataLayer.yardData.syncNotification.type === 'warning') && (
         <ContractSyncNotification
           notification={dataLayer.yardData.syncNotification}
           onClose={dataLayer.yardData.clearSyncNotification}
@@ -977,6 +980,13 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
               // transfer so it becomes a normal in-yard vehicle again.
               modalController.closeCheckInForm()
               businessLogic.handleCancelTransfer(vehicle.id)
+            }}
+            onReturnFromGarage={(vehicle) => {
+              // Vehicle is checked out to an external garage. Close the picker
+              // and run the existing return-from-garage flow (same handler the
+              // Checked Out drawer uses).
+              modalController.closeCheckInForm()
+              businessLogic.handleReturnFromGarage(vehicle.id)
             }}
           />
         </div>

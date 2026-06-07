@@ -115,9 +115,12 @@ export function YardLayoutView({
   const { layout, loading, error } = useYardLayout(branchId)
   const parking = useVehicleParking()
 
-  // Default to 60% so the whole yard fits on screen without the user
-  // having to zoom out first. They can zoom in/out freely from here.
-  const [zoom, setZoom] = useState(0.6)
+  // Default zoom: 100% on desktop (the map has room to breathe there); 60% on
+  // smaller screens so the whole yard still fits without zooming out first.
+  // Either way the user can zoom in/out freely from here.
+  const [zoom, setZoom] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches ? 1 : 0.6
+  )
   const [parkingTarget, setParkingTarget] = useState<ParkingSpace | null>(null)
   const [toast, setToast] = useState<ToastState | null>(null)
   const [draggingVehicleId, setDraggingVehicleId] = useState<string | null>(null)

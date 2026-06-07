@@ -95,6 +95,11 @@ interface VehicleCheckInFormProps {
   // "Cancel transfer" affordance instead of a dead "In yard" badge. The parent is
   // expected to close this form and open the cancel-transfer confirmation.
   onCancelTransfer?: (vehicle: CheckedInVehicle) => void
+  // When a user picks a vehicle currently checked out to an external garage
+  // (transferStatus 'at_external_garage'), the picker surfaces a "Return from
+  // garage" affordance instead of a dead "In yard" badge. The parent closes
+  // this form and runs the return-from-garage flow.
+  onReturnFromGarage?: (vehicle: CheckedInVehicle) => void
 }
 
 type VehicleStatus = 'Ready' | 'Pending checks' | 'Repairs needed' | 'Non-Starter'
@@ -133,7 +138,8 @@ export function VehicleCheckInForm({
   onCheckIn,
   onCancel,
   onReturnFromHire,
-  onCancelTransfer
+  onCancelTransfer,
+  onReturnFromGarage
 }: VehicleCheckInFormProps) {
   const { user } = useAuth()
   const t = useT()
@@ -246,7 +252,7 @@ export function VehicleCheckInForm({
   // physically here" (offer to cancel the stuck transfer) from "available".
   const getRegistrationState = (
     registration: string
-  ): { state: 'available' | 'in_yard' | 'on_hire' | 'in_transit'; vehicle: CheckedInVehicle | null } => {
+  ): { state: 'available' | 'in_yard' | 'on_hire' | 'in_transit' | 'at_garage'; vehicle: CheckedInVehicle | null } => {
     if (!registration.trim()) return { state: 'available', vehicle: null }
     const cleanReg = registration.trim().toLowerCase().replace(/\s+/g, '')
     const match = checkedInVehicles.find(v => {
@@ -259,6 +265,11 @@ export function VehicleCheckInForm({
     // cancel the stuck transfer instead of hitting a dead "In yard" badge.
     if ((match as any).transferStatus === 'in_transit') {
       return { state: 'in_transit', vehicle: match }
+    }
+    // Checked out to an external garage — offer "Return from garage" rather than
+    // a dead "In yard" badge (same idea as on-hire return / cancel-transfer).
+    if ((match as any).transferStatus === 'at_external_garage') {
+      return { state: 'at_garage', vehicle: match }
     }
     return {
       state: (match as any).hireStatus === 'Out on Hire' ? 'on_hire' : 'in_yard',
@@ -478,11 +489,16 @@ export function VehicleCheckInForm({
                       const isInYard = regState.state === 'in_yard'
                       const isOnHire = regState.state === 'on_hire'
                       const isInTransit = regState.state === 'in_transit'
+                      const isAtGarage = regState.state === 'at_garage'
                       const isClickable = !isInYard
                       const handleRowClick = () => {
                         if (isInYard) return
                         if (isInTransit && regState.vehicle && onCancelTransfer) {
                           onCancelTransfer(regState.vehicle)
+                          return
+                        }
+                        if (isAtGarage && regState.vehicle && onReturnFromGarage) {
+                          onReturnFromGarage(regState.vehicle)
                           return
                         }
                         if (isOnHire && regState.vehicle && onReturnFromHire) {
@@ -504,6 +520,9 @@ export function VehicleCheckInForm({
                                 // Stronger amber attention — the vehicle is physically here
                                 // but stuck "in transit"; clicking offers to cancel the transfer.
                                 ? 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/20 dark:hover:bg-amber-900/30'
+                                : isAtGarage
+                                  // Orange tint — vehicle is away at a garage; clicking returns it.
+                                  ? 'bg-orange-50 hover:bg-orange-100 dark:bg-orange-900/20 dark:hover:bg-orange-900/30'
                                 : isOnHire
                                   // Soft amber tint — signals "this is a return, not a check-in"
                                   // without screaming for attention. Hover deepens slightly.
@@ -538,6 +557,12 @@ export function VehicleCheckInForm({
                                     {t('yardCheckin.badgeInTransit')}
                                   </span>
                                 )}
+                                {isAtGarage && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border border-orange-300 dark:border-orange-700">
+                                    <Wrench className="w-2.5 h-2.5" />
+                                    {t('yardCheckin.badgeAtGarage')}
+                                  </span>
+                                )}
                               </div>
                               <p className="text-[10px] text-[#8a9e94] truncate mt-0.5">
                                 {safeString(vehicle.make)} {safeString(vehicle.model)}
@@ -550,6 +575,14 @@ export function VehicleCheckInForm({
                                     {regState.vehicle?.targetBranchName
                                       ? `→ ${safeString(regState.vehicle.targetBranchName)} · ${t('yardCheckin.inTransitHint')}`
                                       : t('yardCheckin.inTransitHint')}
+                                  </span>
+                                </p>
+                              )}
+                              {isAtGarage && (
+                                <p className="text-[10px] font-semibold text-orange-700 dark:text-orange-400 truncate mt-0.5 flex items-center gap-1">
+                                  <ArrowLeftCircle className="w-2.5 h-2.5 flex-shrink-0" />
+                                  <span className="truncate">
+                                    {t('yardCheckin.returnFromGarageHint', { garage: safeString((regState.vehicle as any)?.externalGarageName) || t('yardCheckin.theGarage') })}
                                   </span>
                                 </p>
                               )}
@@ -573,6 +606,8 @@ export function VehicleCheckInForm({
                             )}
                             {isInTransit ? (
                               <ArrowLeftCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                            ) : isAtGarage ? (
+                              <ArrowLeftCircle className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
                             ) : isOnHire ? (
                               <ArrowLeftCircle className="w-3.5 h-3.5 text-[#012619] dark:text-[#72A68E]" />
                             ) : isClickable ? (
