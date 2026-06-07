@@ -2,6 +2,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { supabase } from '@/lib/supabaseClient'
@@ -662,9 +663,11 @@ function UserManagement() {
         )}
       </div>
 
-      {/* Delete confirmation modal */}
-      {userToDelete && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      {/* Delete confirmation modal — portalled to <body> so it centers on the
+          viewport (a transformed ancestor would otherwise trap position:fixed
+          inside the scrollable page). */}
+      {userToDelete && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[10000]">
           <div className="bg-white dark:bg-gray-900 rounded-xl border border-[#e2e8e5] dark:border-gray-700 p-5 max-w-sm w-full shadow-xl">
             <div className="flex items-start gap-3 mb-4">
               <div className="w-9 h-9 rounded-lg bg-red-50 dark:bg-red-900/20 flex items-center justify-center flex-shrink-0">
@@ -695,7 +698,8 @@ function UserManagement() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

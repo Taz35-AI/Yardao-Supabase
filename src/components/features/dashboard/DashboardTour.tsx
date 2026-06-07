@@ -34,6 +34,11 @@ export function DashboardTour({ ready }: { ready: boolean }) {
   useEffect(() => {
     if (!ready || autoStarted.current || !profile) return
     if ((profile as { hasCompletedTour?: boolean }).hasCompletedTour) return
+    // Hold the tour until the temporary-password welcome notice is acknowledged
+    // — otherwise a brand-new user gets both at once. Clicking "Got it" clears
+    // requiresPasswordReset + refreshes the profile, which re-runs this effect
+    // and starts the tour then.
+    if ((profile as { requiresPasswordReset?: boolean }).requiresPasswordReset) return
     // Desktop-only auto-start (the tour targets the desktop sidebar + header).
     // Don't mark complete on mobile, so it runs when they next open on desktop.
     if (typeof window !== 'undefined' && window.innerWidth < 1024) return

@@ -187,18 +187,16 @@ export default function LoginPage() {
     } catch (error: any) {
       setLoading(false)
       
-      if (error.code === 'auth/user-not-found') {
-        setError('No account found with this email address')
-      } else if (error.code === 'auth/wrong-password') {
-        setError('Incorrect password')
-      } else if (error.code === 'auth/invalid-email') {
-        setError('Invalid email address')
-      } else if (error.code === 'auth/too-many-requests') {
-        setError('Too many failed login attempts. Please try again later.')
-      } else if (error.code === 'auth/invalid-credential') {
-        setError('Invalid email or password')
+      const code = error?.code || ''
+      const msg = (error?.message || '').toLowerCase()
+      if (code === 'auth/too-many-requests' || msg.includes('too many')) {
+        setError('Too many failed attempts. Please try again in a few minutes.')
+      } else if (code === 'auth/invalid-email' || (msg.includes('invalid') && msg.includes('email') && !msg.includes('credential'))) {
+        setError('Please enter a valid email address.')
       } else {
-        setError('Login failed. Please try again.')
+        // Standard, non-leaky message for wrong email/password (Supabase returns
+        // "Invalid login credentials") and any other auth failure.
+        setError('Incorrect email or password. Please try again.')
       }
     }
   }
