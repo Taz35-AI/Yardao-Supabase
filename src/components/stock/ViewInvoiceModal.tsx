@@ -75,7 +75,9 @@ export function ViewInvoiceModal({ isOpen, onClose, invoice, onStatusChange }: V
     setDownloading(true)
     try {
       generateInvoicePDF({
-        invoice,
+        // Use the live status so the PDF reflects a just-changed status
+        // (the parent reloads the list, not this modal's invoice prop).
+        invoice: { ...invoice, status: statusValue },
         fromCompanyDetails,
         toCompanyDetails,
       })
@@ -176,8 +178,8 @@ export function ViewInvoiceModal({ isOpen, onClose, invoice, onStatusChange }: V
                 {t('stock.viewInvoice.datePrefix')}{new Date(invoice.invoiceDate).toLocaleDateString('en-GB')}
               </p>
             </div>
-            <div className={`px-4 py-2 rounded-lg font-semibold ${getStatusBadgeClasses(invoice.status)}`}>
-              {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
+            <div className={`px-4 py-2 rounded-lg font-semibold ${getStatusBadgeClasses(statusValue)}`}>
+              {statusValue.charAt(0).toUpperCase() + statusValue.slice(1)}
             </div>
           </div>
 
