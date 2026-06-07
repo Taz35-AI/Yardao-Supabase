@@ -36,7 +36,7 @@ export default function ResetPasswordRequiredPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const { user, refreshProfile } = useAuth()
+  const { user, loading: authLoading, refreshProfile } = useAuth()
   const router = useRouter()
 
   // Animated vehicles state
@@ -78,10 +78,13 @@ export default function ResetPasswordRequiredPage() {
   }, [])
 
   useEffect(() => {
-    if (!user) {
+    // Only redirect once auth is fully RESOLVED — never on the transient null
+    // that occurs while the session is still loading right after login. (This
+    // was the "flash the reset page, then bounce to /login" bug.)
+    if (!authLoading && !user) {
       router.push('/login')
     }
-  }, [user, router])
+  }, [user, authLoading, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -128,6 +131,16 @@ export default function ResetPasswordRequiredPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // While auth is still resolving, show a neutral loading screen — never a blank
+  // flash and never a premature redirect.
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-white dark:bg-slate-950 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[#025940] border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
   }
 
   if (!user) {
