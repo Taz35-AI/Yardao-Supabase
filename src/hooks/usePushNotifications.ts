@@ -13,6 +13,13 @@ import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabaseClient'
 import { logger } from '@/lib/logger'
 
+// 🔕 Push registration needs Firebase configured natively (google-services.json
+// on Android, APNs on iOS). Until that's wired, calling PushNotifications.register()
+// crashes the app on launch ("Default FirebaseApp is not initialized") — and a
+// native crash can't be caught by JS try/catch. Keep this false until FCM is set
+// up, then flip to true to re-enable the whole flow below unchanged.
+const PUSH_NOTIFICATIONS_ENABLED = false
+
 export function usePushNotifications() {
   logger.log('🔥 [HOOK] usePushNotifications hook called')
   
@@ -37,6 +44,13 @@ export function usePushNotifications() {
     // Only run on native platforms (Android/iOS)
     if (!Capacitor.isNativePlatform()) {
       logger.log('⚠️ [HOOK] Skipping: Not a native platform')
+      return
+    }
+
+    // 🔕 Skip until Firebase/FCM is configured natively — otherwise register()
+    // crashes the app on launch. Re-enable via PUSH_NOTIFICATIONS_ENABLED.
+    if (!PUSH_NOTIFICATIONS_ENABLED) {
+      logger.log('🔕 [HOOK] Push notifications disabled (FCM not configured yet) — skipping native init')
       return
     }
 
