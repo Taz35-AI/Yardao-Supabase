@@ -111,13 +111,13 @@ const RegPlate = ({ registration }: { registration: string }) => (
   <span
     className="inline-flex items-center rounded-[4px] px-2 py-[3px] select-none"
     style={{
-      background: '#ffffff',
-      border: '1.5px solid #111111',
+      background: 'linear-gradient(180deg,#ffffff 0%,#f4f4f4 52%,#e3e3e3 100%)',
+      border: '1px solid #262626',
       fontFamily: "'DM Mono', 'JetBrains Mono', 'SF Mono', monospace",
-      boxShadow: '0 1px 3px rgba(0,0,0,0.18)',
+      boxShadow: '0 1.5px 2px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.95), inset 0 -2px 3px rgba(0,0,0,0.14)',
     }}
   >
-    <span style={{ fontSize: '12px', fontWeight: 800, color: '#111000', letterSpacing: '0.10em', lineHeight: 1 }}>
+    <span style={{ fontSize: '12px', fontWeight: 800, color: '#0c0c0c', letterSpacing: '0.10em', lineHeight: 1, textShadow: '0 1px 0 rgba(255,255,255,0.55)' }}>
       {registration}
     </span>
   </span>
