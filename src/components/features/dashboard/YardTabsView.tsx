@@ -25,6 +25,8 @@ import {
 type ViewMode = 'table' | 'cards' | 'layout' | 'pipeline'
 import { CheckedInVehicle, VehicleStatus, normalizeVehicleStatus } from '@/types'
 import { useCheckoutHistory } from '@/hooks/useCheckoutHistory'
+import { VehicleArt } from './VehicleArt'
+import { VirtualizedCardGrid } from './VirtualizedCardGrid'
 
 interface YardTabsViewProps {
   vehicles: CheckedInVehicle[]
@@ -130,62 +132,66 @@ const VehicleRow = ({
         <span className="text-[11px] font-bold tabular-nums leading-none" style={{ color: daysColor }}>{days}d</span>
       </div>
 
-      {/* make / model */}
-      <div className="text-[13px] font-semibold text-[#012619] dark:text-white leading-tight truncate">
-        {`${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'Unknown vehicle'}
-      </div>
-      {/* size · colour */}
-      <div className="text-[11px] text-[#6b7a70] dark:text-gray-400 truncate mt-0.5 flex items-center gap-1.5">
-        {vehicle.colour && (
-          <span className="inline-flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-full border border-black/10 inline-block" style={{ background: colourToHex(vehicle.colour) }} />
-            {vehicle.colour}
-          </span>
-        )}
-        {vehicle.size && <span>· {vehicle.size}</span>}
-      </div>
+      {/* body: left = make/model + contract + condition, right = photo */}
+      <div className="flex gap-2 flex-1 min-h-[88px]">
+        {/* left column */}
+        <div className="flex flex-col min-w-0 flex-1">
+          {/* make / model */}
+          <div className="text-[13px] font-semibold text-[#012619] dark:text-white leading-tight line-clamp-2">
+            {`${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'Unknown vehicle'}
+          </div>
 
-      {/* MOT alert */}
-      {motDays !== null && motDays <= 30 && (
-        <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border mt-2 self-start ${
-          motDays < 0
-            ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300'
-            : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300'}`}>
-          <AlertTriangle className="w-2.5 h-2.5" />
-          {motDays < 0 ? 'MOT expired' : `MOT ${motDays}d`}
-        </span>
-      )}
+          {/* size */}
+          {vehicle.size && (
+            <div className="text-[11px] text-[#6b7a70] dark:text-gray-400 truncate mt-0.5">
+              {vehicle.size}
+            </div>
+          )}
 
-      {/* footer: contract + condition */}
-      <div className="flex items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-[#eef3f0] dark:border-gray-700/60">
-        {contract ? (
-          <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full border max-w-[62%] truncate"
-            style={{ backgroundColor: contractColor ? `${contractColor}15` : '#f0f4f2', borderColor: contractColor ? `${contractColor}40` : '#d8d6cd', color: contractColor || '#4a5e54' }}
-            title={contract}>
-            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: contractColor || '#8a9e94' }} />
-            <span className="truncate">{contract}</span>
-          </span>
-        ) : (
-          <span className="text-[10px] italic text-[#8a9e94] dark:text-gray-500">No contract</span>
-        )}
-        {vehicle.condition && (
-          <span className="text-[10px] font-semibold text-[#6b7a70] dark:text-gray-400 truncate flex-shrink-0">{vehicle.condition}</span>
-        )}
+          {/* MOT alert */}
+          {motDays !== null && motDays <= 30 && (
+            <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border mt-1.5 self-start ${
+              motDays < 0
+                ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300'
+                : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300'}`}>
+              <AlertTriangle className="w-2.5 h-2.5" />
+              {motDays < 0 ? 'MOT expired' : `MOT ${motDays}d`}
+            </span>
+          )}
+
+          {/* contract + condition pinned to the bottom of the left column */}
+          <div className="mt-auto pt-2 flex flex-col items-start gap-1 min-w-0 w-full">
+            {contract ? (
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full border max-w-full truncate"
+                style={{ backgroundColor: contractColor ? `${contractColor}15` : '#f0f4f2', borderColor: contractColor ? `${contractColor}40` : '#d8d6cd', color: contractColor || '#4a5e54' }}
+                title={contract}>
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: contractColor || '#8a9e94' }} />
+                <span className="truncate">{contract}</span>
+              </span>
+            ) : (
+              <span className="text-[10px] italic text-[#8a9e94] dark:text-gray-500">No contract</span>
+            )}
+            {vehicle.condition && (
+              <span className="text-[10px] font-semibold text-[#6b7a70] dark:text-gray-400 truncate max-w-full">{vehicle.condition}</span>
+            )}
+          </div>
+        </div>
+
+        {/* right column: vehicle photo — the matched make/model art, or a generic
+            car (recoloured to the vehicle colour) when there's no exact file.
+            Desktop only, no box, sits bare on the card. */}
+        <div className="hidden lg:flex items-center justify-center w-[44%] flex-shrink-0 self-stretch">
+          <VehicleArt
+            make={vehicle.make}
+            model={vehicle.model}
+            colour={vehicle.colour}
+            className="h-full w-full max-h-24"
+            fallbackToGeneric
+          />
+        </div>
       </div>
     </button>
   )
-}
-
-// crude colour-name → swatch hex so the dot looks right; falls back to grey.
-function colourToHex(name?: string): string {
-  if (!name) return '#cbd5d0'
-  const n = name.toLowerCase().trim()
-  const map: Record<string, string> = {
-    white: '#ffffff', black: '#1a1a1a', silver: '#c8ccd0', grey: '#9aa3ab', gray: '#9aa3ab',
-    blue: '#1f4ea1', red: '#d12b2b', green: '#1f8a4c', yellow: '#f5c800', orange: '#f97316',
-    brown: '#7b5234', gold: '#d4af37', beige: '#d8c9a3', purple: '#7c3aed',
-  }
-  return map[n] || '#cbd5d0'
 }
 
 // ── main ─────────────────────────────────────────────────────────────────────
@@ -393,11 +399,16 @@ export const YardTabsView = React.memo(function YardTabsView({
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
-              {items.map(v => (
-                <VehicleRow key={v.id} vehicle={v} color={activeCfg.color} onView={onViewVehicle} />
-              ))}
-            </div>
+            <VirtualizedCardGrid
+              items={items}
+              getKey={(v) => v.id}
+              minColumnWidth={240}
+              gap={12}
+              estimateRowHeight={150}
+              renderItem={(v) => (
+                <VehicleRow vehicle={v} color={activeCfg.color} onView={onViewVehicle} />
+              )}
+            />
           )}
         </div>
       </div>

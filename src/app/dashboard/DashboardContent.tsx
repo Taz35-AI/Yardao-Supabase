@@ -243,7 +243,7 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
 
   if (dataLayer.isLoading) {
     return (
-      <div className="min-h-screen overflow-x-hidden bg-[#f6f8f7] dark:bg-gray-900">
+      <div className="min-h-screen overflow-x-hidden bg-[#edf1ee] dark:bg-gray-900">
         <Navigation />
         <div className="flex items-center justify-center min-h-[50vh] pt-0">
           <div className="text-center">
@@ -271,7 +271,7 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
     isSearching && yardTab !== 'in_yard' && inYardMatchCount > 0
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#f6f8f7] dark:bg-gray-900 pt-0">
+    <div className="min-h-screen overflow-x-hidden bg-[#edf1ee] dark:bg-gray-900 pt-0">
       <Navigation />
 
       {/* System Notifications */}
@@ -306,7 +306,7 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
       {/* ═══════════════════════════════════════════════════
           STICKY TOP BAR — Search + Actions
       ═══════════════════════════════════════════════════ */}
-      <div className="sticky top-0 md:top-0 z-30 bg-[#f6f8f7]/85 dark:bg-gray-900/85 backdrop-blur-xl border-b border-[#e2e8e5] dark:border-gray-700/50">
+      <div className="sticky top-0 md:top-0 z-30 bg-[#edf1ee]/85 dark:bg-gray-900/85 backdrop-blur-xl border-b border-[#e2e8e5] dark:border-gray-700/50">
         <div className={`w-full max-w-[100vw] px-3 sm:px-4 lg:px-8 ${viewMode === 'pipeline' ? 'py-1.5' : 'py-3'}`}>
           <div className="flex items-center justify-between gap-3">
 
@@ -830,6 +830,7 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
       {isDesktop && viewMode === 'pipeline' && !modalController.uiModalStates.showCheckInForm && createPortal(
         <button
           onClick={modalController.showCheckInForm}
+          data-tour="check-in"
           aria-label={t('dashboard.summary.checkInVehicleAria')}
           title={t('dashboard.summary.checkInVehicleAria')}
           className="rounded-full shadow-lg hover:shadow-xl transition-all duration-150 hover:scale-105 active:scale-95"

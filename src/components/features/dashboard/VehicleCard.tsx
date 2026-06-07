@@ -11,6 +11,7 @@ import { formatDate, formatMileage, safeString } from '@/lib/utils'
 import { Calendar, Gauge, FileText, MapPin } from 'lucide-react'
 import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
+import { VehicleArt, resolveVehicleArt } from './VehicleArt'
 
 
 interface VehicleCardProps {
@@ -35,6 +36,7 @@ export const VehicleCard = React.memo(function VehicleCard({
   const conditionColor = conditionObject ? conditionObject.color : getConditionColor(vehicle.condition)
   const conditionTextColor = getConditionTextColor(conditionColor)
   const conditionDisplayName = getConditionDisplayName(vehicle.condition)
+  const hasArt = !!resolveVehicleArt(vehicle.make, vehicle.model)
 
   // Debug logging to help troubleshoot
   React.useEffect(() => {
@@ -68,6 +70,18 @@ export const VehicleCard = React.memo(function VehicleCard({
             </div>
           </div>
         </div>
+
+        {/* Make/Model illustration, tinted to the vehicle colour */}
+        {hasArt && (
+          <div className="hidden lg:flex justify-center -my-1">
+            <VehicleArt
+              make={vehicle.make}
+              model={vehicle.model}
+              colour={vehicle.colour}
+              className="h-28 w-28"
+            />
+          </div>
+        )}
 
         {/* Vehicle Information */}
         <div className="grid grid-cols-2 gap-3 text-sm">

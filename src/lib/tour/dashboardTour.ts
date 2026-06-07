@@ -30,7 +30,10 @@ const STEP_DEFS: StepDef[] = [
   { sel: '[data-tour="nav-/branch-overview"]', title: 'Branch Overview', description: 'Compare what is happening across all of your branches at a glance.' },
   { sel: '[data-tour="nav-/stock"]', title: 'Stock & Parts', description: 'Manage your parts inventory, stock levels, orders and create invoices.' },
   { sel: '[data-tour="nav-/bodyshop"]', title: 'Bodyshop', description: 'A kanban board for bodyshop jobs — track each repair through Prep, Paint and Finishing.' },
+  { sel: '[data-tour="nav-/profile"]', title: 'Profile', description: 'Your personal account — update your name, password, language and notification preferences.' },
+  { sel: '[data-tour="nav-/settings"]', title: 'Settings', description: 'Organisation settings — manage your team and their roles, branches, contracts and vehicle conditions.' },
   // ── Dashboard actions ───────────────────────────────────────────────────
+  { sel: '[data-tour="check-in"]', title: 'Check in a vehicle', description: 'The main action — click here to add a vehicle to the yard. Type its registration and the make, model and colour auto-fill from DVLA.' },
   { sel: '[data-tour="search"]', title: 'Search', description: 'Quickly find any vehicle in the yard by registration, make or model.' },
   { sel: '[data-tour="presence"]', title: "Who's online", description: 'See which of your team members are using the app right now, live.' },
   { sel: '[data-tour="refresh"]', title: 'Refresh', description: 'Force a refresh of the yard. It already updates live, so you rarely need this.' },

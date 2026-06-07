@@ -185,12 +185,23 @@ function UserManagement() {
     }
     try {
       setDeletingUser(userToDelete.uid)
-      await userProfileService.updateProfile(userToDelete.uid, {
-        isActive: false,
-        isDeleted: true,
-        deletedAt: new Date().toISOString(),
-        deletedBy: user!.uid,
+      // Fully delete via the privileged Edge Function: removes the Auth account
+      // (so the email is freed for re-use) AND the profile row. A plain profile
+      // soft-delete used to leave the Auth user behind → "email already exists".
+      const { error: delError } = await supabase.functions.invoke('admin-delete-user', {
+        body: { userId: userToDelete.uid },
       })
+      if (delError) {
+        let realMsg = delError.message
+        try {
+          const ctx = (delError as any).context
+          if (ctx && typeof ctx.json === 'function') {
+            const respBody = await ctx.json()
+            if (respBody?.error) realMsg = respBody.error
+          }
+        } catch { /* fall back to generic message */ }
+        throw new Error(realMsg)
+      }
       setSuccess(t('settings.users.userDeleted', { name: userToDelete.displayName }))
       setTimeout(() => setSuccess(''), 3000)
       setUserToDelete(null)

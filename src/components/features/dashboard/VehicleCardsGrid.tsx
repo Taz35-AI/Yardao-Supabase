@@ -9,6 +9,7 @@ import { formatAuditLogForDisplay, getAuditLogColorClass } from '@/lib/auditUtil
 import { ServiceBookingIndicator } from '@/components/common/ServiceBookingIndicator' // NEW: Import ServiceBookingIndicator
 import { Calendar, Gauge, MapPin, FileText, Eye, History } from 'lucide-react'
 import { useT } from '@/lib/i18n'
+import { VehicleArt, resolveVehicleArt } from './VehicleArt'
 
 // NEW: Service booking interface to match ServiceBookingIndicator
 interface ServiceBooking {
@@ -102,6 +103,18 @@ export const VehicleCardsGrid = React.memo(function VehicleCardsGrid({
             onClick={() => onViewVehicle(vehicle)}
           >
             <CardContent className="p-2 space-y-1.5">
+              {/* Make/Model illustration, tinted to the vehicle colour — desktop only */}
+              {resolveVehicleArt(vehicle.make, vehicle.model) && (
+                <div className="hidden lg:flex justify-center">
+                  <VehicleArt
+                    make={vehicle.make}
+                    model={vehicle.model}
+                    colour={vehicle.colour}
+                    className="h-12 w-12"
+                  />
+                </div>
+              )}
+
               {/* Registration with Service Booking Indicator - Most prominent */}
               <div className="text-center relative">
                 <div className="flex items-center justify-center space-x-1">

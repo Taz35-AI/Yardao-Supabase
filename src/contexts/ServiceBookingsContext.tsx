@@ -497,6 +497,20 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
   ) => {
     if (!user) throw new Error('Not authenticated')
     const actorName = user.displayName || user.email || 'Unknown User'
+
+    // ⚡ Optimistic update: reflect the change in local state IMMEDIATELY so a
+    // drag / resize / move on the workshop grid snaps to its new position
+    // without waiting for the DB write + 250ms-debounced realtime refetch
+    // round-trip (the old ~½s "is it working?" lag). The realtime refetch
+    // reconciles to DB truth a moment later; on failure we roll back.
+    let prevBookings: ServiceBooking[] = []
+    setBookings(prev => {
+      prevBookings = prev
+      return prev.map(b =>
+        b.id === bookingId ? { ...b, ...(updates as Partial<ServiceBooking>) } : b,
+      )
+    })
+
     const { error: updateError } = await supabase
       .from(SERVICE_BOOKINGS_TABLE)
       .update({
@@ -506,7 +520,10 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
         last_modified_by_name: actorName,
       })
       .eq('id', bookingId)
-    if (updateError) throw updateError
+    if (updateError) {
+      setBookings(prevBookings) // roll back the optimistic change
+      throw updateError
+    }
 
     // 👥 Re-upsert customer when an edit changed contact details. We don't bump
     // bookingCount here — but name/email corrections should flow back to the

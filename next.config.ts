@@ -96,10 +96,13 @@ const withPWA = require('@ducanh2912/next-pwa').default({
 })
 
 const nextConfig: NextConfig = {
-  // 🔥 CRITICAL: Static export configuration for Firebase Hosting
+  // 🔥 CRITICAL: Static export configuration for Firebase Hosting / Vercel.
   output: 'export',
   trailingSlash: true,
-  distDir: 'out',
+  // Dev uses the default `.next` (next dev on Next 15 mishandles a custom
+  // distDir — it corrupts the RSC client manifest). The export build still goes
+  // to `out` (NODE_ENV=production), so the deploy is unchanged.
+  distDir: process.env.NODE_ENV === 'development' ? '.next' : 'out',
   
   // General Next.js configuration
   reactStrictMode: true,

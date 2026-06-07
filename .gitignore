@@ -53,3 +53,6 @@ next-env.d.ts
 # Supabase CLI scratch
 supabase/.temp/
 
+
+# Local-only SVGO backup of original vehicle art (safety copy, not for git)
+_svg_backup/
