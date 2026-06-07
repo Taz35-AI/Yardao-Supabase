@@ -9,10 +9,11 @@
 //   job = 'todays_services'  ← checkTodaysServices  (Firebase: daily 08:00 UTC)
 //   job = 'note_reminders'   ← checkNoteReminders   (Firebase: every 5 minutes)
 //
-// FCM PUSH IS NOT SENT (deferred — FCM creds not wired yet). Where the Firebase
-// version pushed a notification, this writes an in-app user_notifications row
-// instead (Realtime bell/inbox). Each push site is marked:
-//     // TODO(phase5b): FCM push send
+// FCM PUSH: each notification is BOTH written as an in-app user_notifications
+// row (Realtime bell/inbox) AND delivered as a native FCM push to every
+// recipient's registered device (profiles.fcm_token). Push is best-effort: if
+// FCM_SERVICE_ACCOUNT isn't configured, sendFcm() is a no-op and only the in-app
+// row is written. Dead device tokens (UNREGISTERED) are cleared from the profile.
 //
 // Auth: pg_cron passes the service-role bearer in the Authorization header. We
 // only run the work when that bearer matches SUPABASE_SERVICE_ROLE_KEY, so the
@@ -20,6 +21,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { handlePreflight, json } from '../_shared/cors.ts'
+import { sendFcm } from '../_shared/fcm.ts'
 
 // ── date helpers (ported from functions/src/utils.ts, UTC) ───────────────────
 function getTodayString(): string {
@@ -44,12 +46,19 @@ const ACTIVE_STATUSES = new Set(['in_fleet', 'checked_in', 'external_service'])
 type Admin = ReturnType<typeof createClient>
 
 /**
- * Fan out an in-app notification to every active, notifications-enabled user in
- * an org. Replaces sendNotificationsToUsers() (which pushed via FCM). Writes one
- * user_notifications row per recipient.
- *
- * // TODO(phase5b): FCM push send — additionally deliver these via FCM once the
- * // service-account credentials are wired into the Edge Function secrets.
+ * Coerce a mixed-type data bag into the all-string map FCM v1 requires, and tag
+ * it with the notification `type` so the app's tap handler can route correctly.
+ */
+function toFcmData(type: string, data?: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = { type }
+  for (const [k, v] of Object.entries(data ?? {})) out[k] = String(v)
+  return out
+}
+
+/**
+ * Fan out a notification to every active, notifications-enabled user in an org:
+ * one in-app user_notifications row per recipient AND a native FCM push to each
+ * recipient that has a registered device token. Returns the in-app row count.
  */
 async function notifyOrgUsers(
   admin: Admin,
@@ -58,7 +67,7 @@ async function notifyOrgUsers(
 ): Promise<number> {
   const { data: users } = await admin
     .from('profiles')
-    .select('id, is_active, is_deleted, notifications_enabled')
+    .select('id, is_active, is_deleted, notifications_enabled, fcm_token')
     .eq('organization_id', organizationId)
 
   const recipients = (users ?? []).filter((u: any) =>
@@ -77,6 +86,20 @@ async function notifyOrgUsers(
   }))
   const { error } = await admin.from('user_notifications').insert(rows)
   if (error) console.error('notifyOrgUsers insert failed:', error.message)
+
+  // Best-effort native push to each registered device, in parallel.
+  const fcmData = toFcmData(payload.type, payload.data)
+  await Promise.all(
+    recipients
+      .filter((u: any) => u.fcm_token)
+      .map(async (u: any) => {
+        const r = await sendFcm(u.fcm_token, payload.title, payload.message, fcmData)
+        if (r.invalidToken) {
+          await admin.from('profiles').update({ fcm_token: null }).eq('id', u.id)
+        }
+      }),
+  )
+
   return rows.length
 }
 
@@ -217,7 +240,7 @@ async function runNoteReminders(admin: Admin): Promise<Record<string, unknown>> 
     // Respect the owner's notification preference.
     const { data: profile } = await admin
       .from('profiles')
-      .select('notifications_enabled')
+      .select('notifications_enabled, fcm_token')
       .eq('id', note.user_id)
       .maybeSingle()
     if (profile?.notifications_enabled === false) {
@@ -231,7 +254,6 @@ async function runNoteReminders(admin: Admin): Promise<Record<string, unknown>> 
     const title = `${priorityEmoji} Note Reminder`
     const message = note.scheduled_time ? `${noteText} — scheduled at ${note.scheduled_time}` : noteText
 
-    // // TODO(phase5b): FCM push send — original sent a personal FCM push here.
     const { error } = await admin.from('user_notifications').insert({
       organization_id: note.organization_id,
       user_id: note.user_id,
@@ -247,6 +269,17 @@ async function runNoteReminders(admin: Admin): Promise<Record<string, unknown>> 
     if (!error) {
       await admin.from('user_notes').update({ notification_sent: true }).eq('id', note.id)
       sent++
+
+      // Personal native push to the note's owner (best-effort).
+      if (profile?.fcm_token) {
+        const r = await sendFcm(profile.fcm_token, title, message, {
+          type: 'note_reminder',
+          noteId: String(note.id),
+        })
+        if (r.invalidToken) {
+          await admin.from('profiles').update({ fcm_token: null }).eq('id', note.user_id)
+        }
+      }
     }
   }
 

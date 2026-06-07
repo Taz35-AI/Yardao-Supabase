@@ -18,7 +18,7 @@ import { logger } from '@/lib/logger'
 // crashes the app on launch ("Default FirebaseApp is not initialized") — and a
 // native crash can't be caught by JS try/catch. Keep this false until FCM is set
 // up, then flip to true to re-enable the whole flow below unchanged.
-const PUSH_NOTIFICATIONS_ENABLED = false
+const PUSH_NOTIFICATIONS_ENABLED = true
 
 export function usePushNotifications() {
   logger.log('🔥 [HOOK] usePushNotifications hook called')
