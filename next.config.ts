@@ -126,6 +126,11 @@ const nextConfig: NextConfig = {
   experimental: {
     // REMOVED: optimizeCss - this was causing the 'critters' error
     esmExternals: true,
+    // Serialize static export to one worker. The parallel prerender workers
+    // race on Windows with output:'export' + next-pwa and intermittently throw
+    // "Cannot read properties of undefined (reading 'call')" on a random page.
+    cpus: 1,
+    workerThreads: false,
   },
   
   images: {
