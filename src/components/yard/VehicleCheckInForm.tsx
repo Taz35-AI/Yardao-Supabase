@@ -36,6 +36,7 @@ import { useT } from '@/lib/i18n'
 
 import { VehicleFormData, Contract, InsuranceStatus } from '@/types'
 import { contractService } from '@/lib/contractService'
+import { vehicleLookupService } from '@/lib/services/vehicleLookupService'
 import { settingsService, ContractDefaultStatuses } from '@/lib/services/settingsService'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
@@ -144,6 +145,11 @@ export function VehicleCheckInForm({
   const [contractsLoading, setContractsLoading]             = useState(true)
   const [contractDefaults, setContractDefaults]             = useState<ContractDefaultStatuses>({})
   const [activeTab, setActiveTab]                           = useState<'details' | 'damage'>('details')
+
+  // DVLA lookup (custom vehicle only) — same service the fleet add-vehicle form uses.
+  const [lookupLoading, setLookupLoading] = useState(false)
+  const [lookupError, setLookupError]     = useState<string | null>(null)
+  const [lookupDone, setLookupDone]       = useState(false)
 
   const lastVisibilityRestoreRef = useRef<number>(0)
 
@@ -315,6 +321,36 @@ export function VehicleCheckInForm({
   const handleInsuranceToggle = (status: InsuranceStatus) => {
     logger.log(`🛡️ Insurance status toggled to: ${status}`)
     handleChange('insuranceStatus', status)
+  }
+
+  // Look the registration up against DVLA and auto-fill make / model / colour /
+  // MOT / road-tax. Only offered for custom (non-fleet) check-ins, since fleet
+  // vehicles already carry these from the fleet record.
+  const handleLookup = async () => {
+    const reg = formData.registration.trim()
+    if (!reg) { setLookupError(t('yardCheckin.lookupEnterReg')); setLookupDone(false); return }
+    setLookupLoading(true)
+    setLookupError(null)
+    setLookupDone(false)
+    try {
+      const data = await vehicleLookupService.lookup(reg)
+      setFormData(prev => ({
+        ...prev,
+        registration: data.registration || prev.registration,
+        make:   data.make   || prev.make,
+        model:  data.model  || prev.model,
+        colour: data.colour || prev.colour,
+        // DVLA returns ISO dates (YYYY-MM-DD) — ready for the date inputs.
+        motExpiry: data.motExpiry || prev.motExpiry,
+        taxExpiry: data.taxExpiry || prev.taxExpiry,
+      }))
+      setLookupDone(true)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('yardCheckin.lookupFailed')
+      setLookupError(message.replace(/[⚠️❌]/g, '').trim())
+    } finally {
+      setLookupLoading(false)
+    }
   }
 
   const handleFleetVehicleSelect = (vehicle: FleetVehicle) => {
@@ -621,16 +657,41 @@ export function VehicleCheckInForm({
                         <>
                           <div>
                             <p className={labelCls}>{t('yardCheckin.registration')}</p>
-                            <Input
-                              value={formData.registration}
-                              onChange={e => handleChange('registration', e.target.value.toUpperCase())}
-                              placeholder={t('yardCheckin.regPlaceholder')}
-                              required
-                              className={`${inputCls} ${currentRegistrationConflict ? '!border-red-400 !focus:border-red-400' : ''}`}
-                            />
+                            <div className="flex gap-2">
+                              <Input
+                                value={formData.registration}
+                                onChange={e => { handleChange('registration', e.target.value.toUpperCase()); setLookupError(null); setLookupDone(false) }}
+                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (!lookupLoading) handleLookup() } }}
+                                placeholder={t('yardCheckin.regPlaceholder')}
+                                required
+                                className={`${inputCls} ${currentRegistrationConflict ? '!border-red-400 !focus:border-red-400' : ''}`}
+                              />
+                              <button
+                                type="button"
+                                onClick={handleLookup}
+                                disabled={lookupLoading || !formData.registration.trim()}
+                                title={t('yardCheckin.lookupTitle')}
+                                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 rounded-xl bg-[#025940] hover:bg-[#012619] text-white text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              >
+                                {lookupLoading
+                                  ? <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                  : <Search className="w-3.5 h-3.5" />}
+                                <span className="hidden sm:inline">{t('yardCheckin.lookupButton')}</span>
+                              </button>
+                            </div>
                             {currentRegistrationConflict && (
                               <p className="text-[10px] text-red-500 mt-1 flex items-center gap-1">
                                 <AlertTriangle className="w-3 h-3" />{currentRegistrationConflict}
+                              </p>
+                            )}
+                            {lookupError && (
+                              <p className="text-[10px] text-red-500 mt-1 flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3 flex-shrink-0" />{lookupError}
+                              </p>
+                            )}
+                            {lookupDone && !lookupError && (
+                              <p className="text-[10px] text-[#025940] dark:text-[#72A68E] mt-1 flex items-center gap-1">
+                                <CheckCircle className="w-3 h-3 flex-shrink-0" />{t('yardCheckin.lookupSuccess')}
                               </p>
                             )}
                           </div>

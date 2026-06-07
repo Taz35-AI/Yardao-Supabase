@@ -6,7 +6,8 @@ import { Toaster } from 'sonner'
 import './globals.css'
 import { SpeechEnabledGroqAssistant } from '@/components/common/SpeechEnabledGroqAssistant'
 import { ZaoGuard } from '@/components/common/ZaoGuard'
-import { PasswordResetGuard } from '@/components/common/PasswordResetGuard'
+// PasswordResetGuard is kept as a fallback (forced-reset flow), no longer auto-mounted.
+import { TempPasswordNotice } from '@/components/common/TempPasswordNotice'
 
 // ─── Fonts ────────────────────────────────────────────────────────────────────
 // Geist: clean, geometric, excellent at all weights on mobile and desktop
@@ -153,13 +154,13 @@ export default function RootLayout({
         <meta name="business:contact_data:country_name" content="United Kingdom" />
         
         {/* Favicon and Basic Icons */}
+        <link rel="icon" href="/favicon.ico" sizes="any" />
         <link rel="shortcut icon" href="/favicon.ico" />
-        <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png" />
-        <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png" />
-        
-        {/* Apple Touch Icons */}
-        <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
-        <link rel="apple-touch-icon" href="/icons/apple-icon-180.png" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+
+        {/* Apple Touch Icon */}
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
         
         {/* Apple Splash Screens - All sizes */}
         {/* iPhone SE, 5s */}
@@ -226,8 +227,11 @@ export default function RootLayout({
           {children}
           {/* ✅ Zao AI assistant — only shown when user is signed in */}
           <ZaoGuard />
-          {/* 🔒 Force a password change on first login (admin-created / migrated users) */}
-          <PasswordResetGuard />
+          {/* 👋 One-time, non-blocking welcome notice for admin-created / migrated
+              users on a temporary password. They can change it later from their
+              Profile page if they want. The forced-reset flow (PasswordResetGuard
+              + /reset-password-required) stays in the codebase as a fallback. */}
+          <TempPasswordNotice />
         </ConditionalProviders>
         
         {/* Sonner Toast Notifications - Dark Theme Optimized */}

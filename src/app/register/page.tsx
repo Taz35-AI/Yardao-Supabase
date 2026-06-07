@@ -288,7 +288,7 @@ export default function RegisterPage() {
             <Link href="/" className="inline-block">
               <div className="relative group">
                 <img
-                  src="/logo-yardao-trimmed.png"
+                  src="/logo-yardao.png"
                   alt="Yardao Logo"
                   className="h-14 sm:h-16 w-auto mx-auto object-contain transition-transform duration-200 group-hover:scale-105"
                 />

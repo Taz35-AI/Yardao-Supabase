@@ -39,7 +39,7 @@ import {
 import { InsuranceToggle } from '@/components/common/ui/InsuranceToggle'
 import { InsuranceWarningModal } from '@/components/common/Modals/InsuranceWarningModal'
 import { logger } from '@/lib/logger'
-import { useT } from '@/lib/i18n'
+import { useT, useLang, formatDateLocale } from '@/lib/i18n'
 import { DamageMapper } from '@/components/common/DamageMapper/DamageMapper'
 import type { DamagePin, VehicleDiagramType } from '@/components/common/DamageMapper/DamageMapper'
 import { userProfileService } from '@/lib/firestore'
@@ -151,6 +151,37 @@ const getVehicleText = (value: any, fallback: string = ''): string => {
   if (typeof value === 'number') return value.toString()
   if (typeof value === 'boolean') return value.toString()
   return fallback
+}
+
+// Coerce any stored timestamp shape → Date. The yard's last_edit_log was
+// migrated verbatim from Firestore, so dates arrive as {_seconds,_nanoseconds}
+// (Firestore Timestamp), but newer client writes use ISO strings.
+const toDateAny = (v: any): Date | null => {
+  if (!v) return null
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v
+  if (typeof v === 'object') {
+    if (typeof v._seconds === 'number') return new Date(v._seconds * 1000)
+    if (typeof v.seconds === 'number') return new Date(v.seconds * 1000)
+    if (typeof v.toDate === 'function') { try { return v.toDate() } catch { return null } }
+  }
+  const d = new Date(v)
+  return isNaN(d.getTime()) ? null : d
+}
+
+// Normalise the audit blob into { action, name, date }, tolerating both the
+// new shape ({action, editedByName, editedAt}) and the legacy one
+// ({action, byDisplayName, timestamp}). Returns null if there's nothing to show.
+interface ParsedLastEdit { action?: string; name?: string; date: Date | null }
+const parseLastEdit = (log: any): ParsedLastEdit | null => {
+  if (!log) return null
+  if (typeof log === 'string') return { action: log, date: null }
+  if (typeof log !== 'object') return null
+  const name = log.editedByName || log.byDisplayName || log.updatedByName || log.editedBy || undefined
+  const date = toDateAny(log.editedAt ?? log.timestamp ?? log.updatedAt ?? log.editedDate)
+  const action = typeof log.action === 'string' ? log.action
+    : typeof log.text === 'string' ? log.text : undefined
+  if (!name && !date && !action) return null
+  return { action, name: typeof name === 'string' ? name : undefined, date }
 }
 
 const getInsuranceStatus = (vehicle: CheckedInVehicle): InsuranceStatus | null => {
@@ -338,6 +369,7 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
   fleetVehicles
 }) => {
   const t = useT()
+  const { locale } = useLang()
   // ── Organisation ID for linked parts query ────────────────────────────────
   const { user } = useAuth()
   const [orgId, setOrgId] = useState<string | null>(null)
@@ -666,14 +698,29 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
                 </div>
               )}
 
-              {vehicle.lastEditLog && (
-                <div className="mt-3">
-                  <SectionTitle>{t('vehDetail.lastEdit')}</SectionTitle>
-                  <p className="text-[10px] text-[#8a9e94] dark:text-gray-500">
-                    {getVehicleText(vehicle.lastEditLog)}
-                  </p>
-                </div>
-              )}
+              {(() => {
+                const le = parseLastEdit(vehicle.lastEditLog)
+                if (!le) return null
+                const meta = [
+                  le.name && t('vehDetail.lastEditBy', { name: le.name }),
+                  le.date && formatDateLocale(le.date, locale, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+                ].filter(Boolean).join(' · ')
+                return (
+                  <div className="mt-3">
+                    <SectionTitle>{t('vehDetail.lastEdit')}</SectionTitle>
+                    {le.action && (
+                      <p className="text-[11px] text-[#4a5e54] dark:text-gray-300 leading-relaxed">
+                        {le.action}
+                      </p>
+                    )}
+                    {meta && (
+                      <p className="text-[10px] text-[#8a9e94] dark:text-gray-500 mt-0.5">
+                        {meta}
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
 
               {/* ── Linked one-off parts for this vehicle ── */}
               {orgId && vehicle.registration && (

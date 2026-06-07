@@ -80,6 +80,11 @@ export function BranchManagement() {
           if (!shouldProceed) {
             throw new Error(t('settings.branch.createCancelled'))
           }
+          // Geocoding failed but the user chose to proceed — still save the
+          // address TEXT (without coordinates) so it isn't lost. Mirrors the
+          // edit flow. Fixes "no address configured" after creating a branch
+          // when geocoding was unavailable.
+          locationData = { address: createFormData.address.trim() }
         }
       }
 

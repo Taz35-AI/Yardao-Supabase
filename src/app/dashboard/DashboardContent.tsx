@@ -310,22 +310,13 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
         <div className={`w-full max-w-[100vw] px-3 sm:px-4 lg:px-8 ${viewMode === 'pipeline' ? 'py-1.5' : 'py-3'}`}>
           <div className="flex items-center justify-between gap-3">
 
-            {/* Left: Page title — desktop only */}
+            {/* Left: Branch name as the page title — desktop only */}
             <div className="hidden sm:block flex-shrink-0">
-              <h1 className="text-xl sm:text-2xl font-extrabold text-[#012619] dark:text-white tracking-tight leading-none">
-                {t('dashboard.topbar.title')}
-              </h1>
-              <p className="text-sm font-medium mt-1 leading-none">
-                {dataLayer.currentBranch && (
-                  <span className="text-[#025940] dark:text-[#72A68E] font-semibold">
-                    {dataLayer.currentBranch.name}
-                  </span>
-                )}
-                {dataLayer.currentBranch && (
-                  <span className="text-[#c8d5ce] dark:text-gray-600 mx-1.5">·</span>
-                )}
-                <span className="text-[#4a5e54] dark:text-gray-400">{t('dashboard.topbar.subtitle')}</span>
-              </p>
+              {dataLayer.currentBranch && (
+                <h1 className="text-2xl sm:text-3xl font-extrabold text-[#012619] dark:text-white tracking-tight leading-none">
+                  {dataLayer.currentBranch.name}
+                </h1>
+              )}
             </div>
 
             {/* Center: Search bar */}

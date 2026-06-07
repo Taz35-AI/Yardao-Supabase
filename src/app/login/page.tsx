@@ -178,16 +178,11 @@ export default function LoginPage() {
         return
       }
 
-      // Force a password change on first login for admin-created / migrated
-      // users (the temp password is one-time). The global PasswordResetGuard
-      // also enforces this on every protected page, but redirect immediately
-      // here so they never momentarily land on the dashboard.
-      if (profile.requiresPasswordReset) {
-        router.push('/reset-password-required')
-        return
-      }
-
-      // Successful login - redirect to dashboard
+      // Admin-created / migrated users sign in with a temporary password. We no
+      // longer force a reset: they go straight to the dashboard, where the
+      // non-blocking TempPasswordNotice tells them they can change it later from
+      // their Profile page if they want. (The forced-reset flow at
+      // /reset-password-required is kept as a fallback, just not auto-enforced.)
       router.push('/dashboard')
     } catch (error: any) {
       setLoading(false)
@@ -266,9 +261,9 @@ export default function LoginPage() {
           <div className="flex justify-center mb-5">
             <div className="relative group">
               <img
-                src="/logo-yardao-trimmed.png"
+                src="/logo-yardao.png"
                 alt="Yardao Logo"
-                className="h-14 sm:h-16 w-auto object-contain transition-transform duration-200 group-hover:scale-105"
+                className="h-28 sm:h-48 w-auto max-w-full object-contain transition-transform duration-200 group-hover:scale-105"
               />
               <div className="absolute -inset-2 bg-gradient-to-r from-[#b3f243]/20 to-[#72A68E]/20 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10"></div>
             </div>

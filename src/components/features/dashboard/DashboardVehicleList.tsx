@@ -233,7 +233,7 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
       className="inline-flex items-center rounded-[4px] px-2 py-[3px] select-none"
       style={{
         background: 'linear-gradient(180deg,#ffffff 0%,#f4f4f4 52%,#e3e3e3 100%)',
-        border: '1px solid #262626',
+        border: '1px solid #012619',
         fontFamily: "'DM Mono', 'JetBrains Mono', 'SF Mono', monospace",
         boxShadow: '0 1.5px 2px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.95), inset 0 -2px 3px rgba(0,0,0,0.14)',
       }}
@@ -242,7 +242,7 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
         style={{
           fontSize: '12px',
           fontWeight: 800,
-          color: '#0c0c0c',             // embossed near-black
+          color: '#012619',             // embossed near-black
           letterSpacing: '0.10em',
           lineHeight: 1,
           textShadow: '0 1px 0 rgba(255,255,255,0.55)',
@@ -562,14 +562,14 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
                         className="inline-flex items-center rounded-[4px] px-2 py-[4px]"
                         style={{
                           background: 'linear-gradient(180deg,#ffffff 0%,#f4f4f4 52%,#e3e3e3 100%)',
-                          border: '1px solid #262626',
+                          border: '1px solid #012619',
                           fontFamily: "'DM Mono','JetBrains Mono',monospace",
                           boxShadow: '0 1.5px 2px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.95), inset 0 -2px 3px rgba(0,0,0,0.14)',
                           minWidth: '80px',
                           justifyContent: 'center',
                         }}
                       >
-                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#0c0c0c', letterSpacing: '0.09em', lineHeight: 1, textShadow: '0 1px 0 rgba(255,255,255,0.55)' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 800, color: '#012619', letterSpacing: '0.09em', lineHeight: 1, textShadow: '0 1px 0 rgba(255,255,255,0.55)' }}>
                           {safeString(vehicle.registration)}
                         </span>
                       </span>

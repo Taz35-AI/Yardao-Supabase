@@ -17,7 +17,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import {
-  CheckCircle, Clock, Wrench, XCircle, Truck, AlertTriangle, Plus,
+  CheckCircle, Clock, Wrench, XCircle, Truck, Plus,
   ArrowUpRight, ArrowDownLeft, Bell,
   Columns3, LayoutList, LayoutGrid, Map as MapIcon, Filter,
 } from 'lucide-react'
@@ -73,11 +73,14 @@ const getDaysInYard = (createdAt: any): number => {
   if (!d) return 0
   return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86400000))
 }
-const getMotDaysLeft = (motExpiry: any): number | null => {
-  const d = toDate(motExpiry)
+// Days until an expiry date (negative = already expired). Shared by the MOT and
+// road-tax badges so both behave identically.
+const getDaysLeft = (expiry: any): number | null => {
+  const d = toDate(expiry)
   if (!d) return null
   return Math.ceil((d.getTime() - Date.now()) / 86400000)
 }
+const getMotDaysLeft = getDaysLeft
 const relTime = (d: Date): string => {
   const mins = Math.round((Date.now() - d.getTime()) / 60000)
   if (mins < 1) return 'just now'
@@ -94,86 +97,90 @@ const RegPlate = ({ registration }: { registration: string }) => (
       // UK front-plate style: glossy white with a bevelled black edge + embossed
       // black characters (rear plates are yellow — too much yellow).
       background: 'linear-gradient(180deg,#ffffff 0%,#f4f4f4 52%,#e3e3e3 100%)',
-      border: '1px solid #262626',
+      border: '1px solid #012619',
       fontFamily: "'DM Mono', 'JetBrains Mono', 'SF Mono', monospace",
       boxShadow: '0 1.5px 2px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.95), inset 0 -2px 3px rgba(0,0,0,0.14)',
     }}
   >
-    <span style={{ fontSize: '12px', fontWeight: 800, color: '#0c0c0c', letterSpacing: '0.10em', lineHeight: 1, textShadow: '0 1px 0 rgba(255,255,255,0.55)' }}>
+    <span style={{ fontSize: '12px', fontWeight: 800, color: '#012619', letterSpacing: '0.10em', lineHeight: 1, textShadow: '0 1px 0 rgba(255,255,255,0.55)' }}>
       {registration}
     </span>
   </span>
 )
 
 // ── vehicle tile ─────────────────────────────────────────────────────────────
-// Compact vertical card so many fit per row. Shows plate, days, make/model,
-// size · colour, optional MOT alert, and a footer with contract + condition.
+// Deliberately calm + compact: no left status stripe (the tab already says the
+// status), no inner divider, no bordered pills. Just plate + days, make/model,
+// one muted attribute line (colour · size · condition), one contract line, and
+// a lightweight alert line only when MOT / road tax needs attention. Every data
+// point from the old card is still here, just quieter.
 const VehicleRow = ({
   vehicle, color, onView,
 }: { vehicle: CheckedInVehicle; color: string; onView: (v: CheckedInVehicle) => void }) => {
   const days = getDaysInYard(vehicle.createdAt || (vehicle as any).checkInTime)
-  const motDays = getMotDaysLeft(vehicle.motExpiry)
-  const daysColor = days >= 30 ? '#dc2626' : days >= 14 ? '#d97706' : '#6b7a70'
+  const motDays = getDaysLeft(vehicle.motExpiry)
+  const taxDays = getDaysLeft((vehicle as any).taxExpiry)
+  const daysColor = days >= 30 ? '#dc2626' : days >= 14 ? '#d97706' : '#9aa3ab'
   const contract = vehicle.contract
   const contractColor = vehicle.contractColor
+
+  // colour · size · condition condensed into a single muted line.
+  const attrs = [vehicle.colour, vehicle.size, vehicle.condition].filter(Boolean).join(' · ')
+
+  const alerts: { key: string; label: string; expired: boolean }[] = []
+  if (motDays !== null && motDays <= 30) alerts.push({ key: 'mot', expired: motDays < 0, label: motDays < 0 ? 'MOT expired' : `MOT ${motDays}d` })
+  if (taxDays !== null && taxDays <= 30) alerts.push({ key: 'tax', expired: taxDays < 0, label: taxDays < 0 ? 'Road Tax expired' : `Road Tax ${taxDays}d` })
 
   return (
     <button
       type="button"
       onClick={() => onView(vehicle)}
       className="group flex flex-col text-left bg-white dark:bg-gray-800 hover:bg-[#f7faf8] dark:hover:bg-gray-700/70
-                 border border-[#e2e8e5] dark:border-gray-700 rounded-xl p-3 transition-all duration-150
-                 hover:shadow-md hover:-translate-y-[1px] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#025940]"
-      style={{ borderLeft: `3px solid ${color}` }}
+                 border border-[#e2e8e5] dark:border-gray-700 rounded-lg p-2 transition-colors duration-150
+                 hover:border-[#cfdcd6] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#025940]"
     >
       {/* plate + days */}
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between gap-2 mb-1">
         <RegPlate registration={vehicle.registration} />
-        <span className="text-[11px] font-bold tabular-nums leading-none" style={{ color: daysColor }}>{days}d</span>
+        <span className="text-[10px] font-semibold tabular-nums leading-none flex-shrink-0" style={{ color: daysColor }}>{days}d</span>
       </div>
 
       {/* make / model */}
-      <div className="text-[13px] font-semibold text-[#012619] dark:text-white leading-tight truncate">
+      <div className="text-[12px] font-semibold text-[#012619] dark:text-white leading-tight truncate">
         {`${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'Unknown vehicle'}
       </div>
-      {/* size · colour */}
-      <div className="text-[11px] text-[#6b7a70] dark:text-gray-400 truncate mt-0.5 flex items-center gap-1.5">
+
+      {/* colour swatch + colour · size · condition */}
+      <div className="text-[10.5px] text-[#7a8a82] dark:text-gray-400 truncate mt-0.5 flex items-center gap-1">
         {vehicle.colour && (
-          <span className="inline-flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-full border border-black/10 inline-block" style={{ background: colourToHex(vehicle.colour) }} />
-            {vehicle.colour}
-          </span>
+          <span className="w-2 h-2 rounded-full border border-black/10 inline-block flex-shrink-0" style={{ background: colourToHex(vehicle.colour) }} />
         )}
-        {vehicle.size && <span>· {vehicle.size}</span>}
+        <span className="truncate">{attrs || '—'}</span>
       </div>
 
-      {/* MOT alert */}
-      {motDays !== null && motDays <= 30 && (
-        <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border mt-2 self-start ${
-          motDays < 0
-            ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300'
-            : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300'}`}>
-          <AlertTriangle className="w-2.5 h-2.5" />
-          {motDays < 0 ? 'MOT expired' : `MOT ${motDays}d`}
-        </span>
-      )}
-
-      {/* footer: contract + condition */}
-      <div className="flex items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-[#eef3f0] dark:border-gray-700/60">
+      {/* contract (colour kept as a small dot only) */}
+      <div className="text-[10.5px] truncate mt-0.5 flex items-center gap-1">
         {contract ? (
-          <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full border max-w-[62%] truncate"
-            style={{ backgroundColor: contractColor ? `${contractColor}15` : '#f0f4f2', borderColor: contractColor ? `${contractColor}40` : '#d8d6cd', color: contractColor || '#4a5e54' }}
-            title={contract}>
-            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: contractColor || '#8a9e94' }} />
-            <span className="truncate">{contract}</span>
-          </span>
+          <>
+            <span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{ background: contractColor || '#8a9e94' }} />
+            <span className="truncate text-[#5b6b63] dark:text-gray-400" title={contract}>{contract}</span>
+          </>
         ) : (
-          <span className="text-[10px] italic text-[#8a9e94] dark:text-gray-500">No contract</span>
-        )}
-        {vehicle.condition && (
-          <span className="text-[10px] font-semibold text-[#6b7a70] dark:text-gray-400 truncate flex-shrink-0">{vehicle.condition}</span>
+          <span className="italic text-[#9aa8a1] dark:text-gray-500">No contract</span>
         )}
       </div>
+
+      {/* MOT / Road Tax — quiet coloured text, no boxes. Shown only when due/expired. */}
+      {alerts.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 mt-1">
+          {alerts.map((a) => (
+            <span key={a.key} className="inline-flex items-center gap-1 text-[10px] font-semibold" style={{ color: a.expired ? '#dc2626' : '#c2780a' }}>
+              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: a.expired ? '#dc2626' : '#c2780a' }} />
+              {a.label}
+            </span>
+          ))}
+        </div>
+      )}
     </button>
   )
 }
@@ -254,10 +261,15 @@ export const YardTabsView = React.memo(function YardTabsView({
     const all = [...vehicles, ...outOnHireVehicles]
     const list: { id: string; v: CheckedInVehicle; color: string; text: string; ts: string; sort: number }[] = []
     for (const v of all) {
-      const motDays = getMotDaysLeft(v.motExpiry)
+      const motDays = getDaysLeft(v.motExpiry)
       if (motDays !== null && motDays <= 30) {
         list.push({ id: v.id + '-mot', v, color: motDays < 0 ? '#dc2626' : '#d99a06',
           text: `${v.registration} · MOT ${motDays < 0 ? 'expired' : `due in ${motDays}d`}`, ts: '', sort: motDays })
+      }
+      const taxDays = getDaysLeft((v as any).taxExpiry)
+      if (taxDays !== null && taxDays <= 30) {
+        list.push({ id: v.id + '-tax', v, color: taxDays < 0 ? '#dc2626' : '#d99a06',
+          text: `${v.registration} · Road Tax ${taxDays < 0 ? 'expired' : `due in ${taxDays}d`}`, ts: '', sort: taxDays })
       }
       if (v.insuranceStatus === 'Not Insured') {
         list.push({ id: v.id + '-ins', v, color: '#dc2626', text: `${v.registration} · not insured`, ts: '', sort: -1000 })
@@ -386,16 +398,37 @@ export const YardTabsView = React.memo(function YardTabsView({
 
         <div className="p-4">
           {items.length === 0 ? (
-            <div className="text-center py-14 px-4">
-              <activeCfg.icon className="w-8 h-8 text-[#c8d5ce] dark:text-gray-600 mx-auto mb-2" />
-              <p className="text-[13px] text-[#8a9e94] dark:text-gray-500">No vehicles in {activeCfg.label}</p>
-              <button onClick={openCheckIn}
-                      className="mt-3 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[#025940] hover:underline">
-                <Plus className="w-3.5 h-3.5" /> Check in a vehicle
+            <div className="flex flex-col items-center justify-center text-center py-16 px-6">
+              {/* icon badge */}
+              <div className="w-20 h-20 rounded-2xl flex items-center justify-center mb-5
+                              bg-gradient-to-br from-[#f1f7f3] to-[#e1efe8] dark:from-gray-700/50 dark:to-gray-800/50
+                              ring-1 ring-[#025940]/10 dark:ring-white/5 shadow-sm">
+                <activeCfg.icon className="w-9 h-9 text-[#025940] dark:text-[#72A68E]" strokeWidth={1.75} />
+              </div>
+
+              <h3 className="text-[17px] font-bold text-[#012619] dark:text-white tracking-tight">
+                No vehicles in {activeCfg.label}
+              </h3>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-[#6b7a70] dark:text-gray-400 max-w-[260px]">
+                Vehicles you check in will show up here. Add your first one to get started.
+              </p>
+
+              <button
+                onClick={openCheckIn}
+                className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl
+                           bg-[#025940] hover:bg-[#012619] text-white text-[13.5px] font-semibold
+                           shadow-lg shadow-[#025940]/25 hover:shadow-xl hover:-translate-y-0.5
+                           transition-all duration-150
+                           focus:outline-none focus-visible:ring-2 focus-visible:ring-[#025940] focus-visible:ring-offset-2"
+              >
+                <Plus className="w-4 h-4" strokeWidth={2.5} /> Check in a vehicle
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+            <div
+              className="grid gap-2.5"
+              style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))' }}
+            >
               {items.map(v => (
                 <VehicleRow key={v.id} vehicle={v} color={activeCfg.color} onView={onViewVehicle} />
               ))}

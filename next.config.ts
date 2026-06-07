@@ -53,6 +53,22 @@ const withPWA = require('@ducanh2912/next-pwa').default({
         },
       },
       {
+        // Brand assets (logo) — NetworkFirst so a logo change shows promptly on
+        // the live site instead of being stuck in the 30-day image cache below.
+        // The cached copy is only used as an offline fallback. This rule MUST
+        // come before the generic image rule (Workbox uses the first match).
+        urlPattern: /\/logo[\w-]*\.(?:png|jpg|jpeg|svg|webp|ico)$/i,
+        handler: 'NetworkFirst',
+        options: {
+          cacheName: 'brand-assets',
+          networkTimeoutSeconds: 4,
+          expiration: {
+            maxEntries: 20,
+            maxAgeSeconds: 60 * 60 * 24, // 1 day
+          },
+        },
+      },
+      {
         urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i,
         handler: 'CacheFirst',
         options: {

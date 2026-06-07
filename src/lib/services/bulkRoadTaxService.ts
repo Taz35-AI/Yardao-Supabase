@@ -7,11 +7,13 @@ import { supabase } from '@/lib/supabaseClient'
 import { toCamelList } from '@/lib/dbMap'
 import { FleetVehicle } from '@/types'
 import { logger } from '@/lib/logger'
+import { MotTaxSyncService } from '@/services/motTaxSyncService'
 
 export interface BulkRoadTaxResult {
   success: boolean
   totalProcessed: number
   fleetUpdated: number
+  yardUpdated: number
   errors: string[]
   processedVehicles: string[]
 }
@@ -54,6 +56,7 @@ export class BulkRoadTaxService {
       success: false,
       totalProcessed: 0,
       fleetUpdated: 0,
+      yardUpdated: 0,
       errors: [],
       processedVehicles: []
     }
@@ -125,6 +128,23 @@ export class BulkRoadTaxService {
       result.fleetUpdated = vehiclesToUpdate.length
 
       logger.log(`✅ Successfully updated ${result.fleetUpdated} vehicles with road tax expiry: ${taxExpiry}`)
+
+      // Cascade the new tax expiry down to any yard (checked-in) copies of these
+      // vehicles, so staff never have to re-run the check from the Yard page.
+      // Non-fatal: a sync hiccup must not fail the fleet update that succeeded.
+      try {
+        const sync = await MotTaxSyncService.bulkSyncToYard(
+          organizationId,
+          result.processedVehicles,
+          { taxExpiry },
+          userId,
+          userDisplayName,
+        )
+        result.yardUpdated = sync.updatedYardRecords
+        logger.log(`✅ Road tax cascaded to ${result.yardUpdated} yard record(s)`)
+      } catch (syncError) {
+        logger.error('Road tax → yard cascade failed (fleet update still succeeded):', syncError)
+      }
 
       result.success = true
       return result

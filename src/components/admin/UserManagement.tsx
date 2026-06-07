@@ -47,7 +47,7 @@ function UserManagement() {
     email: string
     displayName: string
     temporaryPassword: string
-    role: 'member' | 'mechanic'
+    role: 'member' | 'mechanic' | 'admin'
   }>({ email: '', displayName: '', temporaryPassword: '', role: 'member' })
 
   useEffect(() => {
@@ -280,8 +280,9 @@ function UserManagement() {
         organizationId: userProfile.organizationId,
         organizationName: userProfile.organizationName || '',
         role: newUser.role,
-        // Force the new user to set their own password on first login (the temp
-        // password is one-time). Enforced globally by PasswordResetGuard.
+        // Flags the new user for the one-time TempPasswordNotice on first login
+        // (a non-blocking welcome telling them they can change their temporary
+        // password later from their Profile page). Not a forced reset.
         requiresPasswordReset: true,
         isActive: true,
         isDeleted: false,
@@ -421,11 +422,12 @@ function UserManagement() {
             <label className={labelCls}>{t('settings.users.roleLabel')}</label>
             <select
               value={newUser.role}
-              onChange={(e) => setNewUser(prev => ({ ...prev, role: e.target.value as 'member' | 'mechanic' }))}
+              onChange={(e) => setNewUser(prev => ({ ...prev, role: e.target.value as 'member' | 'mechanic' | 'admin' }))}
               className={`${inputCls} cursor-pointer pr-8`}
             >
               <option value="member">{t('settings.users.roleMemberOpt')}</option>
               <option value="mechanic">{t('settings.users.roleMechanicOpt')}</option>
+              <option value="admin">{t('settings.users.roleAdminOpt')}</option>
             </select>
           </div>
 

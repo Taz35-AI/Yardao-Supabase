@@ -18,6 +18,7 @@ import { logger } from '@/lib/logger'
 // Import the SyncNotification type from the component file
 import type { ContractSyncNotification } from '@/components/common/notifications/contractSyncNotification'
 import { RegistrationUpdateService } from '@/services/RegistrationUpdateService'
+import { MotTaxSyncService } from '@/services/motTaxSyncService'
 
 interface SyncNotification {
   type: 'success' | 'warning' | 'error' | 'info'
@@ -410,6 +411,10 @@ export function useFleetActions(fleetData: FleetDataHook | any) {
       const contractChanged = 'contract' in updates && updates.contract !== currentVehicle.contract
       const insuranceChanged = 'insuranceStatus' in updates && updates.insuranceStatus !== currentVehicle.insuranceStatus
       const conditionChanged = 'condition' in updates && updates.condition !== currentVehicle.condition
+      // MOT / road-tax expiry changes must cascade to the yard too ("fleet page
+      // is the bible") so staff don't re-enter them on the Yard page.
+      const motChanged = 'motExpiry' in updates && updates.motExpiry !== currentVehicle.motExpiry
+      const taxChanged = 'taxExpiry' in updates && updates.taxExpiry !== currentVehicle.taxExpiry
       
 
       
@@ -558,6 +563,40 @@ export function useFleetActions(fleetData: FleetDataHook | any) {
         }
       }
       
+      // ── Sync MOT / road-tax expiry to yard if changed ────────────────
+      if (motChanged || taxChanged) {
+        try {
+          const motTaxData: { motExpiry?: string | null; taxExpiry?: string | null } = {}
+          if (motChanged) motTaxData.motExpiry = processedUpdates.motExpiry ?? null
+          if (taxChanged) motTaxData.taxExpiry = processedUpdates.taxExpiry ?? null
+
+          const motTaxResult = await MotTaxSyncService.syncFromFleetToYard(
+            vehicleId,
+            currentVehicle.registration,
+            motTaxData,
+            userProfile.organizationId,
+            user.uid,
+            userDisplayName,
+          )
+
+          if (motTaxResult.success && motTaxResult.updatedYardRecords > 0) {
+            const label = motChanged && taxChanged ? 'MOT & road tax' : motChanged ? 'MOT' : 'Road tax'
+            setSyncNotification({
+              type: 'success',
+              message: `📅 ${label} synced to ${motTaxResult.updatedYardRecords} yard record${motTaxResult.updatedYardRecords > 1 ? 's' : ''}!`,
+              details: {
+                fleetUpdated: false,
+                yardUpdated: motTaxResult.updatedYardRecords,
+                syncType: 'update'
+              }
+            })
+          }
+        } catch (syncError) {
+          logger.error('MOT/tax sync to yard failed:', syncError)
+          // Don't throw — fleet update already succeeded
+        }
+      }
+
 // ── Sync vehicleDiagramType to yard (always, if set) ─────────────
 const diagramType = processedUpdates.vehicleDiagramType || currentVehicle.vehicleDiagramType
 if (diagramType) {

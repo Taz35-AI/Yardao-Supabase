@@ -48,7 +48,7 @@ import { userProfileService } from '@/lib/firestore'
 import { useT } from '@/lib/i18n'
 
 // Icons
-import { Plus, X, Download, Share2, Upload, FileSpreadsheet, Loader2, RefreshCw } from 'lucide-react'
+import { Plus, X, Download, Share2, Upload, FileSpreadsheet, Loader2, RefreshCw, Car } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 // ─── FleetHeaderExcelItems ────────────────────────────────────────────────────
@@ -624,8 +624,11 @@ export default function FleetInventoryPage() {
       })
 
       if (result.success) {
+        const baseMsg = t('fleet.page.roadTaxSuccess', { count: result.fleetUpdated })
         setLocalSuccess(
-          t('fleet.page.roadTaxSuccess', { count: result.fleetUpdated })
+          result.yardUpdated > 0
+            ? `${baseMsg} (also synced to ${result.yardUpdated} yard vehicle${result.yardUpdated > 1 ? 's' : ''})`
+            : baseMsg
         )
         clearSelection()
         // Mirror the write locally instead of re-downloading the whole fleet.
@@ -996,15 +999,20 @@ export default function FleetInventoryPage() {
               </div>
             )}
 
-            <FleetTable
-              vehicles={currentPageData}
-              sortConfig={sortConfig}
-              onSort={handleSort}
-              onViewVehicle={setViewingVehicle}
-              selectedVehicleIds={selectedVehicleIds}
-              onToggleSelection={handleToggleSelection}
-              onToggleSelectAll={handleToggleSelectAll}
-            />
+            {/* Table only renders when there are rows — the page-level empty
+                states below handle the empty-fleet / no-match cases, so the
+                table never shows its own duplicate "No vehicles found". */}
+            {filteredAndSortedVehicles.length > 0 && (
+              <FleetTable
+                vehicles={currentPageData}
+                sortConfig={sortConfig}
+                onSort={handleSort}
+                onViewVehicle={setViewingVehicle}
+                selectedVehicleIds={selectedVehicleIds}
+                onToggleSelection={handleToggleSelection}
+                onToggleSelectAll={handleToggleSelectAll}
+              />
+            )}
 
             {totalItems > 0 && (
               <div className="mt-4">
@@ -1027,21 +1035,29 @@ export default function FleetInventoryPage() {
             )}
 
             {!loading && fleetVehicles.length === 0 && (
-              <div className="text-center py-12">
-                <div className="text-gray-400 mb-4">
-                  <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                  </svg>
+              <div className="flex flex-col items-center justify-center text-center py-20 px-6">
+                <div className="w-20 h-20 rounded-2xl flex items-center justify-center mb-5
+                                bg-gradient-to-br from-[#f1f7f3] to-[#e1efe8] dark:from-gray-700/50 dark:to-gray-800/50
+                                ring-1 ring-[#025940]/10 dark:ring-white/5 shadow-sm">
+                  <Car className="w-9 h-9 text-[#025940] dark:text-[#72A68E]" strokeWidth={1.75} />
                 </div>
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">{t('fleet.page.emptyNoVehiclesTitle')}</h3>
-                <p className="text-gray-500 dark:text-gray-400 mb-6">{t('fleet.page.emptyNoVehiclesMsg')}</p>
-                <Button
+                <h3 className="text-[18px] font-bold text-[#012619] dark:text-white tracking-tight">
+                  {t('fleet.page.emptyNoVehiclesTitle')}
+                </h3>
+                <p className="mt-1.5 text-[13.5px] leading-relaxed text-[#6b7a70] dark:text-gray-400 max-w-[300px]">
+                  {t('fleet.page.emptyNoVehiclesMsg')}
+                </p>
+                <button
                   onClick={() => setShowAddForm(true)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl
+                             bg-[#025940] hover:bg-[#012619] text-white text-[13.5px] font-semibold
+                             shadow-lg shadow-[#025940]/25 hover:shadow-xl hover:-translate-y-0.5
+                             transition-all duration-150
+                             focus:outline-none focus-visible:ring-2 focus-visible:ring-[#025940] focus-visible:ring-offset-2"
                 >
-                  <Plus className="w-4 h-4 mr-2" />
+                  <Plus className="w-4 h-4" strokeWidth={2.5} />
                   {t('fleet.page.addFirstVehicle')}
-                </Button>
+                </button>
               </div>
             )}
 

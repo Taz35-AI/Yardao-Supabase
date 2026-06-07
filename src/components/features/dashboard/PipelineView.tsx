@@ -96,12 +96,14 @@ const getDaysInYard = (createdAt: any): number => {
   } catch { return 0 }
 }
 
-const getMotDaysLeft = (motExpiry: any): number | null => {
-  if (!motExpiry) return null
+// Days until an expiry date (negative = already expired). Used for both MOT and
+// road-tax badges so they behave identically.
+const getDaysLeft = (expiry: any): number | null => {
+  if (!expiry) return null
   try {
-    const d = typeof motExpiry === 'object' && motExpiry?.toDate
-      ? motExpiry.toDate()
-      : new Date(motExpiry)
+    const d = typeof expiry === 'object' && expiry?.toDate
+      ? expiry.toDate()
+      : new Date(expiry)
     if (isNaN(d.getTime())) return null
     return Math.ceil((d.getTime() - Date.now()) / 86400000)
   } catch { return null }
@@ -112,12 +114,12 @@ const RegPlate = ({ registration }: { registration: string }) => (
     className="inline-flex items-center rounded-[4px] px-2 py-[3px] select-none"
     style={{
       background: 'linear-gradient(180deg,#ffffff 0%,#f4f4f4 52%,#e3e3e3 100%)',
-      border: '1px solid #262626',
+      border: '1px solid #012619',
       fontFamily: "'DM Mono', 'JetBrains Mono', 'SF Mono', monospace",
       boxShadow: '0 1.5px 2px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.95), inset 0 -2px 3px rgba(0,0,0,0.14)',
     }}
   >
-    <span style={{ fontSize: '12px', fontWeight: 800, color: '#0c0c0c', letterSpacing: '0.10em', lineHeight: 1, textShadow: '0 1px 0 rgba(255,255,255,0.55)' }}>
+    <span style={{ fontSize: '12px', fontWeight: 800, color: '#012619', letterSpacing: '0.10em', lineHeight: 1, textShadow: '0 1px 0 rgba(255,255,255,0.55)' }}>
       {registration}
     </span>
   </span>
@@ -134,7 +136,8 @@ const VehicleCard = ({
 }) => {
   const t = useT()
   const days = getDaysInYard(vehicle.createdAt || (vehicle as any).checkInTime)
-  const motDays = getMotDaysLeft(vehicle.motExpiry)
+  const motDays = getDaysLeft(vehicle.motExpiry)
+  const taxDays = getDaysLeft((vehicle as any).taxExpiry)
   const daysColor = days >= 30 ? '#dc2626' : days >= 14 ? '#d97706' : '#6b7a70'
   const daysWeight = days >= 14 ? 700 : 500
 
@@ -172,19 +175,33 @@ const VehicleCard = ({
         </div>
       </div>
 
-      {/* Alerts */}
-      {motDays !== null && motDays <= 30 && (
-        <div className="mb-1.5">
-          <span
-            className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${
-              motDays < 0
-                ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800/40'
-                : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800/40'
-            }`}
-          >
-            <AlertTriangle className="w-2.5 h-2.5" />
-            {motDays < 0 ? t('dashboard.pipeline.motExpired') : t('dashboard.pipeline.motDaysLeft', { motDays })}
-          </span>
+      {/* Alerts — MOT and Road Tax shown independently so each names itself */}
+      {((motDays !== null && motDays <= 30) || (taxDays !== null && taxDays <= 30)) && (
+        <div className="mb-1.5 flex flex-wrap items-center gap-1">
+          {motDays !== null && motDays <= 30 && (
+            <span
+              className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${
+                motDays < 0
+                  ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800/40'
+                  : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800/40'
+              }`}
+            >
+              <AlertTriangle className="w-2.5 h-2.5" />
+              {motDays < 0 ? t('dashboard.pipeline.motExpired') : t('dashboard.pipeline.motDaysLeft', { motDays })}
+            </span>
+          )}
+          {taxDays !== null && taxDays <= 30 && (
+            <span
+              className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${
+                taxDays < 0
+                  ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800/40'
+                  : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800/40'
+              }`}
+            >
+              <AlertTriangle className="w-2.5 h-2.5" />
+              {taxDays < 0 ? t('dashboard.pipeline.taxExpired') : t('dashboard.pipeline.taxDaysLeft', { taxDays })}
+            </span>
+          )}
         </div>
       )}
 
