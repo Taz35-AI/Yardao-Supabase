@@ -33,6 +33,8 @@ import { PipelineView } from '@/components/features/dashboard/PipelineView'
 // Tabbed yard view (statuses-as-tabs + right rail) — used on DESKTOP in the
 // pipeline view. Mobile keeps the lane view above.
 import { YardTabsView } from '@/components/features/dashboard/YardTabsView'
+// Search-first desktop dashboard (replaces YardTabsView on desktop pipeline).
+import { DesktopPipelineDashboard } from '@/components/features/dashboard/DesktopPipelineDashboard'
 
 interface ServiceBooking {
   id: string
@@ -81,6 +83,9 @@ interface DashboardVehicleListProps {
   // Desktop tabbed view renders the Filters control on its tab row.
   onToggleFilters?: () => void
   filtersOpen?: boolean
+  // Quick actions for the desktop search-first dashboard.
+  onCheckIn?: () => void
+  onExport?: () => void
 }
 
 export const DashboardVehicleList = React.memo(function DashboardVehicleList({
@@ -108,6 +113,8 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
   outOnHireVehicles,
   onToggleFilters,
   filtersOpen,
+  onCheckIn,
+  onExport,
 }: DashboardVehicleListProps) {
   const [localViewMode, setLocalViewMode] = useState<ViewMode>('table')
   const [hoveredVehicle, setHoveredVehicle] = useState<string | null>(null)
@@ -469,17 +476,18 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
   if (currentViewMode === 'pipeline') {
     return (
       <div className={`${className} w-full`}>
-        {/* Desktop (lg+): tabbed yard view + right rail. */}
+        {/* Desktop (lg+): search-first dashboard (cockpit + queues + right rail).
+            Gets the FULL in-yard list (not the search-filtered one) so its own
+            smart search and status counts span everything. */}
         <div className="hidden lg:block">
-          <YardTabsView
-            vehicles={allFilteredVehicles || displayVehicles}
+          <DesktopPipelineDashboard
+            vehicles={vehicles}
             outOnHireVehicles={outOnHireVehicles}
             onViewVehicle={onViewVehicle}
-            searchTerm={filters?.search || ''}
-            viewMode={currentViewMode as any}
+            onFilterChange={onFilterChange}
             onViewModeChange={onViewModeChange as any}
-            onToggleFilters={onToggleFilters}
-            filtersOpen={filtersOpen}
+            onCheckIn={onCheckIn}
+            onExport={onExport}
             className="w-full"
           />
         </div>
