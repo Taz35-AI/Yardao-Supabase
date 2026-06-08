@@ -73,8 +73,8 @@ export function ConditionalProviders({ children }: ConditionalProvidersProps) {
                   <PushNotificationProvider>
                     <KeyboardOptimizationProvider>
                       <AutoLogoutProvider
-                        timeoutMinutes={10}
-                        warningMinutes={0.50}
+                        timeoutMinutes={120}
+                        warningMinutes={2}
                         enabled={true}
                       >
                         <PWAInstallPrompt />
