@@ -11,6 +11,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAppState } from '@/hooks/common/useAppState'
 import { supabase } from '@/lib/supabaseClient'
+import { wireResyncTriggers, onReconnectRefetch } from '@/lib/realtime/resync'
 import { userProfileService } from '@/lib/firestore'
 import type { BranchVehicle } from '@/types/branch-overview'
 import { logger } from '@/lib/logger'
@@ -183,9 +184,13 @@ export function useBranchOverviewData() {
             fetchVehicles()
           }
         )
-        .subscribe()
+        // Leg-2 resync: refetch when realtime reconnects after a drop.
+        .subscribe(onReconnectRefetch(fetchVehicles))
 
+      // Leg-2 resync: refetch on tab focus / network back online too.
+      const stopResync = wireResyncTriggers(fetchVehicles)
       unsubscribeRef.current = () => {
+        stopResync()
         supabase.removeChannel(channel)
       }
     }

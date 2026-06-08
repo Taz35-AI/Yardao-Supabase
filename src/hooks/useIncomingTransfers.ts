@@ -16,6 +16,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAppState } from '@/hooks/common/useAppState'
 import { supabase } from '@/lib/supabaseClient'
+import { wireResyncTriggers, onReconnectRefetch } from '@/lib/realtime/resync'
 import { userProfileService } from '@/lib/firestore'
 import type { CheckedInVehicle } from '@/types'
 import { logger } from '@/lib/logger'
@@ -200,9 +201,13 @@ export function useIncomingTransfers({ branchId }: UseIncomingTransfersProps) {
             fetchIncoming()
           }
         )
-        .subscribe()
+        // Leg-2 resync: refetch when realtime reconnects after a drop.
+        .subscribe(onReconnectRefetch(fetchIncoming))
 
+      // Leg-2 resync: refetch on tab focus / network back online too.
+      const stopResync = wireResyncTriggers(fetchIncoming)
       unsubscribeRef.current = () => {
+        stopResync()
         supabase.removeChannel(channel)
       }
     }

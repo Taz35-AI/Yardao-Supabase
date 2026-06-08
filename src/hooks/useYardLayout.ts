@@ -15,6 +15,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { wireResyncTriggers, onReconnectRefetch } from '@/lib/realtime/resync'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { yardLayoutService } from '@/lib/services/yardLayoutService'
@@ -207,9 +208,13 @@ export function useYardLayout(branchId: string | null): UseYardLayoutResult {
           refresh()
         },
       )
-      .subscribe()
+      // Leg-2 resync: refetch when realtime reconnects after a drop.
+      .subscribe(onReconnectRefetch(refresh))
 
+    // Leg-2 resync: refetch on tab focus / network back online too.
+    const stopResync = wireResyncTriggers(refresh)
     return () => {
+      stopResync()
       supabase.removeChannel(channel)
     }
   }, [resolvedBranchId, organizationId])

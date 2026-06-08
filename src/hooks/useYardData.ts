@@ -19,6 +19,7 @@ import { buildContractColorIndex, resolveVehicleContractColor, type ContractColo
 import { branchService } from '@/lib/services/branchService'
 import { VehicleHireService } from '@/lib/services/vehicleHireService'
 import { activityLogService } from '@/lib/services/activityLogService'
+import { wireResyncTriggers, onReconnectRefetch } from '@/lib/realtime/resync'
 import { 
   Analytics, 
   AuditLog, 
@@ -383,10 +384,18 @@ export function useYardDataInternal(props?: UseYardDataProps) {
             scheduleRefresh()
           },
         )
-        .subscribe()
+        // Leg-2 resync: refetch when realtime reconnects after a drop. Deletes
+        // (defleet/checkout) arrive through the filtered subscription above
+        // because checked_in_vehicles is REPLICA IDENTITY FULL (migration 0035).
+        .subscribe(onReconnectRefetch(scheduleRefresh))
+
+      // Leg-2 resync: also refetch on tab focus / network back online, catching
+      // anything the live stream missed while backgrounded or offline.
+      const stopResync = wireResyncTriggers(scheduleRefresh)
 
       unsubscribeRef.current = () => {
         if (refreshTimer) clearTimeout(refreshTimer)
+        stopResync()
         supabase.removeChannel(channel)
       }
     }

@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { wireResyncTriggers, onReconnectRefetch } from '@/lib/realtime/resync'
 import { toCamelList } from '@/lib/dbMap'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
@@ -127,9 +128,13 @@ export function useCustomers(): UseCustomersReturn {
           refresh()
         },
       )
-      .subscribe()
+      // Leg-2 resync: refetch when realtime reconnects after a drop.
+      .subscribe(onReconnectRefetch(refresh))
 
+    // Leg-2 resync: refetch on tab focus / network back online too.
+    const stopResync = wireResyncTriggers(refresh)
     return () => {
+      stopResync()
       supabase.removeChannel(channel)
     }
   }, [organizationId])

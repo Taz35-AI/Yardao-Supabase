@@ -36,6 +36,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useAppState } from '@/hooks/common/useAppState'
 import { Vehicle, vehicleService, userProfileService } from '@/lib/firestore'
 import { supabase } from '@/lib/supabaseClient'
+import { wireResyncTriggers, onReconnectRefetch } from '@/lib/realtime/resync'
 import { ConditionCategory, conditionService } from '@/lib/conditionService'
 import { contractService } from '@/lib/contractService'
 import { buildContractColorIndex, resolveVehicleContractColor } from '@/lib/contractUtils'
@@ -402,22 +403,27 @@ export function FleetDataProvider({ children }: { children: ReactNode }) {
     // (the refetch reads current DB state); avoids re-downloading the whole
     // vehicles collection once per change during bulk ops / rapid edits.
     let refreshTimer: ReturnType<typeof setTimeout> | null = null
+    const scheduleRefresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer)
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null
+        loadDataRef.current(true, true) // silent: no loading flash on live updates
+      }, 250)
+    }
     const channel = supabase
       .channel(`vehicles:${organizationId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'vehicles', filter: `organization_id=eq.${organizationId}` },
-        () => {
-          if (refreshTimer) clearTimeout(refreshTimer)
-          refreshTimer = setTimeout(() => {
-            refreshTimer = null
-            loadDataRef.current(true, true) // silent: no loading flash on live updates
-          }, 250)
-        },
+        () => { scheduleRefresh() },
       )
-      .subscribe()
+      // Leg-2 resync: refetch when realtime reconnects after a drop.
+      .subscribe(onReconnectRefetch(scheduleRefresh))
+    // Leg-2 resync: refetch on tab focus / network back online too.
+    const stopResync = wireResyncTriggers(scheduleRefresh)
     return () => {
       if (refreshTimer) clearTimeout(refreshTimer)
+      stopResync()
       supabase.removeChannel(channel)
     }
   }, [user?.uid, organizationId])

@@ -17,6 +17,7 @@ import { useState, useEffect } from 'react'
 import { logger } from '@/lib/logger'
 import { supabase } from '@/lib/supabaseClient'
 import { toCamelList } from '@/lib/dbMap'
+import { wireResyncTriggers, onReconnectRefetch } from '@/lib/realtime/resync'
 
 const carImages = [
   '/cars/car (1).png', '/cars/car (2).png', '/cars/car (3).png',
@@ -1237,8 +1238,12 @@ function AuthenticatedHome({ user }: { user: any }) {
             { event: '*', schema: 'public', table: 'checked_in_vehicles', filter: `organization_id=eq.${orgId}` },
             () => { refreshYard() },
           )
-          .subscribe()
-        unsubYard = () => { supabase.removeChannel(yardChannel) }
+          // Leg-2 resync: deletes (defleet/checkout) arrive via the filtered
+          // subscription above because checked_in_vehicles is REPLICA IDENTITY
+          // FULL (migration 0035); refetch on reconnect too.
+          .subscribe(onReconnectRefetch(refreshYard))
+        const stopYardResync = wireResyncTriggers(refreshYard)
+        unsubYard = () => { stopYardResync(); supabase.removeChannel(yardChannel) }
 
         const fleetChannel = supabase
           .channel(`vehicles:${orgId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
@@ -1247,8 +1252,9 @@ function AuthenticatedHome({ user }: { user: any }) {
             { event: '*', schema: 'public', table: 'vehicles', filter: `organization_id=eq.${orgId}` },
             () => { refreshFleet() },
           )
-          .subscribe()
-        unsubFleet = () => { supabase.removeChannel(fleetChannel) }
+          .subscribe(onReconnectRefetch(refreshFleet))
+        const stopFleetResync = wireResyncTriggers(refreshFleet)
+        unsubFleet = () => { stopFleetResync(); supabase.removeChannel(fleetChannel) }
       } catch (e) {
         logger.error('Snapshot load error:', e)
         setSnapshotLoading(false)
