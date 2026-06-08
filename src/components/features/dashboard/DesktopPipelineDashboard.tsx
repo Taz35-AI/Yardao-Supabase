@@ -106,6 +106,16 @@ const STATUS_META: Record<StatusBucket, { label: string; color: string; bg: stri
   'on_hire':        { label: 'On hire',     color: '#0a6b4d', bg: '#e3f3ec' },
 }
 
+// Crystal-clear location + status so a reg lookup is never ambiguous:
+//   On hire · At garage · In transit · In yard · {Ready/Pending/Repairs/…}
+function locationState(v: CheckedInVehicle): { label: string; color: string; bg: string } {
+  if (v.hireStatus === 'Out on Hire') return { label: 'On hire', color: '#0a6b4d', bg: '#e3f3ec' }
+  if (v.transferStatus === 'at_external_garage') return { label: 'At garage', color: '#a25a00', bg: '#fff4e4' }
+  if (v.transferStatus === 'in_transit') return { label: 'In transit', color: '#2563eb', bg: '#eaf1fe' }
+  const meta = STATUS_META[vehicleBucket(v)]
+  return { label: `In yard · ${meta.label}`, color: meta.color, bg: meta.bg }
+}
+
 // One compact vehicle row used in queues and search results.
 // `showStatus` adds the status pill — essential in search results (which span
 // every status), redundant inside a single-status queue column.
@@ -120,7 +130,7 @@ function VRow({ v, onClick, showStatus }: { v: CheckedInVehicle; onClick: () => 
     notInsured ? { t: 'Not insured', c: '#a25a00', bg: '#fff4e4' } :
     mot !== null && mot <= 30 ? { t: `MOT ${mot}d`, c: '#a25a00', bg: '#fff4e4' } :
     days >= LONG_STAY_DAYS ? { t: `${days}d`, c: '#47566a', bg: '#eef1f4' } : null
-  const meta = STATUS_META[vehicleBucket(v)]
+  const st = locationState(v)
   return (
     <button type="button" onClick={onClick}
       className="w-full grid grid-cols-[auto_1fr_auto] gap-2 items-center py-2 border-b border-[#eef2ee] last:border-b-0 text-left hover:bg-[#f6faf6] rounded-lg px-1 transition-colors">
@@ -133,8 +143,8 @@ function VRow({ v, onClick, showStatus }: { v: CheckedInVehicle; onClick: () => 
       </div>
       <div className="flex flex-col items-end gap-1">
         {showStatus && (
-          <span className="text-[10px] font-extrabold rounded-full px-2 py-0.5 inline-flex items-center gap-1 whitespace-nowrap" style={{ color: meta.color, background: meta.bg }}>
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: meta.color }} />{meta.label}
+          <span className="text-[10px] font-extrabold rounded-full px-2 py-0.5 inline-flex items-center gap-1 whitespace-nowrap" style={{ color: st.color, background: st.bg }}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: st.color }} />{st.label}
           </span>
         )}
         {flag && (
