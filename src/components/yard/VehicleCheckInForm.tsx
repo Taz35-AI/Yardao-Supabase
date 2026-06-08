@@ -171,7 +171,7 @@ export function VehicleCheckInForm({
     notes: '',
     contract: '',
     contractColor: '',
-    insuranceStatus: null,
+    insuranceStatus: 'Not Insured',
     motExpiry: '',
     taxExpiry: '',
     comments: '',
@@ -406,7 +406,7 @@ export function VehicleCheckInForm({
       registration: '', make: '', model: '', colour: '', size: '',
       condition: conditions[0]?.name || '', status: 'Pending checks',
       mileage: '', notes: '', contract: '', contractColor: '',
-      insuranceStatus: null, motExpiry: '', taxExpiry: '', comments: '',
+      insuranceStatus: 'Not Insured', motExpiry: '', taxExpiry: '', comments: '',
       damagePins: [], vehicleDiagramType: null,
     })
   }
@@ -816,17 +816,35 @@ export function VehicleCheckInForm({
                         </div>
                       </div>
 
-                      {/* MOT & Tax */}
+                      {/* MOT & Tax — read-only for fleet vehicles (Fleet is the
+                          source of truth; edit them on the Fleet page). Custom,
+                          non-fleet check-ins stay editable since there's no fleet
+                          record to defer to. */}
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <p className={labelCls}>{t('yardCheckin.motExpiry')}</p>
-                          <input type="date" value={formData.motExpiry || ''} onChange={e => handleChange('motExpiry', e.target.value)} className={inputCls} />
+                          {isFleetVehicleMode ? (
+                            <div className="px-3 py-2.5 text-sm border border-[#e2e8e5] dark:border-gray-700 rounded-xl bg-[#f8faf9] dark:bg-gray-800 text-[#4a5e54] dark:text-gray-300">
+                              {formData.motExpiry ? formData.motExpiry.slice(0, 10).split('-').reverse().join('/') : '—'}
+                            </div>
+                          ) : (
+                            <input type="date" value={formData.motExpiry || ''} onChange={e => handleChange('motExpiry', e.target.value)} className={inputCls} />
+                          )}
                         </div>
                         <div>
                           <p className={labelCls}>{t('yardCheckin.taxExpiry')}</p>
-                          <input type="date" value={formData.taxExpiry || ''} onChange={e => handleChange('taxExpiry', e.target.value)} className={inputCls} />
+                          {isFleetVehicleMode ? (
+                            <div className="px-3 py-2.5 text-sm border border-[#e2e8e5] dark:border-gray-700 rounded-xl bg-[#f8faf9] dark:bg-gray-800 text-[#4a5e54] dark:text-gray-300">
+                              {formData.taxExpiry ? formData.taxExpiry.slice(0, 10).split('-').reverse().join('/') : '—'}
+                            </div>
+                          ) : (
+                            <input type="date" value={formData.taxExpiry || ''} onChange={e => handleChange('taxExpiry', e.target.value)} className={inputCls} />
+                          )}
                         </div>
                       </div>
+                      {isFleetVehicleMode && (
+                        <p className="text-[10px] text-[#8a9e94] mt-1">{t('yardCheckin.motTaxFromFleet')}</p>
+                      )}
                     </div>
 
                     {/* Right panel */}

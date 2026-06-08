@@ -2323,6 +2323,7 @@ export const en = {
     mileagePlaceholder: 'e.g., 45000',
     motExpiry: 'MOT Expiry',
     taxExpiry: 'Tax Expiry',
+    motTaxFromFleet: 'MOT & road tax are managed on the Fleet page',
     sectionInsurance: 'Insurance, Contract & Notes',
     insuranceStatus: 'Insurance Status',
     insuranceInsured: 'Vehicle is insured and can be checked out or hired.',

@@ -811,7 +811,7 @@ export function useYardDataInternal(props?: UseYardDataProps) {
         // Prepare contract, insurance, and condition values
         const contractValue = vehicleData.contract?.trim() || null
         const contractColorValue = vehicleData.contractColor?.trim() || null
-        const insuranceValue = vehicleData.insuranceStatus || null
+        const insuranceValue = vehicleData.insuranceStatus || 'Not Insured'
         const conditionValue = vehicleData.condition?.trim() || null // ADD CONDITION
 
         // Update the existing vehicle with new data and branch
@@ -868,7 +868,7 @@ export function useYardDataInternal(props?: UseYardDataProps) {
         const auditLog = createCheckInAuditLog(userDisplayName, user.uid)
         const contractValue = vehicleData.contract?.trim() || null
         const contractColorValue = vehicleData.contractColor?.trim() || null
-        const insuranceValue = vehicleData.insuranceStatus || null
+        const insuranceValue = vehicleData.insuranceStatus || 'Not Insured'
         const conditionValue = vehicleData.condition?.trim() || null // ADD CONDITION
         
         // Try to find fleet vehicle by registration to get vehicle ID
@@ -1305,14 +1305,41 @@ export function useYardDataInternal(props?: UseYardDataProps) {
 
       // Handle contract sync if changed (existing logic)
       if (contractChanged && registration) {
-        await syncToFleet(
-          vehicleIdForSync || null,
-          registration,
-          updateData.contract || null,
-          updateData.contractColor || null,
-          null, // No insurance change in this sync
-          null  // No condition change in this sync (already handled)
-        )
+        if (updateData.contract) {
+          await syncToFleet(
+            vehicleIdForSync || null,
+            registration,
+            updateData.contract,
+            updateData.contractColor || null,
+            null, // No insurance change in this sync
+            null  // No condition change in this sync (already handled)
+          )
+        } else if (userOrganizationId && user) {
+          // Contract CLEARED ("No contract selected"). syncToFleet skips null
+          // values (its guard is `if (contractValue && …)`), so the fleet copy
+          // never got the removal and the Fleet page kept the old contract.
+          // Cascade the removal to the fleet (and any sibling yard rows)
+          // directly — ContractSyncService writes null to both tables.
+          try {
+            const res = await ContractSyncService.syncContractFromYardToFleet(
+              vehicleIdForSync || registration,
+              { contract: null, contractColor: null },
+              userOrganizationId,
+              user.uid,
+              userDisplayName,
+              !!vehicleIdForSync,
+            )
+            if (res?.success) {
+              setSyncNotification({
+                type: 'success',
+                message: 'Contract removed across fleet & yard',
+                details: { fleetUpdated: res.updatedFleetRecord, yardUpdated: res.updatedYardRecords, syncType: 'contract' },
+              })
+            }
+          } catch (e) {
+            logger.error('Contract removal sync to fleet failed:', e)
+          }
+        }
       }
 
       // Handle insurance sync if changed (existing logic)

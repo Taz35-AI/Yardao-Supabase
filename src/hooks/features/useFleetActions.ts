@@ -278,7 +278,7 @@ export function useFleetActions(fleetData: FleetDataHook | any) {
         createdBy: user.uid,
         contract: vehicleData.contract?.trim() || null,
         contractColor: null,
-        insuranceStatus: vehicleData.insuranceStatus || null,
+        insuranceStatus: vehicleData.insuranceStatus || 'Not Insured',
         currentStatus: 'in_fleet',
         createdAt: new Date().toISOString()
       }
@@ -621,24 +621,53 @@ export function useFleetActions(fleetData: FleetDataHook | any) {
         }
       }
 
-// ── Sync vehicleDiagramType to yard (always, if set) ─────────────
-const diagramType = processedUpdates.vehicleDiagramType || currentVehicle.vehicleDiagramType
-if (diagramType) {
+// ── Sync vehicleDiagramType to yard when it CHANGED (incl. clearing to null) ──
+//    Previously: `const dt = new || current; if (dt) …` — which fell back to the
+//    OLD value on clear and was guarded by truthiness, so clearing the diagram
+//    never reached the yard. Now we sync the new value (null included) on change.
+if ('vehicleDiagramType' in updates &&
+    (processedUpdates.vehicleDiagramType ?? null) !== (currentVehicle.vehicleDiagramType ?? null)) {
+  const newDiagramType = processedUpdates.vehicleDiagramType ?? null
   try {
-    // Update every yard (checked_in) record for this org + registration in
-    // one statement (replaces the read-all-then-batch-update Firestore flow).
     const { data: updated, error: syncError } = await supabase
       .from('checked_in_vehicles')
-      .update({ vehicle_diagram_type: diagramType })
+      .update({ vehicle_diagram_type: newDiagramType })
       .eq('organization_id', userProfile.organizationId)
       .eq('registration', currentVehicle.registration.trim().toUpperCase())
       .select('id')
     if (syncError) throw syncError
     if (updated && updated.length > 0) {
-      logger.log(`✅ vehicleDiagramType synced to ${updated.length} yard record(s)`)
+      logger.log(`✅ vehicleDiagramType (${newDiagramType ?? 'cleared'}) synced to ${updated.length} yard record(s)`)
     }
   } catch (syncError) {
     logger.error('vehicleDiagramType yard sync failed:', syncError)
+  }
+}
+
+// ── Sync core details (make / model / colour / size) to yard when changed ──
+//    These are denormalised onto checked_in_vehicles, so a fleet correction
+//    must follow the vehicle into the yard (fleet is the source of truth).
+{
+  const detailPatch: Record<string, string | null> = {}
+  if ('make' in updates   && (processedUpdates.make   ?? null) !== (currentVehicle.make   ?? null)) detailPatch.make   = processedUpdates.make   ?? null
+  if ('model' in updates  && (processedUpdates.model  ?? null) !== (currentVehicle.model  ?? null)) detailPatch.model  = processedUpdates.model  ?? null
+  if ('colour' in updates && (processedUpdates.colour ?? null) !== (currentVehicle.colour ?? null)) detailPatch.colour = processedUpdates.colour ?? null
+  if ('size' in updates   && (processedUpdates.size   ?? null) !== (currentVehicle.size   ?? null)) detailPatch.size   = processedUpdates.size   ?? null
+  if (Object.keys(detailPatch).length > 0) {
+    try {
+      const { data: updated, error: detailErr } = await supabase
+        .from('checked_in_vehicles')
+        .update(detailPatch)
+        .eq('organization_id', userProfile.organizationId)
+        .eq('registration', currentVehicle.registration.trim().toUpperCase())
+        .select('id')
+      if (detailErr) throw detailErr
+      if (updated && updated.length > 0) {
+        logger.log(`✅ Vehicle details (${Object.keys(detailPatch).join(', ')}) synced to ${updated.length} yard record(s)`)
+      }
+    } catch (detailErr) {
+      logger.error('Vehicle details yard sync failed:', detailErr)
+    }
   }
 }
 
