@@ -277,7 +277,8 @@ export function DesktopPipelineDashboard({
   // not the plain table. Optionally narrowed to one contract (breakdown row).
   // A Back button returns to the search-first overview.
   const openFull = (b: StatusBucket, contract?: string) => { setDrillStatus(b); setDrillContract(contract ?? null); setDrillSearch('') }
-  const closeDrill = () => { setDrillStatus(null); setDrillContract(null); setDrillSearch('') }
+  // Back to search → also collapse any expanded status card (initial state).
+  const closeDrill = () => { setDrillStatus(null); setDrillContract(null); setDrillSearch(''); setExpanded(null) }
 
   const QUEUES: StatusBucket[] = ['Ready', 'Pending checks', 'Repairs needed', 'Non-Starter', 'on_hire']
   const inYardCount = vehicles.length
