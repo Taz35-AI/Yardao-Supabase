@@ -31,7 +31,7 @@ interface Vehicle {
 const zaoConversations = [
   {
     prompt: 'Which vehicles are at the bodyshop?',
-    reply: '3 vehicles at external garages — HN74ABC, BD24XYZ and LM23DEF.',
+    reply: '3 vehicles at external garages - HN74ABC, BD24XYZ and LM23DEF.',
   },
   {
     prompt: 'Mark HN74ABC MOT as done today',
@@ -39,7 +39,7 @@ const zaoConversations = [
   },
   {
     prompt: 'Any MOTs due this week?',
-    reply: '2 vehicles — BD24XYZ expires Thursday and YK69ABC on Friday. Want me to book them in?',
+    reply: '2 vehicles - BD24XYZ expires Thursday and YK69ABC on Friday. Want me to book them in?',
   },
   {
     prompt: 'Return YK69 from external garage',
@@ -47,11 +47,11 @@ const zaoConversations = [
   },
   {
     prompt: 'How many vehicles are ready?',
-    reply: '27 out of 42 in the yard are Ready. 8 need attention — want the full list?',
+    reply: '27 out of 42 in the yard are Ready. 8 need attention - want the full list?',
   },
   {
     prompt: 'Book HN74 in for tyres on Friday',
-    reply: '✅ Booked. HN74ABC — Tyres x4 at Joe\'s Garage, Friday 10:00. Confirmed.',
+    reply: '✅ Booked. HN74ABC - Tyres x4 at Joe\'s Garage, Friday 10:00. Confirmed.',
   },
 ]
 
@@ -199,7 +199,7 @@ export default function HomePage() {
         </nav>
 
         {/* ══════════════════════════════════════════════════════
-            HERO — Headline + yard dashboard preview
+            HERO - Headline + yard dashboard preview
         ══════════════════════════════════════════════════════ */}
         <section className="relative z-10 min-h-screen flex flex-col justify-center pt-16">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
@@ -217,18 +217,18 @@ export default function HomePage() {
                 </h1>
 
                 <p className="text-[#72A68E] text-lg sm:text-xl leading-relaxed mb-4 max-w-lg">
-                  Fleet tracking, MOT compliance, service bookings, stock and invoicing — all in one place, built for bodyshops and automotive yards.
+                  Fleet tracking, MOT compliance, service bookings, stock and invoicing - all in one place, built for bodyshops and automotive yards.
                 </p>
 
                 <div className="flex items-center gap-2 mb-10 px-3 py-2 rounded-xl border border-[#b3f243]/20 bg-[#b3f243]/5 max-w-fit">
                   <Sparkles className="w-4 h-4 text-[#b3f243]" />
-                  <span className="text-[#b3f243] text-sm font-semibold">Zao AI built in — run your yard by just talking to it</span>
+                  <span className="text-[#b3f243] text-sm font-semibold">Zao AI built in - run your yard by just talking to it</span>
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3">
                   <Link href="/register" className="w-full sm:w-auto">
                     <Button size="lg" className="w-full sm:w-auto bg-[#b3f243] hover:bg-[#c8f96a] text-[#012619] font-black px-8 shadow-xl shadow-[#b3f243]/25 text-base group">
-                      Start Free — No Card
+                      Start Free - No Card
                       <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                     </Button>
                   </Link>
@@ -253,7 +253,7 @@ export default function HomePage() {
                         <div className="w-3 h-3 rounded-full bg-[#ffbd2e]" />
                         <div className="w-3 h-3 rounded-full bg-[#28c840]" />
                       </div>
-                      <span className="text-[#72A68E] text-xs font-medium">Yard Dashboard — Main Branch</span>
+                      <span className="text-[#72A68E] text-xs font-medium">Yard Dashboard - Main Branch</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#b3f243] animate-pulse" />
@@ -297,7 +297,7 @@ export default function HomePage() {
                       <div className="w-5 h-5 rounded-lg bg-gradient-to-br from-[#b3f243] to-[#72A68E] flex items-center justify-center flex-shrink-0">
                         <Sparkles className="w-3 h-3 text-[#012619]" />
                       </div>
-                      <span className="text-[#72A68E]/70 text-xs flex-1">Ask Zao — "Mark HN74 MOT done…"</span>
+                      <span className="text-[#72A68E]/70 text-xs flex-1">Ask Zao - "Mark HN74 MOT done…"</span>
                       <Mic className="w-3.5 h-3.5 text-[#b3f243]/50" />
                     </div>
                   </div>
@@ -330,7 +330,7 @@ export default function HomePage() {
         </section>
 
         {/* ══════════════════════════════════════════════════════
-            ZAO — Big hero section, front and centre
+            ZAO - Big hero section, front and centre
         ══════════════════════════════════════════════════════ */}
         <section className="relative z-10 py-20 sm:py-28 overflow-hidden">
           {/* Big background text */}
@@ -341,11 +341,11 @@ export default function HomePage() {
 
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
 
-            {/* Section header — centred, oversized */}
+            {/* Section header - centred, oversized */}
             <div className="text-center mb-14">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-[#b3f243]/30 bg-[#b3f243]/8 mb-6">
                 <Sparkles className="w-4 h-4 text-[#b3f243]" />
-                <span className="text-[#b3f243] text-sm font-bold tracking-widest uppercase">Zao — AI Fleet Assistant</span>
+                <span className="text-[#b3f243] text-sm font-bold tracking-widest uppercase">Zao - AI Fleet Assistant</span>
                 <Sparkles className="w-4 h-4 text-[#b3f243]" />
               </div>
               <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white mb-5 leading-[0.95] tracking-tight">
@@ -353,14 +353,14 @@ export default function HomePage() {
                 <span className="text-[#b3f243]">Zao handles the rest.</span>
               </h2>
               <p className="text-[#72A68E] text-xl max-w-2xl mx-auto leading-relaxed">
-                Type it or say it — Zao understands plain English and gets it done. No forms. No clicking around. Just your yard, on command.
+                Type it or say it - Zao understands plain English and gets it done. No forms. No clicking around. Just your yard, on command.
               </p>
             </div>
 
             {/* Big two-column layout */}
             <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-start">
 
-              {/* Left: live chat demo — large */}
+              {/* Left: live chat demo - large */}
               <div className="relative">
                 <div className="absolute -inset-6 rounded-3xl opacity-25 blur-3xl pointer-events-none"
                   style={{ background: 'radial-gradient(ellipse, #b3f243 0%, transparent 65%)' }} />
@@ -377,7 +377,7 @@ export default function HomePage() {
                         <div className="text-white font-black text-base">Zao</div>
                         <div className="text-[#72A68E] text-xs flex items-center gap-1.5">
                           <span className="w-2 h-2 rounded-full bg-[#b3f243] inline-block animate-pulse" />
-                          AI Fleet Assistant — always on
+                          AI Fleet Assistant - always on
                         </div>
                       </div>
                     </div>
@@ -453,7 +453,7 @@ export default function HomePage() {
                     title: 'Vehicle Actions',
                     color: '#b3f243',
                     examples: ['"HN74 out to bodyshop"', '"Return BD24 from Joe\'s"', '"Set YK69 on hire"'],
-                    desc: 'Check vehicles in and out, move to garages, update status — all by just saying it.',
+                    desc: 'Check vehicles in and out, move to garages, update status - all by just saying it.',
                   },
                   {
                     icon: <CheckCircle className="w-5 h-5" />,
@@ -467,7 +467,7 @@ export default function HomePage() {
                     title: 'Service Bookings',
                     color: '#72A68E',
                     examples: ['"Book HN74 for tyres Friday"', '"What\'s on tomorrow?"', '"Cancel 10am booking"'],
-                    desc: 'Book services, pick garages, pick time slots — Zao handles the back and forth.',
+                    desc: 'Book services, pick garages, pick time slots - Zao handles the back and forth.',
                   },
                   {
                     icon: <Mic className="w-5 h-5" />,
@@ -528,7 +528,7 @@ export default function HomePage() {
         ══════════════════════════════════════════════════════ */}
         <div className="relative z-10">
 
-          {/* 01 — Yard View */}
+          {/* 01 - Yard View */}
           <div className="section-row py-20 sm:py-28">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
@@ -602,7 +602,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* 02 — Service Bookings */}
+          {/* 02 - Service Bookings */}
           <div className="section-row py-20 sm:py-28 bg-[#011a10]/40">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
@@ -621,7 +621,7 @@ export default function HomePage() {
                       </div>
                     </div>
                     <div className="p-3 space-y-2">
-                      <div className="text-[10px] font-semibold text-[#72A68E] uppercase tracking-wider mb-2">Today — 4 bookings</div>
+                      <div className="text-[10px] font-semibold text-[#72A68E] uppercase tracking-wider mb-2">Today - 4 bookings</div>
                       {[
                         { reg: 'HN74 ABC', work: 'MOT + Full Service', time: '09:00', loc: 'In house', locIcon: <Clock className="w-3 h-3 text-[#72A68E]" />, status: 'Confirmed', ss: 'bg-[#b3f243]/15 text-[#b3f243] border-[#b3f243]/30', bar: 'bg-[#b3f243]' },
                         { reg: 'BD24 XYZ', work: 'Tyres x4', time: '10:30', loc: "Joe's Garage", locIcon: <ExternalLink className="w-3 h-3 text-purple-400" />, status: 'External', ss: 'bg-purple-500/15 text-purple-400 border-purple-500/30', bar: 'bg-purple-400' },
@@ -636,7 +636,7 @@ export default function HomePage() {
                             </div>
                             <div className="flex items-center gap-2 mt-1">
                               {b.locIcon}
-                              <span className="text-[#72A68E] text-[10px]">{b.time} — {b.loc}</span>
+                              <span className="text-[#72A68E] text-[10px]">{b.time} - {b.loc}</span>
                             </div>
                           </div>
                           <span className={`text-[10px] px-2 py-0.5 rounded-full border flex-shrink-0 ${b.ss}`}>{b.status}</span>
@@ -669,7 +669,7 @@ export default function HomePage() {
                     <span className="text-[#72A68E] text-xs font-semibold uppercase tracking-widest">Service Management</span>
                   </div>
                   <h2 className="text-3xl sm:text-4xl font-black text-white mb-5 leading-tight">
-                    Bookings, services<br />and repairs —<br /><span className="text-[#C5D9D0]">all in one place.</span>
+                    Bookings, services<br />and repairs -<br /><span className="text-[#C5D9D0]">all in one place.</span>
                   </h2>
                   <p className="text-[#72A68E] text-lg mb-8 leading-relaxed">
                     Schedule MOTs, services and repairs. Track in-house work or external garages. Know exactly where each vehicle is and what's being done.
@@ -687,7 +687,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* 03 — Stock */}
+          {/* 03 - Stock */}
           <div className="section-row py-20 sm:py-28">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
@@ -704,7 +704,7 @@ export default function HomePage() {
                     Full parts and stock management. Scan barcodes to check items in and out. Smart category grouping keeps everything organised without the faff.
                   </p>
                   <div className="space-y-3">
-                    {['28 smart part categories', 'Barcode scanner — physical or camera', 'Stock adjustment with reason codes', 'Parts used today tab', 'Order history tracking'].map((item, i) => (
+                    {['28 smart part categories', 'Barcode scanner - physical or camera', 'Stock adjustment with reason codes', 'Parts used today tab', 'Order history tracking'].map((item, i) => (
                       <div key={i} className="flex items-center gap-3">
                         <div className="w-1.5 h-1.5 rounded-full bg-[#b3f243] flex-shrink-0" />
                         <span className="text-[#C5D9D0] text-sm">{item}</span>
@@ -750,8 +750,8 @@ export default function HomePage() {
                           count: 24,
                           color: '#b3f243',
                           parts: [
-                            { name: '205/55R16 — Continental', qty: 8, status: 'good' },
-                            { name: '225/45R17 — Michelin', qty: 3, status: 'low' },
+                            { name: '205/55R16 - Continental', qty: 8, status: 'good' },
+                            { name: '225/45R17 - Michelin', qty: 3, status: 'low' },
                             { name: 'Winter tyre 195/65R15', qty: 12, status: 'good' },
                           ]
                         },
@@ -760,7 +760,7 @@ export default function HomePage() {
                           count: 18,
                           color: '#f87171',
                           parts: [
-                            { name: 'Front brake pads — Transit', qty: 2, status: 'low' },
+                            { name: 'Front brake pads - Transit', qty: 2, status: 'low' },
                             { name: 'Rear brake discs', qty: 6, status: 'good' },
                           ]
                         },
@@ -822,7 +822,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* 04 — Invoicing */}
+          {/* 04 - Invoicing */}
           <div className="section-row py-20 sm:py-28 bg-[#011a10]/40">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
@@ -865,17 +865,17 @@ export default function HomePage() {
                       {/* Vehicle ref */}
                       <div className="flex items-center gap-2 mb-3 px-2.5 py-1.5 bg-[#fbbf24]/10 rounded-lg border border-[#fbbf24]/20">
                         <span className="font-mono text-xs font-black text-[#fbbf24] bg-[#fbbf24]/20 px-2 py-0.5 rounded">HN74 ABC</span>
-                        <span className="text-xs text-gray-600">Ford Transit — Full Service + MOT</span>
+                        <span className="text-xs text-gray-600">Ford Transit - Full Service + MOT</span>
                       </div>
 
                       {/* Line items */}
                       <div className="space-y-1.5 mb-3">
                         {[
-                          { desc: 'Labour — Full Service (2.5h)', qty: 1, unit: '£125.00', total: '£125.00' },
-                          { desc: 'Labour — MOT Preparation (1h)', qty: 1, unit: '£50.00', total: '£50.00' },
+                          { desc: 'Labour - Full Service (2.5h)', qty: 1, unit: '£125.00', total: '£125.00' },
+                          { desc: 'Labour - MOT Preparation (1h)', qty: 1, unit: '£50.00', total: '£50.00' },
                           { desc: 'Engine Oil 5W-30 5L', qty: 2, unit: '£18.50', total: '£37.00' },
                           { desc: 'Oil Filter', qty: 1, unit: '£12.00', total: '£12.00' },
-                          { desc: 'Brake Pads — Front', qty: 1, unit: '£54.00', total: '£54.00' },
+                          { desc: 'Brake Pads - Front', qty: 1, unit: '£54.00', total: '£54.00' },
                         ].map((line, i) => (
                           <div key={i} className="flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0">
                             <div className="flex-1 min-w-0">
@@ -925,7 +925,7 @@ export default function HomePage() {
                     Generate professional invoices directly from your service records. Add labour, parts, and notes. VAT calculated automatically. Download as PDF or send straight to the client.
                   </p>
                   <div className="space-y-3">
-                    {['VAT at 20%, calculated automatically', 'Labour presets — tyres, service, MOT', 'Parts pulled from your stock', 'PDF download and client sending', 'Company details stored in settings'].map((item, i) => (
+                    {['VAT at 20%, calculated automatically', 'Labour presets - tyres, service, MOT', 'Parts pulled from your stock', 'PDF download and client sending', 'Company details stored in settings'].map((item, i) => (
                       <div key={i} className="flex items-center gap-3">
                         <div className="w-1.5 h-1.5 rounded-full bg-[#b3f243] flex-shrink-0" />
                         <span className="text-[#C5D9D0] text-sm">{item}</span>
@@ -937,7 +937,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* 05 — Compliance */}
+          {/* 05 - Compliance */}
           <div className="section-row py-20 sm:py-28">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
@@ -948,10 +948,10 @@ export default function HomePage() {
                     <span className="text-[#72A68E] text-xs font-semibold uppercase tracking-widest">Compliance</span>
                   </div>
                   <h2 className="text-3xl sm:text-4xl font-black text-white mb-5 leading-tight">
-                    MOTs, insurance,<br />compliance —<br /><span className="text-[#C5D9D0]">never miss one.</span>
+                    MOTs, insurance,<br />compliance -<br /><span className="text-[#C5D9D0]">never miss one.</span>
                   </h2>
                   <p className="text-[#72A68E] text-lg mb-8 leading-relaxed">
-                    Visual MOT and insurance tracking across your whole fleet. 30-day warnings before anything expires. See what's compliant, what's at risk, and what needs action — at a glance.
+                    Visual MOT and insurance tracking across your whole fleet. 30-day warnings before anything expires. See what's compliant, what's at risk, and what needs action - at a glance.
                   </p>
                   <div className="space-y-3">
                     {['30-day MOT warnings', 'Insurance status per vehicle', 'Export compliance reports', 'Mark MOTs done instantly via Zao'].map((item, i) => (
@@ -1011,7 +1011,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* 06 — Deliveries & Defleet */}
+          {/* 06 - Deliveries & Defleet */}
           <div className="section-row py-20 sm:py-28 bg-[#011a10]/40">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
