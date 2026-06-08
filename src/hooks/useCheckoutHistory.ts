@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { toCamelList } from '@/lib/dbMap'
 import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
+import { toast } from 'sonner'
 
 // Unified record shape for the UI — covers all movement types
 export interface UnifiedActivityRecord {
@@ -301,7 +302,7 @@ export function useCheckoutHistory(): UseCheckoutHistoryReturn {
   const totalVehicles = new Set(filteredHistory.map(r => r.registration).filter(Boolean)).size
 
   const exportToCSV = () => {
-    if (!filteredHistory.length) { alert(t('checkout.err.noDataExport')); return }
+    if (!filteredHistory.length) { toast.warning(t('checkout.err.noDataExport')); return }
 
     const headers = [
       t('checkout.csv.registration'), t('checkout.csv.make'), t('checkout.csv.model'), t('checkout.csv.activityType'), t('checkout.csv.description'),
