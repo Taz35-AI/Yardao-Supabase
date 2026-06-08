@@ -15,7 +15,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Search, CheckCircle, Clock, Wrench, XCircle, Truck, ChevronDown, ChevronRight,
-  ArrowRight, ShieldAlert, CalendarClock, Activity, Plus, ArrowUpRight, CalendarPlus, Download, X,
+  ArrowRight, Activity, Plus, CalendarPlus, Download, X,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { CheckedInVehicle } from '@/types'
@@ -348,7 +348,7 @@ export function DesktopPipelineDashboard({
               <input
                 value={query}
                 onChange={e => { setQuery(e.target.value); setQuickFilter(null) }}
-                placeholder='e.g. "blue Kia SDH", "repairs Greythorn", "ready not insured"'
+                placeholder='e.g. "blue Kia", "white van repairs", "ready not insured"'
                 className="flex-1 bg-transparent outline-none text-[#06251a] font-semibold placeholder:text-[#9bafa5] text-sm"
               />
               {query && (
@@ -357,7 +357,6 @@ export function DesktopPipelineDashboard({
             </div>
             <div className="flex flex-wrap gap-2 mt-3">
               {onCheckIn && <QuickAction icon={Plus} label="Check in" onClick={onCheckIn} />}
-              <QuickAction icon={ArrowUpRight} label="Check out" onClick={() => onViewModeChange?.('table')} />
               <QuickAction icon={CalendarPlus} label="Book service" onClick={() => router.push('/service-bookings')} />
               {onExport && <QuickAction icon={Download} label="Export" onClick={onExport} />}
             </div>
