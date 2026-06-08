@@ -42,6 +42,9 @@ interface Props {
 }
 
 const LONG_STAY_DAYS = 30
+// How many days out counts as an "approaching" MOT / road-tax alert. Lower =
+// fewer, more imminent alerts. Tune this one number to taste.
+const ALERT_SOON_DAYS = 7
 
 const BUCKETS: { key: StatusBucket; label: string; color: string; icon: typeof CheckCircle }[] = [
   { key: 'Ready', label: 'Ready', color: '#16a34a', icon: CheckCircle },
@@ -148,6 +151,8 @@ export function DesktopPipelineDashboard({
 }: Props) {
   const { user } = useAuth()
   const [query, setQuery] = useState('')
+  // Quick filters launched from the Alerts summary lines (no smart-search token).
+  const [quickFilter, setQuickFilter] = useState<null | 'no_mot' | 'no_tax' | 'not_insured'>(null)
   const [expanded, setExpanded] = useState<StatusBucket | null>(null)
   const [activity, setActivity] = useState<ActivityRecord[]>([])
   // When set, we drill into the old cards view (YardTabsView) on this status,
@@ -164,6 +169,13 @@ export function DesktopPipelineDashboard({
   const vocab = useMemo(() => buildVocab(all), [all])
   const parsed = useMemo(() => parseQuery(query, vocab), [query, vocab])
   const results = useMemo(() => parsed.isEmpty ? [] : all.filter(v => matchesQuery(v, parsed)), [all, parsed])
+  // Vehicle list + label for a quick filter (clicked from an Alerts summary).
+  const quick = useMemo(() => {
+    if (quickFilter === 'no_mot') return { label: 'No MOT on file', list: all.filter(v => !v.motExpiry) }
+    if (quickFilter === 'no_tax') return { label: 'No road tax on file', list: all.filter(v => !v.taxExpiry) }
+    if (quickFilter === 'not_insured') return { label: 'Ready · not insured', list: all.filter(v => v.insuranceStatus === 'Not Insured' && vehicleBucket(v) === 'Ready') }
+    return null
+  }, [quickFilter, all])
 
   // Bucket the working set by effective status.
   const byBucket = useMemo(() => {
@@ -204,25 +216,35 @@ export function DesktopPipelineDashboard({
   // tax + insurance blockers, then long-running repairs. Severity drives order
   // AND the (blended) dot colour. Dismissible for the day.
   const allAlerts = useMemo(() => {
-    const out: { id: string; reg: string; reason: string; sub: string; sev: 0 | 1 | 2; v: CheckedInVehicle }[] = []
+    const out: { id: string; reg: string; reason: string; sub: string; sev: 0 | 1; v: CheckedInVehicle }[] = []
     for (const v of all) {
       const mot = daysUntil(v.motExpiry)
       const tax = daysUntil(v.taxExpiry)
-      // Tier 0 — MOT (top priority)
-      if (!v.motExpiry) out.push({ id: v.id + ':nomot', reg: v.registration, reason: 'No MOT recorded', sub: 'No MOT date on file', sev: 0, v })
-      else if (mot !== null && mot < 0) out.push({ id: v.id + ':motx', reg: v.registration, reason: 'MOT expired', sub: `${Math.abs(mot)}d ago`, sev: 0, v })
-      else if (mot !== null && mot <= 30) out.push({ id: v.id + ':motd', reg: v.registration, reason: `MOT due in ${mot}d`, sub: 'Expiring soon', sev: 0, v })
-      // Tier 1 — tax + insurance blockers
-      if (tax !== null && tax < 0) out.push({ id: v.id + ':taxx', reg: v.registration, reason: 'Road tax expired', sub: 'Blocks checkout', sev: 1, v })
-      else if (tax !== null && tax <= 30) out.push({ id: v.id + ':taxd', reg: v.registration, reason: `Road tax due in ${tax}d`, sub: 'Expiring soon', sev: 1, v })
-      if (v.insuranceStatus === 'Not Insured' && vehicleBucket(v) === 'Ready') out.push({ id: v.id + ':ins', reg: v.registration, reason: 'Not insured', sub: 'Ready but cannot go out', sev: 1, v })
-      // Tier 2 — other
-      if (vehicleBucket(v) === 'Repairs needed' && daysSince(v.createdAt) > 7) out.push({ id: v.id + ':rep', reg: v.registration, reason: `In repairs ${daysSince(v.createdAt)}d`, sub: 'Long-running', sev: 2, v })
+      // Tier 0 — MOT: only EXPIRED or expiring within the window (time-critical).
+      if (v.motExpiry && mot !== null) {
+        if (mot < 0) out.push({ id: v.id + ':motx', reg: v.registration, reason: 'MOT expired', sub: `${Math.abs(mot)}d ago`, sev: 0, v })
+        else if (mot <= ALERT_SOON_DAYS) out.push({ id: v.id + ':motd', reg: v.registration, reason: `MOT due in ${mot}d`, sub: 'Expiring soon', sev: 0, v })
+      }
+      // Tier 1 — road tax: expired or expiring within the window.
+      if (tax !== null) {
+        if (tax < 0) out.push({ id: v.id + ':taxx', reg: v.registration, reason: 'Road tax expired', sub: 'Blocks checkout', sev: 1, v })
+        else if (tax <= ALERT_SOON_DAYS) out.push({ id: v.id + ':taxd', reg: v.registration, reason: `Road tax due in ${tax}d`, sub: 'Expiring soon', sev: 1, v })
+      }
     }
     out.sort((a, b) => a.sev - b.sev)
     return out
   }, [all])
   const alerts = useMemo(() => allAlerts.filter(a => !dismissed.has(a.id)), [allAlerts, dismissed])
+  // Bulk data-hygiene issues shown as compact counts, not one row per vehicle.
+  const alertSummary = useMemo(() => {
+    let noMot = 0, noTax = 0, notInsured = 0
+    for (const v of all) {
+      if (!v.motExpiry) noMot++
+      if (!v.taxExpiry) noTax++
+      if (v.insuranceStatus === 'Not Insured' && vehicleBucket(v) === 'Ready') notInsured++
+    }
+    return { noMot, noTax, notInsured }
+  }, [all])
   const clearAlertsForToday = () => {
     const next = new Set(dismissed)
     for (const a of alerts) next.add(a.id)
@@ -249,6 +271,11 @@ export function DesktopPipelineDashboard({
   const QUEUES: StatusBucket[] = ['Ready', 'Pending checks', 'Repairs needed', 'Non-Starter', 'on_hire']
   const inYardCount = vehicles.length
   const onHireCount = outOnHireVehicles.length
+
+  // Main panel shows a result list when the smart search OR a quick filter is on.
+  const showResults = !parsed.isEmpty || !!quick
+  const displayList = !parsed.isEmpty ? results : (quick ? quick.list : [])
+  const clearResults = () => { setQuery(''); setQuickFilter(null) }
 
   // ── Drill-in: the original cards view (YardTabsView) on the chosen status,
   //    optionally narrowed to a single contract. ──
@@ -319,7 +346,7 @@ export function DesktopPipelineDashboard({
               <Search className="w-5 h-5 text-[#74877d]" />
               <input
                 value={query}
-                onChange={e => setQuery(e.target.value)}
+                onChange={e => { setQuery(e.target.value); setQuickFilter(null) }}
                 placeholder='e.g. "blue Kia SDH", "repairs Greythorn", "ready not insured"'
                 className="flex-1 bg-transparent outline-none text-[#06251a] font-semibold placeholder:text-[#9bafa5] text-sm"
               />
@@ -377,21 +404,24 @@ export function DesktopPipelineDashboard({
           })}
         </section>
 
-        {/* Search results OR operational queues */}
-        {!parsed.isEmpty ? (
+        {/* Search results / quick filter OR operational queues */}
+        {showResults ? (
           <section className="rounded-2xl bg-white border border-[#dfe8e1] shadow-sm p-4">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-black tracking-tight">Results <span className="text-[#6f8177] font-bold">· {results.length}</span></h2>
-              <button type="button" onClick={() => setQuery('')} className="text-[12px] font-extrabold text-[#285b44]">Clear</button>
+              <h2 className="font-black tracking-tight inline-flex items-center gap-2">
+                {!parsed.isEmpty ? 'Results' : quick?.label}
+                <span className="text-[12px] font-black rounded-full px-2 py-0.5 bg-[#f3f5f4] text-[#47566a]">{displayList.length}</span>
+              </h2>
+              <button type="button" onClick={clearResults} className="text-[12px] font-extrabold text-[#285b44]">Clear</button>
             </div>
-            {results.length === 0 ? (
-              <p className="text-sm text-[#6f8177] py-8 text-center">No vehicles match “{query}”.</p>
+            {displayList.length === 0 ? (
+              <p className="text-sm text-[#6f8177] py-8 text-center">No vehicles{!parsed.isEmpty ? ` match “${query}”` : ''}.</p>
             ) : (
               <div className="grid grid-cols-2 gap-x-6">
-                {results.slice(0, 50).map(v => <VRow key={v.id} v={v} onClick={() => onViewVehicle(v)} showStatus />)}
+                {displayList.slice(0, 50).map(v => <VRow key={v.id} v={v} onClick={() => onViewVehicle(v)} showStatus />)}
               </div>
             )}
-            {results.length > 50 && <p className="text-[11px] text-[#9bafa5] mt-2 text-center">Showing first 50 of {results.length}.</p>}
+            {displayList.length > 50 && <p className="text-[11px] text-[#9bafa5] mt-2 text-center">Showing first 50 of {displayList.length}.</p>}
           </section>
         ) : (
           <>
@@ -445,24 +475,41 @@ export function DesktopPipelineDashboard({
               <button type="button" onClick={clearAlertsForToday} className="text-[11px] font-extrabold text-[#9bafa5] hover:text-[#285b44]">Clear for today</button>
             )}
           </div>
-          <p className="text-[11px] text-[#9bafa5] mb-2">MOT first, then tax &amp; insurance, then repairs · clears till midnight.</p>
-          {alerts.length === 0 ? (
+          <p className="text-[11px] text-[#9bafa5] mb-2">Expired or due within {ALERT_SOON_DAYS} days · clears till midnight.</p>
+          {alerts.length === 0 && alertSummary.noMot === 0 && alertSummary.notInsured === 0 ? (
             <p className="text-[12px] text-[#9bafa5] py-3">All clear for today 🎉</p>
           ) : (
-            <div className="space-y-0.5 max-h-[440px] overflow-y-auto pr-1">
-              {alerts.map(a => {
-                const dot = a.sev === 0 ? '#c2410c' : a.sev === 1 ? '#a25a00' : '#8a9b91'
-                return (
-                  <button key={a.id} type="button" onClick={() => onViewVehicle(a.v)} className="w-full flex items-start gap-2 py-2 border-b border-[#f1f4f1] last:border-b-0 text-left hover:bg-[#f8faf8] rounded-lg px-1">
-                    <span className="w-1.5 h-1.5 rounded-full mt-[7px] flex-shrink-0" style={{ background: dot }} />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[12px] text-[#3a4a42]"><span className="font-mono font-bold text-[#07251d]">{a.reg}</span> · {a.reason}</div>
-                      <div className="text-[11px] text-[#9bafa5]">{a.sub}</div>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
+            <>
+              {alerts.length > 0 && (
+                <div className="space-y-0.5 max-h-[360px] overflow-y-auto pr-1">
+                  {alerts.map(a => {
+                    const dot = a.sev === 0 ? '#c2410c' : '#a25a00'
+                    return (
+                      <button key={a.id} type="button" onClick={() => onViewVehicle(a.v)} className="w-full flex items-start gap-2 py-2 border-b border-[#f1f4f1] last:border-b-0 text-left hover:bg-[#f8faf8] rounded-lg px-1">
+                        <span className="w-1.5 h-1.5 rounded-full mt-[7px] flex-shrink-0" style={{ background: dot }} />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[12px] text-[#3a4a42]"><span className="font-mono font-bold text-[#07251d]">{a.reg}</span> · {a.reason}</div>
+                          <div className="text-[11px] text-[#9bafa5]">{a.sub}</div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {(alertSummary.notInsured > 0 || alertSummary.noMot > 0 || alertSummary.noTax > 0) && (
+                <div className={`${alerts.length > 0 ? 'mt-2 pt-2 border-t border-[#f1f4f1]' : ''} space-y-0.5`}>
+                  {alertSummary.notInsured > 0 && (
+                    <SummaryRow color="#a25a00" n={alertSummary.notInsured} label="Ready · not insured" onClick={() => { setQuickFilter('not_insured'); setQuery('') }} />
+                  )}
+                  {alertSummary.noMot > 0 && (
+                    <SummaryRow color="#c2410c" n={alertSummary.noMot} label="vehicles · no MOT on file" onClick={() => { setQuickFilter('no_mot'); setQuery('') }} />
+                  )}
+                  {alertSummary.noTax > 0 && (
+                    <SummaryRow color="#a25a00" n={alertSummary.noTax} label="vehicles · no road tax on file" onClick={() => { setQuickFilter('no_tax'); setQuery('') }} />
+                  )}
+                </div>
+              )}
+            </>
           )}
         </section>
 
@@ -493,6 +540,15 @@ function QuickAction({ icon: Icon, label, onClick }: { icon: typeof Plus; label:
   return (
     <button type="button" onClick={onClick} className="inline-flex items-center gap-1.5 text-[12px] font-extrabold text-[#ecf7f0] border border-white/20 rounded-full px-3 py-2 hover:bg-white/10 transition-colors">
       <Icon className="w-3.5 h-3.5" />{label}
+    </button>
+  )
+}
+function SummaryRow({ color, n, label, onClick }: { color: string; n: number; label: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="group w-full flex items-center gap-2 text-[12px] text-[#3a4a42] hover:bg-[#f8faf8] rounded-lg px-1 py-1.5 text-left">
+      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: color }} />
+      <span className="flex-1"><span className="font-bold text-[#07251d]">{n}</span> {label}</span>
+      <ArrowRight className="w-3 h-3 text-[#9bafa5] opacity-0 group-hover:opacity-100" />
     </button>
   )
 }
