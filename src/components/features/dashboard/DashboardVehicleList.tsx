@@ -83,6 +83,9 @@ interface DashboardVehicleListProps {
   // Desktop tabbed view renders the Filters control on its tab row.
   onToggleFilters?: () => void
   filtersOpen?: boolean
+  // Quick actions for the desktop search-first dashboard.
+  onCheckIn?: () => void
+  onExport?: () => void
 }
 
 export const DashboardVehicleList = React.memo(function DashboardVehicleList({
@@ -110,6 +113,8 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
   outOnHireVehicles,
   onToggleFilters,
   filtersOpen,
+  onCheckIn,
+  onExport,
 }: DashboardVehicleListProps) {
   const [localViewMode, setLocalViewMode] = useState<ViewMode>('table')
   const [hoveredVehicle, setHoveredVehicle] = useState<string | null>(null)
@@ -481,6 +486,8 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
             onViewVehicle={onViewVehicle}
             onFilterChange={onFilterChange}
             onViewModeChange={onViewModeChange as any}
+            onCheckIn={onCheckIn}
+            onExport={onExport}
             className="w-full"
           />
         </div>

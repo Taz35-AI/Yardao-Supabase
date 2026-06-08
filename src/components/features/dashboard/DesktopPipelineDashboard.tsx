@@ -17,6 +17,7 @@ import {
   Search, CheckCircle, Clock, Wrench, XCircle, Truck, ChevronDown, ChevronRight,
   ArrowRight, ShieldAlert, CalendarClock, Activity, Plus, ArrowUpRight, CalendarPlus, Download, X,
 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { CheckedInVehicle } from '@/types'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
@@ -36,7 +37,6 @@ interface Props {
   onViewModeChange?: (mode: any) => void
   /** Optional quick-action handlers (wired from DashboardContent). */
   onCheckIn?: () => void
-  onBookService?: () => void
   onExport?: () => void
   className?: string
 }
@@ -147,9 +147,10 @@ function VRow({ v, onClick, showStatus }: { v: CheckedInVehicle; onClick: () => 
 
 export function DesktopPipelineDashboard({
   vehicles, outOnHireVehicles = [], onViewVehicle, onFilterChange, onViewModeChange,
-  onCheckIn, onBookService, onExport, className = '',
+  onCheckIn, onExport, className = '',
 }: Props) {
   const { user } = useAuth()
+  const router = useRouter()
   const [query, setQuery] = useState('')
   // Quick filters launched from the Alerts summary lines (no smart-search token).
   const [quickFilter, setQuickFilter] = useState<null | 'no_mot' | 'no_tax' | 'not_insured'>(null)
@@ -357,7 +358,7 @@ export function DesktopPipelineDashboard({
             <div className="flex flex-wrap gap-2 mt-3">
               {onCheckIn && <QuickAction icon={Plus} label="Check in" onClick={onCheckIn} />}
               <QuickAction icon={ArrowUpRight} label="Check out" onClick={() => onViewModeChange?.('table')} />
-              {onBookService && <QuickAction icon={CalendarPlus} label="Book service" onClick={onBookService} />}
+              <QuickAction icon={CalendarPlus} label="Book service" onClick={() => router.push('/service-bookings')} />
               {onExport && <QuickAction icon={Download} label="Export" onClick={onExport} />}
             </div>
           </div>

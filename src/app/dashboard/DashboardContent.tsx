@@ -743,6 +743,9 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
                 /* Desktop tabbed view hosts the view-switcher + Filters on its tab row. */
                 onToggleFilters={modalController.toggleFilters}
                 filtersOpen={modalController.uiModalStates.isFiltersExpanded}
+                /* Quick actions for the desktop search-first dashboard. */
+                onCheckIn={modalController.showCheckInForm}
+                onExport={businessLogic.handleExport}
                 className="w-full"
               />
 
