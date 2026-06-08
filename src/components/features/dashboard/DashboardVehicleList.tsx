@@ -33,6 +33,8 @@ import { PipelineView } from '@/components/features/dashboard/PipelineView'
 // Tabbed yard view (statuses-as-tabs + right rail) — used on DESKTOP in the
 // pipeline view. Mobile keeps the lane view above.
 import { YardTabsView } from '@/components/features/dashboard/YardTabsView'
+// Search-first desktop dashboard (replaces YardTabsView on desktop pipeline).
+import { DesktopPipelineDashboard } from '@/components/features/dashboard/DesktopPipelineDashboard'
 
 interface ServiceBooking {
   id: string
@@ -469,17 +471,16 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
   if (currentViewMode === 'pipeline') {
     return (
       <div className={`${className} w-full`}>
-        {/* Desktop (lg+): tabbed yard view + right rail. */}
+        {/* Desktop (lg+): search-first dashboard (cockpit + queues + right rail).
+            Gets the FULL in-yard list (not the search-filtered one) so its own
+            smart search and status counts span everything. */}
         <div className="hidden lg:block">
-          <YardTabsView
-            vehicles={allFilteredVehicles || displayVehicles}
+          <DesktopPipelineDashboard
+            vehicles={vehicles}
             outOnHireVehicles={outOnHireVehicles}
             onViewVehicle={onViewVehicle}
-            searchTerm={filters?.search || ''}
-            viewMode={currentViewMode as any}
+            onFilterChange={onFilterChange}
             onViewModeChange={onViewModeChange as any}
-            onToggleFilters={onToggleFilters}
-            filtersOpen={filtersOpen}
             className="w-full"
           />
         </div>
