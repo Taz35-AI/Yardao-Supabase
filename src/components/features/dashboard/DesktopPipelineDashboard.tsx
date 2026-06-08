@@ -78,6 +78,12 @@ const relTime = (iso: string): string => {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
+// Per-day localStorage key so dismissed alerts reappear after midnight.
+function alertsDismissKey(): string {
+  const d = new Date()
+  return `yardao_yard_alerts_dismissed_${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
+}
+
 // Small UK reg plate.
 function Reg({ reg }: { reg: string }) {
   return (
@@ -150,6 +156,8 @@ export function DesktopPipelineDashboard({
   const [drillContract, setDrillContract] = useState<string | null>(null)
   // Free smart-filter applied WITHIN the drilled-in cards view.
   const [drillSearch, setDrillSearch] = useState('')
+  // Alerts dismissed for today (persisted; reappear after midnight).
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set())
 
   // Working set = everything (in yard + on hire) so search spans all statuses.
   const all = useMemo(() => [...vehicles, ...outOnHireVehicles], [vehicles, outOnHireVehicles])
@@ -163,8 +171,14 @@ export function DesktopPipelineDashboard({
       'Ready': [], 'Pending checks': [], 'Repairs needed': [], 'Non-Starter': [], 'on_hire': [],
     }
     for (const v of all) m[vehicleBucket(v)].push(v)
-    // oldest first so the most-overdue surface at the top of each queue
-    for (const k of Object.keys(m) as StatusBucket[]) m[k].sort((a, b) => daysSince(b.createdAt) - daysSince(a.createdAt))
+    // Most-recently moved to the status first (newest at the top of each queue).
+    const movedTs = (v: CheckedInVehicle) => {
+      const d = vehicleBucket(v) === 'on_hire'
+        ? (toDate((v as any).hiredAt) || toDate(v.updatedAt) || toDate(v.createdAt))
+        : (toDate(v.updatedAt) || toDate(v.createdAt))
+      return d ? d.getTime() : 0
+    }
+    for (const k of Object.keys(m) as StatusBucket[]) m[k].sort((a, b) => movedTs(b) - movedTs(a))
     return m
   }, [all])
 
@@ -181,17 +195,40 @@ export function DesktopPipelineDashboard({
     return () => { cancelled = true }
   }, [user?.uid])
 
-  // Alerts: real blockers only (MOT/tax expired, ready-but-not-insured).
-  const alerts = useMemo(() => {
-    const out: { reg: string; reason: string; sub: string; v: CheckedInVehicle }[] = []
+  // Load today's dismissed alerts.
+  useEffect(() => {
+    try { const raw = localStorage.getItem(alertsDismissKey()); if (raw) setDismissed(new Set(JSON.parse(raw))) } catch { /* ignore */ }
+  }, [])
+
+  // Alerts — prioritised: MOT issues first (missing / expired / due-soon), then
+  // tax + insurance blockers, then long-running repairs. Severity drives order
+  // AND the (blended) dot colour. Dismissible for the day.
+  const allAlerts = useMemo(() => {
+    const out: { id: string; reg: string; reason: string; sub: string; sev: 0 | 1 | 2; v: CheckedInVehicle }[] = []
     for (const v of all) {
-      const mot = daysUntil(v.motExpiry), tax = daysUntil(v.taxExpiry)
-      if (mot !== null && mot < 0) out.push({ reg: v.registration, reason: 'MOT expired', sub: 'Block checkout', v })
-      else if (tax !== null && tax < 0) out.push({ reg: v.registration, reason: 'Road tax expired', sub: 'Block checkout', v })
-      else if (v.insuranceStatus === 'Not Insured' && vehicleBucket(v) === 'Ready') out.push({ reg: v.registration, reason: 'Not insured', sub: 'Ready but cannot go out', v })
+      const mot = daysUntil(v.motExpiry)
+      const tax = daysUntil(v.taxExpiry)
+      // Tier 0 — MOT (top priority)
+      if (!v.motExpiry) out.push({ id: v.id + ':nomot', reg: v.registration, reason: 'No MOT recorded', sub: 'No MOT date on file', sev: 0, v })
+      else if (mot !== null && mot < 0) out.push({ id: v.id + ':motx', reg: v.registration, reason: 'MOT expired', sub: `${Math.abs(mot)}d ago`, sev: 0, v })
+      else if (mot !== null && mot <= 30) out.push({ id: v.id + ':motd', reg: v.registration, reason: `MOT due in ${mot}d`, sub: 'Expiring soon', sev: 0, v })
+      // Tier 1 — tax + insurance blockers
+      if (tax !== null && tax < 0) out.push({ id: v.id + ':taxx', reg: v.registration, reason: 'Road tax expired', sub: 'Blocks checkout', sev: 1, v })
+      else if (tax !== null && tax <= 30) out.push({ id: v.id + ':taxd', reg: v.registration, reason: `Road tax due in ${tax}d`, sub: 'Expiring soon', sev: 1, v })
+      if (v.insuranceStatus === 'Not Insured' && vehicleBucket(v) === 'Ready') out.push({ id: v.id + ':ins', reg: v.registration, reason: 'Not insured', sub: 'Ready but cannot go out', sev: 1, v })
+      // Tier 2 — other
+      if (vehicleBucket(v) === 'Repairs needed' && daysSince(v.createdAt) > 7) out.push({ id: v.id + ':rep', reg: v.registration, reason: `In repairs ${daysSince(v.createdAt)}d`, sub: 'Long-running', sev: 2, v })
     }
+    out.sort((a, b) => a.sev - b.sev)
     return out
   }, [all])
+  const alerts = useMemo(() => allAlerts.filter(a => !dismissed.has(a.id)), [allAlerts, dismissed])
+  const clearAlertsForToday = () => {
+    const next = new Set(dismissed)
+    for (const a of alerts) next.add(a.id)
+    setDismissed(next)
+    try { localStorage.setItem(alertsDismissKey(), JSON.stringify([...next])) } catch { /* ignore */ }
+  }
 
   // Contract breakdown for an expanded status card.
   const breakdown = (b: StatusBucket) => {
@@ -209,20 +246,7 @@ export function DesktopPipelineDashboard({
   const openFull = (b: StatusBucket, contract?: string) => { setDrillStatus(b); setDrillContract(contract ?? null); setDrillSearch('') }
   const closeDrill = () => { setDrillStatus(null); setDrillContract(null); setDrillSearch('') }
 
-  // Ready summary buckets (by size + long-stay).
-  const readySummary = useMemo(() => {
-    const ready = byBucket['Ready']
-    const bySize = new Map<string, number>()
-    let longStay = 0
-    for (const v of ready) {
-      const k = v.size?.trim() || 'Unspecified'
-      bySize.set(k, (bySize.get(k) || 0) + 1)
-      if (daysSince(v.createdAt) >= LONG_STAY_DAYS) longStay++
-    }
-    return { total: ready.length, bySize: [...bySize.entries()].sort((a, b) => b[1] - a[1]), longStay }
-  }, [byBucket])
-
-  const QUEUES: StatusBucket[] = ['Pending checks', 'Repairs needed', 'Non-Starter']
+  const QUEUES: StatusBucket[] = ['Ready', 'Pending checks', 'Repairs needed', 'Non-Starter', 'on_hire']
   const inYardCount = vehicles.length
   const onHireCount = outOnHireVehicles.length
 
@@ -376,69 +400,26 @@ export function DesktopPipelineDashboard({
                 const cfg = BUCKETS.find(x => x.key === b)!
                 const list = byBucket[b]
                 return (
-                  <div key={b} className="rounded-2xl bg-[#fbfdfb] border border-[#dfe8e1] p-4 min-h-[220px]">
+                  <div key={b} className="rounded-2xl bg-[#fbfdfb] border border-[#dfe8e1] p-4 flex flex-col">
                     <div className="flex items-center justify-between mb-2">
                       <span className="inline-flex items-center gap-2 font-extrabold text-[13px] text-[#07251d]">
                         <span className="w-2.5 h-2.5 rounded-full" style={{ background: cfg.color }} />{cfg.label}
                       </span>
                       <span className="text-[12px] font-black rounded-full px-2 py-0.5" style={{ background: '#eef4ef', color: '#153d2d' }}>{list.length}</span>
                     </div>
-                    {list.length === 0 ? (
-                      <p className="text-[12px] text-[#9bafa5] py-6 text-center">Nothing here 🎉</p>
-                    ) : (
-                      <div>{list.slice(0, 5).map(v => <VRow key={v.id} v={v} onClick={() => onViewVehicle(v)} />)}</div>
-                    )}
+                    <div className="flex-1">
+                      {list.length === 0 ? (
+                        <p className="text-[12px] text-[#9bafa5] py-5 text-center">Nothing here</p>
+                      ) : (
+                        list.slice(0, 3).map(v => <VRow key={v.id} v={v} onClick={() => onViewVehicle(v)} />)
+                      )}
+                    </div>
                     <button type="button" onClick={() => openFull(b)} className="mt-3 w-full text-[11px] font-extrabold text-[#285b44] border border-dashed border-[#cbd9d1] rounded-lg py-2 hover:bg-[#f0f7f0] flex items-center justify-center gap-1">
                       Open all {cfg.label.toLowerCase()} <ArrowRight className="w-3 h-3" />
                     </button>
                   </div>
                 )
               })}
-            </section>
-
-            {/* Ready & On-hire as summaries, not lists */}
-            <section className="grid grid-cols-2 gap-3">
-              <div className="rounded-2xl bg-white border border-[#dfe8e1] shadow-sm p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <h3 className="font-black tracking-tight inline-flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#16a34a' }} />Ready · {readySummary.total}</h3>
-                    <p className="text-[12px] text-[#6f8177] mt-0.5">Available to rent — summarised, not listed.</p>
-                  </div>
-                  <button type="button" onClick={() => openFull('Ready')} className="text-[11px] font-extrabold text-[#285b44]">Show list →</button>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {readySummary.bySize.slice(0, 5).map(([size, n]) => (
-                    <div key={size} className="rounded-xl border border-[#dfe8e1] bg-[#fbfdfb] p-2.5">
-                      <div className="text-xl font-black tracking-tight text-[#07251d]">{n}</div>
-                      <div className="text-[11px] text-[#6f8177] font-bold truncate">{size}</div>
-                    </div>
-                  ))}
-                  <div className="rounded-xl border border-[#dfe8e1] bg-[#fbfdfb] p-2.5">
-                    <div className="text-xl font-black tracking-tight" style={{ color: readySummary.longStay ? '#a25a00' : '#07251d' }}>{readySummary.longStay}</div>
-                    <div className="text-[11px] text-[#6f8177] font-bold">Long-stay &gt;{LONG_STAY_DAYS}d</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-2xl bg-white border border-[#dfe8e1] shadow-sm p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <h3 className="font-black tracking-tight inline-flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#0a6b4d' }} />On hire · {count('on_hire')}</h3>
-                    <p className="text-[12px] text-[#6f8177] mt-0.5">Currently out with customers.</p>
-                  </div>
-                  <button type="button" onClick={() => openFull('on_hire')} className="text-[11px] font-extrabold text-[#285b44]">Show list →</button>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-xl border border-[#dfe8e1] bg-[#fbfdfb] p-3">
-                    <div className="text-2xl font-black tracking-tight text-[#07251d]">{inYardCount}</div>
-                    <div className="text-[11px] text-[#6f8177] font-bold">In yard now</div>
-                  </div>
-                  <div className="rounded-xl border border-[#dfe8e1] bg-[#fbfdfb] p-3">
-                    <div className="text-2xl font-black tracking-tight text-[#07251d]">{onHireCount}</div>
-                    <div className="text-[11px] text-[#6f8177] font-bold">Out on hire</div>
-                  </div>
-                </div>
-              </div>
             </section>
           </>
         )}
@@ -455,24 +436,32 @@ export function DesktopPipelineDashboard({
         </section>
 
         <section className="rounded-2xl bg-white border border-[#dfe8e1] shadow-sm p-4">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="font-black tracking-tight">Alerts</h3>
-            <span className="text-[12px] font-black rounded-full px-2 py-0.5" style={{ background: '#fff0ee', color: '#bf1d19' }}>{alerts.length}</span>
+          <div className="flex items-center justify-between mb-0.5">
+            <h3 className="font-black tracking-tight inline-flex items-center gap-2">
+              Alerts
+              <span className="text-[11px] font-black rounded-full px-2 py-0.5 bg-[#f3f5f4] text-[#47566a]">{alerts.length}</span>
+            </h3>
+            {alerts.length > 0 && (
+              <button type="button" onClick={clearAlertsForToday} className="text-[11px] font-extrabold text-[#9bafa5] hover:text-[#285b44]">Clear for today</button>
+            )}
           </div>
-          <p className="text-[12px] text-[#6f8177] mb-2">Only blockers — expired MOT/tax, ready-but-uninsured.</p>
+          <p className="text-[11px] text-[#9bafa5] mb-2">MOT first, then tax &amp; insurance, then repairs · clears till midnight.</p>
           {alerts.length === 0 ? (
-            <p className="text-[12px] text-[#9bafa5] py-3">No blockers right now.</p>
+            <p className="text-[12px] text-[#9bafa5] py-3">All clear for today 🎉</p>
           ) : (
-            <div className="space-y-0.5 max-h-72 overflow-y-auto">
-              {alerts.slice(0, 12).map((a, i) => (
-                <button key={a.v.id + i} type="button" onClick={() => onViewVehicle(a.v)} className="w-full flex items-start gap-2 py-2 border-b border-[#eef2ee] last:border-b-0 text-left hover:bg-[#f6faf6] rounded-lg px-1">
-                  <ShieldAlert className="w-3.5 h-3.5 text-[#dc2626] mt-0.5 flex-shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-[12px] font-bold text-[#07251d]"><span className="font-mono">{a.reg}</span> · {a.reason}</div>
-                    <div className="text-[11px] text-[#6f8177]">{a.sub}</div>
-                  </div>
-                </button>
-              ))}
+            <div className="space-y-0.5 max-h-[440px] overflow-y-auto pr-1">
+              {alerts.map(a => {
+                const dot = a.sev === 0 ? '#c2410c' : a.sev === 1 ? '#a25a00' : '#8a9b91'
+                return (
+                  <button key={a.id} type="button" onClick={() => onViewVehicle(a.v)} className="w-full flex items-start gap-2 py-2 border-b border-[#f1f4f1] last:border-b-0 text-left hover:bg-[#f8faf8] rounded-lg px-1">
+                    <span className="w-1.5 h-1.5 rounded-full mt-[7px] flex-shrink-0" style={{ background: dot }} />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[12px] text-[#3a4a42]"><span className="font-mono font-bold text-[#07251d]">{a.reg}</span> · {a.reason}</div>
+                      <div className="text-[11px] text-[#9bafa5]">{a.sub}</div>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           )}
         </section>

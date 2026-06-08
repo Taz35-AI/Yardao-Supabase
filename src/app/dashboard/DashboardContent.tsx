@@ -321,7 +321,13 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
               )}
             </div>
 
-            {/* Center: Search bar */}
+            {/* Center: Search bar.
+                Hidden on the desktop search-first dashboard (it has its own
+                smart search), so we don't show two search bars. A flex-1 spacer
+                keeps the topbar layout balanced. */}
+            {(isDesktop && viewMode === 'pipeline') ? (
+              <div className="flex-1" />
+            ) : (
             <div className="flex-1 relative" data-tour="search">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#8a9e94] w-4 h-4" />
               <input
@@ -340,6 +346,7 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
                 </button>
               )}
             </div>
+            )}
 
             {/* Right: Actions */}
             <div className="flex items-center gap-2 flex-shrink-0">
