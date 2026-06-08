@@ -22,6 +22,10 @@ import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { activityLogService, type ActivityRecord } from '@/lib/services/activityLogService'
 import { buildVocab, parseQuery, matchesQuery, vehicleBucket, type StatusBucket } from '@/lib/search/smartYardSearch'
+// The old desktop cards view — reused as the "drill-in" destination when a
+// status's "Open full list" is clicked.
+import { YardTabsView } from '@/components/features/dashboard/YardTabsView'
+import { ArrowLeft } from 'lucide-react'
 
 interface Props {
   vehicles: CheckedInVehicle[]
@@ -84,8 +88,19 @@ function Reg({ reg }: { reg: string }) {
   )
 }
 
+// Status pill metadata per bucket (used when results span multiple statuses).
+const STATUS_META: Record<StatusBucket, { label: string; color: string; bg: string }> = {
+  'Ready':          { label: 'Ready',       color: '#0d6b2e', bg: '#e6f4ec' },
+  'Pending checks': { label: 'Pending',     color: '#a25a00', bg: '#fff4e4' },
+  'Repairs needed': { label: 'Repairs',     color: '#bf1d19', bg: '#fff0ee' },
+  'Non-Starter':    { label: 'Non-starter', color: '#47566a', bg: '#eef1f4' },
+  'on_hire':        { label: 'On hire',     color: '#0a6b4d', bg: '#e3f3ec' },
+}
+
 // One compact vehicle row used in queues and search results.
-function VRow({ v, onClick }: { v: CheckedInVehicle; onClick: () => void }) {
+// `showStatus` adds the status pill — essential in search results (which span
+// every status), redundant inside a single-status queue column.
+function VRow({ v, onClick, showStatus }: { v: CheckedInVehicle; onClick: () => void; showStatus?: boolean }) {
   const days = (v as any).hireStatus === 'Out on Hire' ? daysSince((v as any).hiredAt) : daysSince(v.createdAt)
   const mot = daysUntil(v.motExpiry)
   const tax = daysUntil(v.taxExpiry)
@@ -96,6 +111,7 @@ function VRow({ v, onClick }: { v: CheckedInVehicle; onClick: () => void }) {
     notInsured ? { t: 'Not insured', c: '#a25a00', bg: '#fff4e4' } :
     mot !== null && mot <= 30 ? { t: `MOT ${mot}d`, c: '#a25a00', bg: '#fff4e4' } :
     days >= LONG_STAY_DAYS ? { t: `${days}d`, c: '#47566a', bg: '#eef1f4' } : null
+  const meta = STATUS_META[vehicleBucket(v)]
   return (
     <button type="button" onClick={onClick}
       className="w-full grid grid-cols-[auto_1fr_auto] gap-2 items-center py-2 border-b border-[#eef2ee] last:border-b-0 text-left hover:bg-[#f6faf6] rounded-lg px-1 transition-colors">
@@ -106,9 +122,16 @@ function VRow({ v, onClick }: { v: CheckedInVehicle; onClick: () => void }) {
           {[v.colour, v.size, v.contract || 'No contract'].filter(Boolean).join(' · ')}
         </div>
       </div>
-      {flag && (
-        <span className="text-[10px] font-extrabold rounded-full px-2 py-1 whitespace-nowrap" style={{ color: flag.c, background: flag.bg }}>{flag.t}</span>
-      )}
+      <div className="flex flex-col items-end gap-1">
+        {showStatus && (
+          <span className="text-[10px] font-extrabold rounded-full px-2 py-0.5 inline-flex items-center gap-1 whitespace-nowrap" style={{ color: meta.color, background: meta.bg }}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: meta.color }} />{meta.label}
+          </span>
+        )}
+        {flag && (
+          <span className="text-[10px] font-extrabold rounded-full px-2 py-0.5 whitespace-nowrap" style={{ color: flag.c, background: flag.bg }}>{flag.t}</span>
+        )}
+      </div>
     </button>
   )
 }
@@ -121,6 +144,12 @@ export function DesktopPipelineDashboard({
   const [query, setQuery] = useState('')
   const [expanded, setExpanded] = useState<StatusBucket | null>(null)
   const [activity, setActivity] = useState<ActivityRecord[]>([])
+  // When set, we drill into the old cards view (YardTabsView) on this status,
+  // optionally narrowed to a single contract (clicking a breakdown row).
+  const [drillStatus, setDrillStatus] = useState<StatusBucket | null>(null)
+  const [drillContract, setDrillContract] = useState<string | null>(null)
+  // Free smart-filter applied WITHIN the drilled-in cards view.
+  const [drillSearch, setDrillSearch] = useState('')
 
   // Working set = everything (in yard + on hire) so search spans all statuses.
   const all = useMemo(() => [...vehicles, ...outOnHireVehicles], [vehicles, outOnHireVehicles])
@@ -174,11 +203,11 @@ export function DesktopPipelineDashboard({
     return [...map.entries()].sort((a, b) => b[1] - a[1])
   }
 
-  const openFull = (b: StatusBucket) => {
-    if (b === 'on_hire') { onViewModeChange?.('table'); return }
-    onFilterChange?.('status', FILTER_VALUE[b])
-    onViewModeChange?.('table')
-  }
+  // "Open full list" → drill into the old cards view (YardTabsView) on that tab,
+  // not the plain table. Optionally narrowed to one contract (breakdown row).
+  // A Back button returns to the search-first overview.
+  const openFull = (b: StatusBucket, contract?: string) => { setDrillStatus(b); setDrillContract(contract ?? null); setDrillSearch('') }
+  const closeDrill = () => { setDrillStatus(null); setDrillContract(null); setDrillSearch('') }
 
   // Ready summary buckets (by size + long-stay).
   const readySummary = useMemo(() => {
@@ -196,6 +225,61 @@ export function DesktopPipelineDashboard({
   const QUEUES: StatusBucket[] = ['Pending checks', 'Repairs needed', 'Non-Starter']
   const inYardCount = vehicles.length
   const onHireCount = outOnHireVehicles.length
+
+  // ── Drill-in: the original cards view (YardTabsView) on the chosen status,
+  //    optionally narrowed to a single contract. ──
+  if (drillStatus) {
+    const matchContract = (v: CheckedInVehicle) => {
+      if (!drillContract) return true
+      if (drillContract === 'No contract') return !v.contract || !String(v.contract).trim()
+      return String(v.contract || '').trim().toLowerCase() === drillContract.toLowerCase()
+    }
+    let dv = drillContract ? vehicles.filter(matchContract) : vehicles
+    let dh = drillContract ? outOnHireVehicles.filter(matchContract) : outOnHireVehicles
+    // Further smart-filter within the drill (reg, size, colour, make, …). Tab
+    // counts in YardTabsView update to reflect the filtered set.
+    const dq = parseQuery(drillSearch, vocab)
+    if (!dq.isEmpty) {
+      dv = dv.filter(v => matchesQuery(v, dq))
+      dh = dh.filter(v => matchesQuery(v, dq))
+    }
+    return (
+      <div className={className}>
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          <button type="button" onClick={closeDrill}
+            className="inline-flex items-center gap-1.5 text-[13px] font-extrabold text-[#285b44] hover:text-[#07251d] transition-colors">
+            <ArrowLeft className="w-4 h-4" /> Back to search
+          </button>
+          {drillContract && (
+            <span className="inline-flex items-center gap-1.5 text-[12px] font-extrabold rounded-full px-2.5 py-1 bg-[#eef7ef] text-[#0d6b2e]">
+              {drillContract}
+              <button type="button" onClick={() => setDrillContract(null)} className="hover:text-[#07251d]"><X className="w-3 h-3" /></button>
+            </span>
+          )}
+          <div className="relative flex-1 min-w-[220px] max-w-md">
+            <Search className="w-4 h-4 text-[#9bafa5] absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              value={drillSearch}
+              onChange={e => setDrillSearch(e.target.value)}
+              placeholder="Filter these — reg, size, colour, make…"
+              className="w-full h-10 pl-9 pr-9 rounded-xl border border-[#dfe8e1] bg-white text-[13px] font-semibold text-[#06251a] placeholder:text-[#9bafa5] outline-none focus:border-[#8fcc16]"
+            />
+            {drillSearch && (
+              <button type="button" onClick={() => setDrillSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9bafa5] hover:text-[#06251a]"><X className="w-4 h-4" /></button>
+            )}
+          </div>
+        </div>
+        <YardTabsView
+          vehicles={dv}
+          outOnHireVehicles={dh}
+          onViewVehicle={onViewVehicle}
+          onViewModeChange={onViewModeChange}
+          initialTab={drillStatus as any}
+          className="w-full"
+        />
+      </div>
+    )
+  }
 
   return (
     <div className={`grid grid-cols-[1fr_360px] gap-4 ${className}`}>
@@ -245,14 +329,19 @@ export function DesktopPipelineDashboard({
                 </button>
                 {isOpen && (
                   <div className="px-4 pb-4 -mt-1">
-                    <div className="space-y-1 max-h-44 overflow-y-auto">
+                    <div className="space-y-0.5 max-h-44 overflow-y-auto">
                       {breakdown(key).map(([name, n]) => (
-                        <div key={name} className="flex items-center justify-between text-[12px]">
-                          <span className="text-[#4a5e54] truncate">{name}</span>
-                          <span className="font-extrabold text-[#07251d] tabular-nums">{n}</span>
-                        </div>
+                        <button key={name} type="button" onClick={() => openFull(key, name)}
+                          title={`Open ${label} · ${name}`}
+                          className="group w-full flex items-center justify-between gap-2 text-[12px] rounded-lg px-2 py-1 text-left hover:bg-[#eef7ef] transition-colors">
+                          <span className="text-[#4a5e54] group-hover:text-[#0d6b2e] group-hover:font-bold truncate inline-flex items-center gap-1 min-w-0">
+                            <span className="truncate">{name}</span>
+                            <ArrowRight className="w-3 h-3 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </span>
+                          <span className="font-extrabold text-[#07251d] tabular-nums flex-shrink-0">{n}</span>
+                        </button>
                       ))}
-                      {count(key) === 0 && <div className="text-[12px] text-[#9bafa5]">None</div>}
+                      {count(key) === 0 && <div className="text-[12px] text-[#9bafa5] px-2">None</div>}
                     </div>
                     <button type="button" onClick={() => openFull(key)} className="mt-3 w-full text-[11px] font-extrabold text-[#285b44] border border-dashed border-[#cbd9d1] rounded-lg py-2 hover:bg-[#f0f7f0] flex items-center justify-center gap-1">
                       Open full list <ArrowRight className="w-3 h-3" />
@@ -275,7 +364,7 @@ export function DesktopPipelineDashboard({
               <p className="text-sm text-[#6f8177] py-8 text-center">No vehicles match “{query}”.</p>
             ) : (
               <div className="grid grid-cols-2 gap-x-6">
-                {results.slice(0, 50).map(v => <VRow key={v.id} v={v} onClick={() => onViewVehicle(v)} />)}
+                {results.slice(0, 50).map(v => <VRow key={v.id} v={v} onClick={() => onViewVehicle(v)} showStatus />)}
               </div>
             )}
             {results.length > 50 && <p className="text-[11px] text-[#9bafa5] mt-2 text-center">Showing first 50 of {results.length}.</p>}

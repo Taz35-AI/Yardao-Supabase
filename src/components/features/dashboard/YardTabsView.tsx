@@ -42,6 +42,8 @@ interface YardTabsViewProps {
   onViewModeChange?: (mode: ViewMode) => void
   onToggleFilters?: () => void
   filtersOpen?: boolean
+  /** Open on a specific status tab (used when drilling in from the search-first dashboard). */
+  initialTab?: TabKey
   className?: string
 }
 
@@ -222,6 +224,7 @@ export const YardTabsView = React.memo(function YardTabsView({
   onViewModeChange,
   onToggleFilters,
   filtersOpen = false,
+  initialTab,
   className = '',
 }: YardTabsViewProps) {
   const VIEW_BTNS: { mode: ViewMode; icon: typeof Columns3; label: string }[] = [
@@ -230,7 +233,9 @@ export const YardTabsView = React.memo(function YardTabsView({
     { mode: 'cards', icon: LayoutGrid, label: 'Cards' },
     { mode: 'layout', icon: MapIcon, label: 'Map' },
   ]
-  const [activeTab, setActiveTab] = useState<TabKey>('Ready')
+  const [activeTab, setActiveTab] = useState<TabKey>(initialTab || 'Ready')
+  // Follow the drill-in status when the parent changes it.
+  useEffect(() => { if (initialTab) setActiveTab(initialTab) }, [initialTab])
   // Real movement feed (check-outs, hires, transfers, garage) with who + when.
   const { checkoutHistory } = useCheckoutHistory()
 
