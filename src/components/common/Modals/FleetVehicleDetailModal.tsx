@@ -34,6 +34,7 @@ import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
 import { vehicleLookupService, type VehicleLookupResult } from '@/lib/services/vehicleLookupService'
 import { VehicleServiceHistoryPanel } from '@/components/fleet/VehicleServiceHistoryPanel'
+import { VehicleMovementHistoryPanel } from '@/components/fleet/VehicleMovementHistoryPanel'
 
 type TFunc = (key: string, vars?: Record<string, string | number>) => string
 
@@ -148,7 +149,7 @@ export function FleetVehicleDetailModal({
 }: FleetVehicleDetailModalProps) {
 
   const t = useT()
-  const [tab, setTab] = React.useState<'details' | 'history'>('details')
+  const [tab, setTab] = React.useState<'details' | 'history' | 'movement'>('details')
   const [showInfo, setShowInfo] = React.useState(false)
   const [infoData, setInfoData] = React.useState<VehicleLookupResult | null>(null)
   const [infoLoading, setInfoLoading] = React.useState(false)
@@ -282,6 +283,7 @@ export function FleetVehicleDetailModal({
           {([
             { key: 'details' as const, label: t('fleet.serviceHistory.tabDetails') },
             { key: 'history' as const, label: t('fleet.serviceHistory.tabHistory') },
+            { key: 'movement' as const, label: t('fleet.movementHistory.tab') },
           ]).map(tabDef => (
             <button
               key={tabDef.key}
@@ -502,6 +504,16 @@ export function FleetVehicleDetailModal({
         {tab === 'history' && (
           <div className="flex-1 overflow-y-auto">
             <VehicleServiceHistoryPanel
+              registration={safeString(vehicle.registration)}
+              make={safeString(vehicle.make)}
+              model={safeString(vehicle.model)}
+            />
+          </div>
+        )}
+
+        {tab === 'movement' && (
+          <div className="flex-1 overflow-y-auto">
+            <VehicleMovementHistoryPanel
               registration={safeString(vehicle.registration)}
               make={safeString(vehicle.make)}
               model={safeString(vehicle.model)}

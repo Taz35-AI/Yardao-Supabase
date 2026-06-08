@@ -87,6 +87,32 @@ export const activityLogService = {
     return toCamelList<ActivityRecord>(data)
   },
 
+  /**
+   * Full event timeline for ONE vehicle (matched by registration), within the
+   * last `days`, newest first. Powers the Fleet "Movement History" tab and the
+   * Reports vehicle-history export.
+   */
+  async getForVehicle(
+    organizationId: string,
+    registration: string,
+    days = 365,
+    limit = 500,
+  ): Promise<ActivityRecord[]> {
+    if (!organizationId || !registration) return []
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - days)
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select('*')
+      .eq('organization_id', organizationId)
+      .eq('registration', registration.toUpperCase())
+      .gte('created_at', cutoff.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    if (error) { logger.error('activityLog getForVehicle failed:', error.message); return [] }
+    return toCamelList<ActivityRecord>(data)
+  },
+
   /** Live subscription — fires onChange on any insert for this org. Returns an unsubscribe fn. */
   subscribe(organizationId: string, onChange: () => void): () => void {
     const channel = supabase

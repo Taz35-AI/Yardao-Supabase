@@ -24,6 +24,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { userProfileService } from '@/lib/firestore'
 import type { CheckoutDestination, TransferResult } from '@/types/transfer'
 import { logger } from '@/lib/logger'
+import { activityLogService } from '@/lib/services/activityLogService'
 
 const CHECKED_IN_VEHICLES = 'checked_in_vehicles'
 const SERVICE_BOOKINGS = 'service_bookings'
@@ -116,6 +117,19 @@ export function useVehicleTransfers() {
 
         logger.log('✅ Branch transfer initiated successfully (parking space released)')
 
+        // Movement timeline: record the outbound transfer (fire-and-forget).
+        activityLogService.log({
+          organizationId: vehicleData.organization_id,
+          actorId: user.uid,
+          actorName: userDisplayName,
+          actionType: 'transfer',
+          summary: `Transfer to ${destination.branchName || 'another branch'}`,
+          registration: vehicleData.registration,
+          entityId: vehicleId,
+          branchId: vehicleData.branch_id ?? null,
+          details: { from: destination.sourceBranchName ?? null, to: destination.branchName ?? null },
+        })
+
         return {
           success: true,
           vehicleId,
@@ -168,6 +182,19 @@ export function useVehicleTransfers() {
         if (updateError) throw updateError
 
         logger.log('✅ External garage checkout completed successfully (parking space released)')
+
+        // Movement timeline: record the garage check-out (fire-and-forget).
+        activityLogService.log({
+          organizationId: vehicleData.organization_id,
+          actorId: user.uid,
+          actorName: userDisplayName,
+          actionType: 'garage_out',
+          summary: `Sent to ${destination.garageName || 'external garage'}`,
+          registration: vehicleData.registration,
+          entityId: vehicleId,
+          branchId: vehicleData.branch_id ?? null,
+          details: { garageName: destination.garageName ?? null, serviceBookingId: destination.serviceBookingId ?? null },
+        })
 
         return {
           success: true,
@@ -456,6 +483,31 @@ export function useVehicleTransfers() {
       .update(vehicleUpdate)
       .eq('id', vehicleId)
     if (vehicleUpdateError) throw vehicleUpdateError
+
+    // Movement timeline: record the garage RETURN, with days-out computed from
+    // the original checkout timestamp (fire-and-forget). This is the event the
+    // old per-vehicle history was missing.
+    {
+      const garageName = vehicleData.external_garage_name || 'external garage'
+      let daysOut: number | null = null
+      if (vehicleData.checked_out_to_garage_at) {
+        const out = new Date(vehicleData.checked_out_to_garage_at).getTime()
+        if (!isNaN(out)) daysOut = Math.max(0, Math.floor((new Date().getTime() - out) / 86400000))
+      }
+      activityLogService.log({
+        organizationId: vehicleData.organization_id,
+        actorId: user.uid,
+        actorName: userDisplayName,
+        actionType: 'garage_return',
+        summary: daysOut != null
+          ? `Returned from ${garageName} (${daysOut} day${daysOut === 1 ? '' : 's'} out)`
+          : `Returned from ${garageName}`,
+        registration: vehicleData.registration,
+        entityId: vehicleId,
+        branchId: vehicleData.branch_id ?? null,
+        details: { garageName, daysOut, serviceBookingId: serviceBookingId ?? null },
+      })
+    }
 
     // ✅ STEP 2: Auto-complete service booking (only if it still exists)
     if (serviceBookingId) {
