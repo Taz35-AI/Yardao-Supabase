@@ -222,7 +222,10 @@ export function EditPartModal({ isOpen, onClose, onSuccess, part }: EditPartModa
         unit,
         supplier: supplier.trim() || '',
         comments: comments.trim() || '',
-        isOneOff: isOneOff || undefined,
+        // is_one_off is NOT NULL in the DB — always send a real boolean.
+        // Sending undefined here would be coerced to null by updatePart and
+        // rejected with a 400 (not-null violation) when editing a normal part.
+        isOneOff: !!isOneOff,
         linkedRegistration: isOneOff && linkedRegistration.trim() ? linkedRegistration.trim() : null,
       })
 
