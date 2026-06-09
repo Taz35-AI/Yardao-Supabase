@@ -325,7 +325,7 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
                 Hidden on the desktop search-first dashboard (it has its own
                 smart search), so we don't show two search bars. A flex-1 spacer
                 keeps the topbar layout balanced. */}
-            {(isDesktop && viewMode === 'pipeline') ? (
+            {(viewMode === 'pipeline') ? (
               <div className="flex-1" />
             ) : (
             <div className="flex-1 relative" data-tour="search">
