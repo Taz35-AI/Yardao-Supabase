@@ -35,6 +35,8 @@ interface Props {
   /** Drive the existing yard list when "Open full list" is clicked. */
   onFilterChange?: (key: any, value: any) => void
   onViewModeChange?: (mode: any) => void
+  /** Branch name for the hero title ("Search <branch> yard"). */
+  branchName?: string
   /** Optional quick-action handlers (wired from DashboardContent). */
   onCheckIn?: () => void
   onExport?: () => void
@@ -161,7 +163,7 @@ function VRow({ v, onClick, showStatus }: { v: CheckedInVehicle; onClick: () => 
 
 export function DesktopPipelineDashboard({
   vehicles, outOnHireVehicles = [], onViewVehicle, onFilterChange, onViewModeChange,
-  onCheckIn, onExport, sizeFilter = null, onSizeFilterChange, className = '',
+  branchName, onCheckIn, onExport, sizeFilter = null, onSizeFilterChange, className = '',
 }: Props) {
   const { user } = useAuth()
   const router = useRouter()
@@ -367,7 +369,7 @@ export function DesktopPipelineDashboard({
         <section className="rounded-3xl p-6 text-white relative overflow-hidden" style={{ background: '#013b2c' }}>
           <div className="absolute -right-16 -top-20 w-64 h-64 rounded-full" style={{ background: 'rgba(143,204,22,.16)' }} />
           <div className="relative">
-            <h1 className="text-2xl font-black tracking-tight">Search the yard</h1>
+            <h1 className="text-2xl font-black tracking-tight">{branchName ? `Search ${branchName} yard` : 'Search the yard'}</h1>
             <p className="text-[#cce0d8] text-sm mt-1 mb-4">Find any vehicle by reg, make, colour, contract, status — or any combination.</p>
             <div className="flex items-center gap-2 bg-white rounded-2xl px-4 h-14 shadow-lg">
               <Search className="w-5 h-5 text-[#74877d]" />

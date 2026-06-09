@@ -754,6 +754,7 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
                 /* Quick actions for the desktop search-first dashboard. */
                 onCheckIn={modalController.showCheckInForm}
                 onExport={businessLogic.handleExport}
+                branchName={dataLayer.currentBranch?.name}
                 /* Size facet driven by the Total card's "Filter by Size" modal. */
                 sizeFilter={pipelineSize}
                 onSizeFilterChange={setPipelineSize}

@@ -86,6 +86,8 @@ interface DashboardVehicleListProps {
   // Quick actions for the desktop search-first dashboard.
   onCheckIn?: () => void
   onExport?: () => void
+  // Branch name for the search-first dashboard hero title.
+  branchName?: string
   // Size facet (driven by the Total summary card's "Filter by Size" modal).
   sizeFilter?: string | null
   onSizeFilterChange?: (size: string | null) => void
@@ -118,6 +120,7 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
   filtersOpen,
   onCheckIn,
   onExport,
+  branchName,
   sizeFilter,
   onSizeFilterChange,
 }: DashboardVehicleListProps) {
@@ -492,6 +495,7 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
           onViewModeChange={onViewModeChange as any}
           onCheckIn={onCheckIn}
           onExport={onExport}
+          branchName={branchName}
           sizeFilter={sizeFilter}
           onSizeFilterChange={onSizeFilterChange}
           className="w-full"
