@@ -325,7 +325,7 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
                 Hidden on the desktop search-first dashboard (it has its own
                 smart search), so we don't show two search bars. A flex-1 spacer
                 keeps the topbar layout balanced. */}
-            {(isDesktop && viewMode === 'pipeline') ? (
+            {(viewMode === 'pipeline') ? (
               <div className="flex-1" />
             ) : (
             <div className="flex-1 relative" data-tour="search">
@@ -458,7 +458,14 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
             hasActiveFilters={!!dataLayer.dashboardLogic.activeFilter}
             statusSizeBreakdown={dataLayer.dashboardLogic.statusSizeBreakdown}
             onSizeCardClick={dataLayer.dashboardLogic.handleSizeCardClick}
-            onStatusCardClick={dataLayer.dashboardLogic.handleStatusCardClick}
+            onStatusCardClick={() => {
+              // On the search-first pipeline dashboard the old status-breakdown
+              // modal isn't wired to anything useful, so clicking the Total pill
+              // appeared to do nothing. Instead, drop into the full yard list
+              // (Total = all vehicles) — the same table the other filters use.
+              if (viewMode === 'pipeline') { dataLayer.dashboardLogic.clearAllFilters(); setViewMode('table') }
+              else { dataLayer.dashboardLogic.handleStatusCardClick() }
+            }}
             onStatusSizeFilter={dataLayer.dashboardLogic.handleStatusSizeFilter}
             onClearFilters={dataLayer.dashboardLogic.clearAllFilters}
             className="w-full"

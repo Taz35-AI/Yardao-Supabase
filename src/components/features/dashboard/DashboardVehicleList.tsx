@@ -476,30 +476,19 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
   if (currentViewMode === 'pipeline') {
     return (
       <div className={`${className} w-full`}>
-        {/* Desktop (lg+): search-first dashboard (cockpit + queues + right rail).
-            Gets the FULL in-yard list (not the search-filtered one) so its own
-            smart search and status counts span everything. */}
-        <div className="hidden lg:block">
-          <DesktopPipelineDashboard
-            vehicles={vehicles}
-            outOnHireVehicles={outOnHireVehicles}
-            onViewVehicle={onViewVehicle}
-            onFilterChange={onFilterChange}
-            onViewModeChange={onViewModeChange as any}
-            onCheckIn={onCheckIn}
-            onExport={onExport}
-            className="w-full"
-          />
-        </div>
-        {/* Mobile (<lg): original lane/kanban view (unchanged backup). */}
-        <div className="lg:hidden">
-          <PipelineView
-            vehicles={allFilteredVehicles || displayVehicles}
-            outOnHireVehicles={outOnHireVehicles}
-            onViewVehicle={onViewVehicle}
-            className="w-full"
-          />
-        </div>
+        {/* PREVIEW: the search-first dashboard on ALL sizes (responsive), so we
+            can see the desktop view adapted for mobile. (On main, mobile uses
+            PipelineView — this branch swaps it for the new layout.) */}
+        <DesktopPipelineDashboard
+          vehicles={vehicles}
+          outOnHireVehicles={outOnHireVehicles}
+          onViewVehicle={onViewVehicle}
+          onFilterChange={onFilterChange}
+          onViewModeChange={onViewModeChange as any}
+          onCheckIn={onCheckIn}
+          onExport={onExport}
+          className="w-full"
+        />
       </div>
     )
   }

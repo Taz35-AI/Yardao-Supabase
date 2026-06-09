@@ -345,9 +345,10 @@ export function DesktopPipelineDashboard({
   }
 
   return (
-    <div className={`grid grid-cols-[1fr_360px] gap-4 ${className}`}>
-      {/* ── Main column ── */}
-      <div className="space-y-4">
+    <div className={`grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 ${className}`}>
+      {/* ── Main column ── (flex so we can reorder cockpit below results on
+          mobile while searching — see the order class on the cockpit section) */}
+      <div className="flex flex-col gap-4">
         {/* Hero + smart search */}
         <section className="rounded-3xl p-6 text-white relative overflow-hidden" style={{ background: '#013b2c' }}>
           <div className="absolute -right-16 -top-20 w-64 h-64 rounded-full" style={{ background: 'rgba(143,204,22,.16)' }} />
@@ -374,8 +375,10 @@ export function DesktopPipelineDashboard({
           </div>
         </section>
 
-        {/* Status cockpit */}
-        <section className="grid grid-cols-5 gap-3">
+        {/* Status cockpit. While searching on mobile, drop it BELOW the results
+            (order-last) so results appear right under the search bar; desktop
+            keeps the natural cockpit-then-results order (lg:order-none). */}
+        <section className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 ${showResults ? 'order-last lg:order-none' : ''}`}>
           {BUCKETS.map(({ key, label, color, icon: Icon }) => {
             const isOpen = expanded === key
             return (
@@ -428,7 +431,7 @@ export function DesktopPipelineDashboard({
             {displayList.length === 0 ? (
               <p className="text-sm text-[#6f8177] py-8 text-center">No vehicles{!parsed.isEmpty ? ` match “${query}”` : ''}.</p>
             ) : (
-              <div className="grid grid-cols-2 gap-x-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6">
                 {displayList.slice(0, 50).map(v => <VRow key={v.id} v={v} onClick={() => onViewVehicle(v)} showStatus />)}
               </div>
             )}
@@ -436,7 +439,7 @@ export function DesktopPipelineDashboard({
           </section>
         ) : (
           <>
-            <section className="grid grid-cols-3 gap-3">
+            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {QUEUES.map(b => {
                 const cfg = BUCKETS.find(x => x.key === b)!
                 const list = byBucket[b]
