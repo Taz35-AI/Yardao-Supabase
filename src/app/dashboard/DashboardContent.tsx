@@ -85,6 +85,9 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
   // that preference so manual flips later in the session aren't overwritten.
   const [viewMode, setViewMode] = React.useState<'table' | 'cards' | 'layout' | 'pipeline'>('pipeline')
   const hasAppliedDefaultView = React.useRef(false)
+  // Size facet for the search-first pipeline dashboard, driven by the Total
+  // summary card's "Filter by Size" modal and cascaded into the new cockpit.
+  const [pipelineSize, setPipelineSize] = React.useState<string | null>(null)
   const [yardTab, setYardTab] = React.useState<'in_yard' | 'on_hire'>('in_yard')
   // Desktop gate (JS, not a Tailwind class) for the floating check-in FAB used
   // by the desktop tabbed pipeline view. Mobile keeps its bottom-nav check-in.
@@ -459,11 +462,9 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
             statusSizeBreakdown={dataLayer.dashboardLogic.statusSizeBreakdown}
             onSizeCardClick={dataLayer.dashboardLogic.handleSizeCardClick}
             onStatusCardClick={() => {
-              // On the search-first pipeline dashboard the old status-breakdown
-              // modal isn't wired to anything useful, so clicking the Total pill
-              // appeared to do nothing. Instead, drop into the full yard list
-              // (Total = all vehicles) — the same table the other filters use.
-              if (viewMode === 'pipeline') { dataLayer.dashboardLogic.clearAllFilters(); setViewMode('table') }
+              // On the search-first pipeline dashboard, the Total card opens the
+              // "Filter by Size" modal; picking a size cascades into the cockpit.
+              if (viewMode === 'pipeline') { dataLayer.dashboardLogic.handleSizeCardClick() }
               else { dataLayer.dashboardLogic.handleStatusCardClick() }
             }}
             onStatusSizeFilter={dataLayer.dashboardLogic.handleStatusSizeFilter}
@@ -753,6 +754,9 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
                 /* Quick actions for the desktop search-first dashboard. */
                 onCheckIn={modalController.showCheckInForm}
                 onExport={businessLogic.handleExport}
+                /* Size facet driven by the Total card's "Filter by Size" modal. */
+                sizeFilter={pipelineSize}
+                onSizeFilterChange={setPipelineSize}
                 className="w-full"
               />
 
@@ -917,7 +921,10 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
             title={t('dashboard.breakdownModal.size')}
             data={dataLayer.contextualBreakdowns.sizeBreakdown}
             onFilter={(size) => {
-              dataLayer.dashboardLogic.handleSizeFilter(size)
+              // On the pipeline dashboard, drive the cascading size facet instead
+              // of the old list filter.
+              if (viewMode === 'pipeline') { setPipelineSize(size) }
+              else { dataLayer.dashboardLogic.handleSizeFilter(size) }
               dataLayer.dashboardLogic.setShowSizeModal(false)
             }}
             onClose={() => dataLayer.dashboardLogic.setShowSizeModal(false)}

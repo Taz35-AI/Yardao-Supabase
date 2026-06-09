@@ -86,6 +86,9 @@ interface DashboardVehicleListProps {
   // Quick actions for the desktop search-first dashboard.
   onCheckIn?: () => void
   onExport?: () => void
+  // Size facet (driven by the Total summary card's "Filter by Size" modal).
+  sizeFilter?: string | null
+  onSizeFilterChange?: (size: string | null) => void
 }
 
 export const DashboardVehicleList = React.memo(function DashboardVehicleList({
@@ -115,6 +118,8 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
   filtersOpen,
   onCheckIn,
   onExport,
+  sizeFilter,
+  onSizeFilterChange,
 }: DashboardVehicleListProps) {
   const [localViewMode, setLocalViewMode] = useState<ViewMode>('table')
   const [hoveredVehicle, setHoveredVehicle] = useState<string | null>(null)
@@ -487,6 +492,8 @@ export const DashboardVehicleList = React.memo(function DashboardVehicleList({
           onViewModeChange={onViewModeChange as any}
           onCheckIn={onCheckIn}
           onExport={onExport}
+          sizeFilter={sizeFilter}
+          onSizeFilterChange={onSizeFilterChange}
           className="w-full"
         />
       </div>
