@@ -118,8 +118,13 @@ export function parseFleetQuery(raw: string, vocab: Vocab): FleetQuery {
   return q
 }
 
+// Searchable text blob for free-text tokens. Includes the registration BOTH
+// as-stored and compacted (alnum-only, no spaces) so partials and the trailing
+// chars/digits match — e.g. "vo57yhr", "57yhr" or just "yhr" all hit "VO57 YHR".
 function blob(v: FleetVehicle): string {
-  return [v.registration, v.make, v.model, v.colour, v.size, v.contract, v.condition, v.comments]
+  const reg = lc(v.registration)
+  const regCompact = reg.replace(/[^a-z0-9]/g, '')
+  return [reg, regCompact, v.make, v.model, v.colour, v.size, v.contract, v.condition, v.comments]
     .map(lc).join(' ')
 }
 
@@ -148,7 +153,14 @@ export function matchesFleetQuery(v: FleetVehicle, q: FleetQuery): boolean {
   for (const f of q.flags) if (!hasFlag(v, f)) return false
   if (q.freeText.length) {
     const text = blob(v)
-    if (!q.freeText.every(t => text.includes(t))) return false
+    // Each token must appear somewhere in the blob. Test the token as typed AND
+    // its alnum-only form so reg fragments with punctuation/spaces still match.
+    const ok = q.freeText.every(t => {
+      if (text.includes(t)) return true
+      const compact = t.replace(/[^a-z0-9]/g, '')
+      return compact.length > 0 && text.includes(compact)
+    })
+    if (!ok) return false
   }
   return true
 }

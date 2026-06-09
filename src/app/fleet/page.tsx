@@ -12,6 +12,7 @@ import { FleetHeader } from '@/components/features/fleet/FleetHeader'
 import { FleetActions } from '@/components/features/fleet/FleetActions'
 import { FleetAnalytics } from '@/components/features/fleet/FleetAnalytics'
 import { BulkRoadTaxToolbar } from '@/components/features/fleet/BulkRoadTaxToolbar'
+import { FleetSizeOverview } from '@/components/features/fleet/FleetSizeOverview'
 
 // Common Components
 import { FleetFilters } from '@/components/common/Filters/FleetFilters'
@@ -363,6 +364,10 @@ export default function FleetInventoryPage() {
     insurance: 'all',
     showDefleeted: false
   })
+
+  // Fleet list presentation: 'overview' = size donut + dashboard-style cards
+  // (default); 'table' = the classic sortable/bulk-select table.
+  const [fleetViewMode, setFleetViewMode] = useState<'overview' | 'table'>('overview')
 
   // Org name for the search hero title.
   const [orgName, setOrgName] = useState('')
@@ -1026,16 +1031,33 @@ export default function FleetInventoryPage() {
 
             </div>
 
-            {totalItems > 0 && (
-              <div className="mt-3 mb-2 text-xs sm:text-sm text-gray-600 dark:text-gray-400 px-1">
-                {t('fleet.page.showing', { from: startIndex + 1, end: endIndex, total: totalItems })}
-                {hasActiveFilters && t('fleet.page.filteredSuffix')}
-                {totalItems !== fleetVehicles.length && t('fleet.page.totalSuffix', { total: fleetVehicles.length })}
-                {selectedVehicleIds.size > 0 && (
-                  <span className="ml-2 text-blue-600 dark:text-blue-400 font-medium">
-                    {t('fleet.page.selectedSuffix', { count: selectedVehicleIds.size })}
-                  </span>
-                )}
+            {filteredAndSortedVehicles.length > 0 && (
+              <div className="mt-3 mb-2 flex items-center justify-between gap-2 px-1">
+                <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 min-w-0">
+                  {fleetViewMode === 'table' && totalItems > 0 && (
+                    <>
+                      {t('fleet.page.showing', { from: startIndex + 1, end: endIndex, total: totalItems })}
+                      {hasActiveFilters && t('fleet.page.filteredSuffix')}
+                      {totalItems !== fleetVehicles.length && t('fleet.page.totalSuffix', { total: fleetVehicles.length })}
+                    </>
+                  )}
+                  {selectedVehicleIds.size > 0 && (
+                    <span className="ml-2 text-blue-600 dark:text-blue-400 font-medium">
+                      {t('fleet.page.selectedSuffix', { count: selectedVehicleIds.size })}
+                    </span>
+                  )}
+                </div>
+                {/* Overview / Table view toggle */}
+                <div className="flex items-center rounded-xl border border-[#dfe8e1] dark:border-gray-700 bg-white dark:bg-gray-800 p-0.5 flex-shrink-0">
+                  <button type="button" onClick={() => setFleetViewMode('overview')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${fleetViewMode === 'overview' ? 'bg-[#025940] text-white shadow-sm' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
+                    Overview
+                  </button>
+                  <button type="button" onClick={() => setFleetViewMode('table')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${fleetViewMode === 'table' ? 'bg-[#025940] text-white shadow-sm' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
+                    Table
+                  </button>
+                </div>
               </div>
             )}
 
@@ -1052,10 +1074,19 @@ export default function FleetInventoryPage() {
               </div>
             )}
 
-            {/* Table only renders when there are rows — the page-level empty
-                states below handle the empty-fleet / no-match cases, so the
-                table never shows its own duplicate "No vehicles found". */}
-            {filteredAndSortedVehicles.length > 0 && (
+            {/* OVERVIEW: size donut + dashboard-style cards (search reveals it). */}
+            {fleetViewMode === 'overview' && filteredAndSortedVehicles.length > 0 && (
+              <FleetSizeOverview
+                vehicles={filteredAndSortedVehicles}
+                onViewVehicle={setViewingVehicle}
+                forceOpen={!!filters.search.trim()}
+              />
+            )}
+
+            {/* TABLE: classic sortable/bulk-select grid. Renders only when there
+                are rows — the page-level empty states below handle the
+                empty-fleet / no-match cases. */}
+            {fleetViewMode === 'table' && filteredAndSortedVehicles.length > 0 && (
               <FleetTable
                 vehicles={currentPageData}
                 sortConfig={sortConfig}
@@ -1067,7 +1098,7 @@ export default function FleetInventoryPage() {
               />
             )}
 
-            {totalItems > 0 && (
+            {fleetViewMode === 'table' && totalItems > 0 && (
               <div className="mt-4">
                 <Pagination
                   currentPage={currentPage}
