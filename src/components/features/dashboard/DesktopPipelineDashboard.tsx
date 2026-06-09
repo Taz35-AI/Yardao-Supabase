@@ -177,11 +177,17 @@ export function DesktopPipelineDashboard({
   // Faceted SIZE filter — when set it cascades through the whole dashboard
   // (cockpit counts, queues, breakdowns, search, drill-in).
   const [sizeFilter, setSizeFilter] = useState<string | null>(null)
+  const [sizeOpen, setSizeOpen] = useState(false)
 
   // Working set = everything (in yard + on hire) so search spans all statuses.
   const all = useMemo(() => [...vehicles, ...outOnHireVehicles], [vehicles, outOnHireVehicles])
-  // Distinct sizes for the facet chips (from the full set so options are stable).
-  const sizes = useMemo(() => [...new Set(all.map(v => (v.size || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [all])
+  // Distinct sizes (trimmed + UPPER-cased so "Car"/"CAR"/"CaR" collapse to one),
+  // each with a count, sorted by count — used by the Size dropdown.
+  const sizeCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const v of all) { const s = (v.size || '').trim().toUpperCase(); if (s) m.set(s, (m.get(s) || 0) + 1) }
+    return [...m.entries()].sort((a, b) => b[1] - a[1])
+  }, [all])
   // Everything below the size facet derives from this scoped set.
   const scoped = useMemo(() => sizeFilter ? all.filter(v => (v.size || '').trim().toLowerCase() === sizeFilter.toLowerCase()) : all, [all, sizeFilter])
   const vocab = useMemo(() => buildVocab(all), [all])
@@ -389,21 +395,37 @@ export function DesktopPipelineDashboard({
           </div>
         </section>
 
-        {/* Size facet — selecting a size re-scopes every count, queue, breakdown,
-            search result and drill-in below. */}
-        {sizes.length > 1 && (
-          <section className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] font-extrabold text-[#6f8177] uppercase tracking-wide mr-0.5">Size</span>
-            <button type="button" onClick={() => setSizeFilter(null)}
-              className={`text-[12px] font-extrabold rounded-full px-3 py-1.5 border transition-colors ${!sizeFilter ? 'bg-[#013b2c] text-white border-[#013b2c]' : 'bg-white text-[#355c49] border-[#dfe8e1] hover:border-[#8fcc16]'}`}>
-              All
+        {/* Size facet — a compact dropdown (not a wall of chips). Selecting a
+            size re-scopes every count, queue, breakdown, search result and
+            drill-in below. */}
+        {sizeCounts.length > 1 && (
+          <section className="relative">
+            <button type="button" onClick={() => setSizeOpen(o => !o)}
+              className="inline-flex items-center gap-2 text-[13px] font-extrabold rounded-xl px-3 py-2 border border-[#dfe8e1] bg-white text-[#355c49] hover:border-[#8fcc16]">
+              <span className="text-[#6f8177]">Size:</span>
+              <span className="text-[#06251a]">{sizeFilter || 'All'}</span>
+              {sizeFilter && (
+                <span role="button" tabIndex={0} onClick={e => { e.stopPropagation(); setSizeFilter(null) }} className="text-[#9bafa5] hover:text-[#06251a]"><X className="w-3.5 h-3.5" /></span>
+              )}
+              <ChevronDown className="w-4 h-4 text-[#9bafa5]" />
             </button>
-            {sizes.map(s => (
-              <button key={s} type="button" onClick={() => setSizeFilter(sizeFilter === s ? null : s)}
-                className={`text-[12px] font-extrabold rounded-full px-3 py-1.5 border transition-colors ${sizeFilter === s ? 'bg-[#8fcc16] text-[#06251a] border-[#8fcc16]' : 'bg-white text-[#355c49] border-[#dfe8e1] hover:border-[#8fcc16]'}`}>
-                {s}
-              </button>
-            ))}
+            {sizeOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setSizeOpen(false)} />
+                <div className="absolute left-0 mt-2 w-72 max-h-80 overflow-y-auto rounded-2xl bg-white border border-[#dfe8e1] shadow-xl z-20 p-1.5">
+                  <button type="button" onClick={() => { setSizeFilter(null); setSizeOpen(false) }}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-[13px] font-bold ${!sizeFilter ? 'bg-[#eef7ef] text-[#0d6b2e]' : 'text-[#355c49] hover:bg-[#f6faf6]'}`}>
+                    <span>All sizes</span>
+                  </button>
+                  {sizeCounts.map(([s, n]) => (
+                    <button key={s} type="button" onClick={() => { setSizeFilter(s); setSizeOpen(false) }}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-[13px] font-bold ${sizeFilter === s ? 'bg-[#eef7ef] text-[#0d6b2e]' : 'text-[#355c49] hover:bg-[#f6faf6]'}`}>
+                      <span className="truncate mr-2">{s}</span><span className="text-[#9bafa5] tabular-nums flex-shrink-0">{n}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </section>
         )}
 
