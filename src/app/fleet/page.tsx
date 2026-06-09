@@ -12,6 +12,7 @@ import { FleetHeader } from '@/components/features/fleet/FleetHeader'
 import { FleetActions } from '@/components/features/fleet/FleetActions'
 import { FleetAnalytics } from '@/components/features/fleet/FleetAnalytics'
 import { BulkRoadTaxToolbar } from '@/components/features/fleet/BulkRoadTaxToolbar'
+import { FleetSizeOverview } from '@/components/features/fleet/FleetSizeOverview'
 
 // Common Components
 import { FleetFilters } from '@/components/common/Filters/FleetFilters'
@@ -46,9 +47,10 @@ import { InsuranceStatus, FleetVehicle, DefleetReason } from '@/types'
 import { BulkRoadTaxService } from '@/lib/services/bulkRoadTaxService'
 import { userProfileService } from '@/lib/firestore'
 import { useT } from '@/lib/i18n'
+import { buildFleetVocab, parseFleetQuery, matchesFleetQuery } from '@/lib/search/smartFleetSearch'
 
 // Icons
-import { Plus, X, Download, Share2, Upload, FileSpreadsheet, Loader2, RefreshCw, Car } from 'lucide-react'
+import { Plus, X, Download, Share2, Upload, FileSpreadsheet, Loader2, RefreshCw, Car, Search } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 // ─── FleetHeaderExcelItems ────────────────────────────────────────────────────
@@ -363,11 +365,26 @@ export default function FleetInventoryPage() {
     showDefleeted: false
   })
 
+  // Fleet list presentation: 'overview' = size donut + dashboard-style cards
+  // (default); 'table' = the classic sortable/bulk-select table.
+  const [fleetViewMode, setFleetViewMode] = useState<'overview' | 'table'>('overview')
+
+  // Org name for the search hero title.
+  const [orgName, setOrgName] = useState('')
+  useEffect(() => {
+    if (!user?.uid) return
+    userProfileService.getProfile(user.uid).then(p => setOrgName(p?.organizationName || '')).catch(() => {})
+  }, [user?.uid])
+
   // Sort configuration
   const [sortConfig, setSortConfig] = useState({
     key: 'createdAt',
     direction: 'desc' as 'asc' | 'desc'
   })
+
+  // Smart-search vocabulary built from the loaded fleet (makes/models/colours/
+  // sizes/contracts/conditions). Status, insurance, MOT/tax & recall are fixed.
+  const fleetVocab = useMemo(() => buildFleetVocab(fleetVehicles), [fleetVehicles])
 
   // Apply filters and sorting
   const filteredAndSortedVehicles = useMemo(() => {
@@ -380,17 +397,10 @@ export default function FleetInventoryPage() {
     }
 
     if (filters.search.trim()) {
-      const searchTerm = filters.search.toLowerCase()
-      filtered = filtered.filter(vehicle =>
-        vehicle.registration.toLowerCase().includes(searchTerm) ||
-        vehicle.make.toLowerCase().includes(searchTerm) ||
-        vehicle.model.toLowerCase().includes(searchTerm) ||
-        (vehicle.colour && vehicle.colour.toLowerCase().includes(searchTerm)) ||
-        vehicle.size.toLowerCase().includes(searchTerm) ||
-        vehicle.condition.toLowerCase().includes(searchTerm) ||
-        (vehicle.comments && vehicle.comments.toLowerCase().includes(searchTerm)) ||
-        (vehicle.contract && vehicle.contract.toLowerCase().includes(searchTerm))
-      )
+      // Smart, multi-token search across every fleet column + MOT/tax/insurance/
+      // status/recall keywords (e.g. "blue transit lease", "not insured mot expired").
+      const fq = parseFleetQuery(filters.search, fleetVocab)
+      if (!fq.isEmpty) filtered = filtered.filter(v => matchesFleetQuery(v, fq))
     }
 
     if (filters.excludeKeywords.trim()) {
@@ -498,7 +508,7 @@ export default function FleetInventoryPage() {
       if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1
       return 0
     })
-  }, [fleetVehicles, filters, sortConfig])
+  }, [fleetVehicles, filters, sortConfig, fleetVocab])
 
   const hasActiveFilters = Object.entries(filters).some(([key, value]) => {
     if (key === 'search' || key === 'excludeKeywords' || key === 'dateFrom' || key === 'dateTo') {
@@ -911,6 +921,50 @@ export default function FleetInventoryPage() {
             />
 
             {/* ═══════════════════════════════════════════════
+                SEARCH HERO — smart search across every fleet column.
+                Mirrors the dashboard hero; binds to filters.search which
+                the filteredAndSortedVehicles memo runs through
+                matchesFleetQuery (make/model/colour/size/contract/
+                condition + status/insurance/MOT/tax/recall predicates).
+            ═══════════════════════════════════════════════ */}
+            <section className="rounded-3xl p-5 sm:p-6 text-white relative overflow-hidden mb-3" style={{ background: '#013b2c' }}>
+              <div className="absolute -right-16 -top-20 w-64 h-64 rounded-full" style={{ background: 'rgba(143,204,22,.16)' }} />
+              <div className="relative">
+                <h1 className="text-xl sm:text-2xl font-black tracking-tight">
+                  {orgName ? `Search ${orgName} fleet` : 'Search the fleet'}
+                </h1>
+                <p className="text-[#cce0d8] text-xs sm:text-sm mt-1 mb-4">
+                  Find any vehicle by reg, make, model, colour, size, contract, status, MOT, tax, insurance or recall — or any combination.
+                </p>
+                <div className="flex items-center gap-2 bg-white rounded-2xl px-4 h-13 sm:h-14 py-2.5 shadow-lg">
+                  <Search className="w-5 h-5 text-[#74877d] flex-shrink-0" />
+                  <input
+                    value={filters.search}
+                    onChange={e => setFilters(prev => ({ ...prev, search: e.target.value }))}
+                    placeholder='e.g. "blue transit lease", "not insured mot expired", "sold"'
+                    className="flex-1 bg-transparent outline-none text-[#06251a] font-semibold placeholder:text-[#9bafa5] text-sm min-w-0"
+                  />
+                  {filters.search && (
+                    <button type="button" onClick={() => setFilters(prev => ({ ...prev, search: '' }))} className="text-[#9bafa5] hover:text-[#06251a] flex-shrink-0">
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 mt-3">
+                  <button type="button" onClick={() => setShowAddForm(true)}
+                    className="inline-flex items-center gap-1.5 text-[12px] font-extrabold rounded-full px-3.5 py-2 bg-white/12 hover:bg-white/20 text-white transition-colors">
+                    <Plus className="w-4 h-4" /> Add vehicle
+                  </button>
+                  {filters.search.trim() && (
+                    <span className="inline-flex items-center gap-1.5 text-[12px] font-extrabold rounded-full px-3 py-2 bg-white/10 text-[#cce0d8]">
+                      {filteredAndSortedVehicles.length} match{filteredAndSortedVehicles.length === 1 ? '' : 'es'}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* ═══════════════════════════════════════════════
                 ROW 1: Metric strip + Add Vehicle + ⋮ menu
                 ROW 2: Search & Filters
             ═══════════════════════════════════════════════ */}
@@ -971,21 +1025,39 @@ export default function FleetInventoryPage() {
                   conditions={conditions}
                   sizes={getUniqueSizes(fleetVehicles)}
                   onClearFilters={clearAllFilters}
+                  hideSearch
                 />
               </div>
 
             </div>
 
-            {totalItems > 0 && (
-              <div className="mt-3 mb-2 text-xs sm:text-sm text-gray-600 dark:text-gray-400 px-1">
-                {t('fleet.page.showing', { from: startIndex + 1, end: endIndex, total: totalItems })}
-                {hasActiveFilters && t('fleet.page.filteredSuffix')}
-                {totalItems !== fleetVehicles.length && t('fleet.page.totalSuffix', { total: fleetVehicles.length })}
-                {selectedVehicleIds.size > 0 && (
-                  <span className="ml-2 text-blue-600 dark:text-blue-400 font-medium">
-                    {t('fleet.page.selectedSuffix', { count: selectedVehicleIds.size })}
-                  </span>
-                )}
+            {filteredAndSortedVehicles.length > 0 && (
+              <div className="mt-3 mb-2 flex items-center justify-between gap-2 px-1">
+                <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 min-w-0">
+                  {fleetViewMode === 'table' && totalItems > 0 && (
+                    <>
+                      {t('fleet.page.showing', { from: startIndex + 1, end: endIndex, total: totalItems })}
+                      {hasActiveFilters && t('fleet.page.filteredSuffix')}
+                      {totalItems !== fleetVehicles.length && t('fleet.page.totalSuffix', { total: fleetVehicles.length })}
+                    </>
+                  )}
+                  {selectedVehicleIds.size > 0 && (
+                    <span className="ml-2 text-blue-600 dark:text-blue-400 font-medium">
+                      {t('fleet.page.selectedSuffix', { count: selectedVehicleIds.size })}
+                    </span>
+                  )}
+                </div>
+                {/* Overview / Table view toggle */}
+                <div className="flex items-center rounded-xl border border-[#dfe8e1] dark:border-gray-700 bg-white dark:bg-gray-800 p-0.5 flex-shrink-0">
+                  <button type="button" onClick={() => setFleetViewMode('overview')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${fleetViewMode === 'overview' ? 'bg-[#025940] text-white shadow-sm' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
+                    Overview
+                  </button>
+                  <button type="button" onClick={() => setFleetViewMode('table')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${fleetViewMode === 'table' ? 'bg-[#025940] text-white shadow-sm' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
+                    Table
+                  </button>
+                </div>
               </div>
             )}
 
@@ -1002,10 +1074,19 @@ export default function FleetInventoryPage() {
               </div>
             )}
 
-            {/* Table only renders when there are rows — the page-level empty
-                states below handle the empty-fleet / no-match cases, so the
-                table never shows its own duplicate "No vehicles found". */}
-            {filteredAndSortedVehicles.length > 0 && (
+            {/* OVERVIEW: size donut + dashboard-style cards (search reveals it). */}
+            {fleetViewMode === 'overview' && filteredAndSortedVehicles.length > 0 && (
+              <FleetSizeOverview
+                vehicles={filteredAndSortedVehicles}
+                onViewVehicle={setViewingVehicle}
+                forceOpen={!!filters.search.trim()}
+              />
+            )}
+
+            {/* TABLE: classic sortable/bulk-select grid. Renders only when there
+                are rows — the page-level empty states below handle the
+                empty-fleet / no-match cases. */}
+            {fleetViewMode === 'table' && filteredAndSortedVehicles.length > 0 && (
               <FleetTable
                 vehicles={currentPageData}
                 sortConfig={sortConfig}
@@ -1017,7 +1098,7 @@ export default function FleetInventoryPage() {
               />
             )}
 
-            {totalItems > 0 && (
+            {fleetViewMode === 'table' && totalItems > 0 && (
               <div className="mt-4">
                 <Pagination
                   currentPage={currentPage}

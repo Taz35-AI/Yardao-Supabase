@@ -47,6 +47,8 @@ interface FleetFiltersProps {
   conditions: any[]
   sizes: string[]
   onClearFilters: () => void
+  /** Hide the built-in search box (search lives in the page hero instead). */
+  hideSearch?: boolean
 }
 
 export function FleetFilters({
@@ -54,7 +56,8 @@ export function FleetFilters({
   onFiltersChange,
   conditions,
   sizes,
-  onClearFilters
+  onClearFilters,
+  hideSearch = false
 }: FleetFiltersProps) {
   const { user } = useAuth()
   const t = useT()
@@ -145,27 +148,29 @@ export function FleetFilters({
       <CardContent className="p-2 sm:p-3">
         {/* PRIMARY ROW: Search + Quick Actions */}
         <div className="flex flex-col sm:flex-row gap-2">
-          {/* Search Input */}
-          <div className="flex-1 relative">
-            <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3.5 h-3.5" />
-            <Input
-              placeholder={t('fleet.filters.searchPlaceholder')}
-              value={safeFilters.search}
-              onChange={(e) => handleFilterChange('search', e.target.value)}
-              className="pl-8 pr-8 h-8 text-sm"
-            />
-            {safeFilters.search && (
-              <button
-                onClick={() => handleFilterChange('search', '')}
-                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+          {/* Search Input — hidden when the page hero owns search */}
+          {!hideSearch && (
+            <div className="flex-1 relative">
+              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-3.5 h-3.5" />
+              <Input
+                placeholder={t('fleet.filters.searchPlaceholder')}
+                value={safeFilters.search}
+                onChange={(e) => handleFilterChange('search', e.target.value)}
+                className="pl-8 pr-8 h-8 text-sm"
+              />
+              {safeFilters.search && (
+                <button
+                  onClick={() => handleFilterChange('search', '')}
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Quick Action Buttons */}
-          <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
+          <div className={`flex items-center gap-1.5 flex-wrap sm:flex-nowrap ${hideSearch ? 'sm:ml-auto' : ''}`}>
             {/* Show Defleeted Toggle */}
             <Button
               variant={safeFilters.showDefleeted ? "default" : "outline"}
