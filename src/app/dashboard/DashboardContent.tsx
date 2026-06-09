@@ -558,9 +558,10 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
 
           <div className="flex-1" />
 
-          {/* Desktop: Sync indicator + view toggle — hidden in pipeline (the
-              tabbed view's tab row carries the view switcher + Filters). */}
-          <div className={`${viewMode === 'pipeline' ? 'hidden' : 'hidden lg:flex'} items-center gap-2`}>
+          {/* Desktop: Sync indicator + view toggle (Pipeline / List / Cards /
+              Map). Shown on every desktop view, including the search-first
+              pipeline dashboard, so the Map toggle is always reachable. */}
+          <div className="hidden lg:flex items-center gap-2">
             <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#ecfdf5] dark:bg-green-900/10 rounded-lg border border-[#a7f3d0]/50 dark:border-green-800/20">
               <div className="w-1.5 h-1.5 bg-[#059669] rounded-full animate-pulse"></div>
               <span className="text-[10px] font-semibold text-[#059669] dark:text-green-300">{t('dashboard.status.syncActive')}</span>
