@@ -174,26 +174,33 @@ export function DesktopPipelineDashboard({
   const [drillSearch, setDrillSearch] = useState('')
   // Alerts dismissed for today (persisted; reappear after midnight).
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+  // Faceted SIZE filter — when set it cascades through the whole dashboard
+  // (cockpit counts, queues, breakdowns, search, drill-in).
+  const [sizeFilter, setSizeFilter] = useState<string | null>(null)
 
   // Working set = everything (in yard + on hire) so search spans all statuses.
   const all = useMemo(() => [...vehicles, ...outOnHireVehicles], [vehicles, outOnHireVehicles])
+  // Distinct sizes for the facet chips (from the full set so options are stable).
+  const sizes = useMemo(() => [...new Set(all.map(v => (v.size || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [all])
+  // Everything below the size facet derives from this scoped set.
+  const scoped = useMemo(() => sizeFilter ? all.filter(v => (v.size || '').trim().toLowerCase() === sizeFilter.toLowerCase()) : all, [all, sizeFilter])
   const vocab = useMemo(() => buildVocab(all), [all])
   const parsed = useMemo(() => parseQuery(query, vocab), [query, vocab])
-  const results = useMemo(() => parsed.isEmpty ? [] : all.filter(v => matchesQuery(v, parsed)), [all, parsed])
+  const results = useMemo(() => parsed.isEmpty ? [] : scoped.filter(v => matchesQuery(v, parsed)), [scoped, parsed])
   // Vehicle list + label for a quick filter (clicked from an Alerts summary).
   const quick = useMemo(() => {
-    if (quickFilter === 'no_mot') return { label: 'No MOT on file', list: all.filter(v => !v.motExpiry) }
-    if (quickFilter === 'no_tax') return { label: 'No road tax on file', list: all.filter(v => !v.taxExpiry) }
-    if (quickFilter === 'not_insured') return { label: 'Ready · not insured', list: all.filter(v => v.insuranceStatus === 'Not Insured' && vehicleBucket(v) === 'Ready') }
+    if (quickFilter === 'no_mot') return { label: 'No MOT on file', list: scoped.filter(v => !v.motExpiry) }
+    if (quickFilter === 'no_tax') return { label: 'No road tax on file', list: scoped.filter(v => !v.taxExpiry) }
+    if (quickFilter === 'not_insured') return { label: 'Ready · not insured', list: scoped.filter(v => v.insuranceStatus === 'Not Insured' && vehicleBucket(v) === 'Ready') }
     return null
-  }, [quickFilter, all])
+  }, [quickFilter, scoped])
 
   // Bucket the working set by effective status.
   const byBucket = useMemo(() => {
     const m: Record<StatusBucket, CheckedInVehicle[]> = {
       'Ready': [], 'Pending checks': [], 'Repairs needed': [], 'Non-Starter': [], 'on_hire': [],
     }
-    for (const v of all) m[vehicleBucket(v)].push(v)
+    for (const v of scoped) m[vehicleBucket(v)].push(v)
     // Most-recently moved to the status first (newest at the top of each queue).
     const movedTs = (v: CheckedInVehicle) => {
       const d = vehicleBucket(v) === 'on_hire'
@@ -203,7 +210,7 @@ export function DesktopPipelineDashboard({
     }
     for (const k of Object.keys(m) as StatusBucket[]) m[k].sort((a, b) => movedTs(b) - movedTs(a))
     return m
-  }, [all])
+  }, [scoped])
 
   const count = (b: StatusBucket) => byBucket[b].length
 
@@ -297,8 +304,9 @@ export function DesktopPipelineDashboard({
       if (drillContract === 'No contract') return !v.contract || !String(v.contract).trim()
       return String(v.contract || '').trim().toLowerCase() === drillContract.toLowerCase()
     }
-    let dv = drillContract ? vehicles.filter(matchContract) : vehicles
-    let dh = drillContract ? outOnHireVehicles.filter(matchContract) : outOnHireVehicles
+    const matchSize = (v: CheckedInVehicle) => !sizeFilter || (v.size || '').trim().toLowerCase() === sizeFilter.toLowerCase()
+    let dv = vehicles.filter(v => matchSize(v) && matchContract(v))
+    let dh = outOnHireVehicles.filter(v => matchSize(v) && matchContract(v))
     // Further smart-filter within the drill (reg, size, colour, make, …). Tab
     // counts in YardTabsView update to reflect the filtered set.
     const dq = parseQuery(drillSearch, vocab)
@@ -313,6 +321,12 @@ export function DesktopPipelineDashboard({
             className="inline-flex items-center gap-1.5 text-[13px] font-extrabold text-[#285b44] hover:text-[#07251d] transition-colors">
             <ArrowLeft className="w-4 h-4" /> Back to search
           </button>
+          {sizeFilter && (
+            <span className="inline-flex items-center gap-1.5 text-[12px] font-extrabold rounded-full px-2.5 py-1 bg-[#f0f7e0] text-[#4a6b00]">
+              {sizeFilter}
+              <button type="button" onClick={() => setSizeFilter(null)} className="hover:text-[#06251a]"><X className="w-3 h-3" /></button>
+            </span>
+          )}
           {drillContract && (
             <span className="inline-flex items-center gap-1.5 text-[12px] font-extrabold rounded-full px-2.5 py-1 bg-[#eef7ef] text-[#0d6b2e]">
               {drillContract}
@@ -374,6 +388,24 @@ export function DesktopPipelineDashboard({
             </div>
           </div>
         </section>
+
+        {/* Size facet — selecting a size re-scopes every count, queue, breakdown,
+            search result and drill-in below. */}
+        {sizes.length > 1 && (
+          <section className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-extrabold text-[#6f8177] uppercase tracking-wide mr-0.5">Size</span>
+            <button type="button" onClick={() => setSizeFilter(null)}
+              className={`text-[12px] font-extrabold rounded-full px-3 py-1.5 border transition-colors ${!sizeFilter ? 'bg-[#013b2c] text-white border-[#013b2c]' : 'bg-white text-[#355c49] border-[#dfe8e1] hover:border-[#8fcc16]'}`}>
+              All
+            </button>
+            {sizes.map(s => (
+              <button key={s} type="button" onClick={() => setSizeFilter(sizeFilter === s ? null : s)}
+                className={`text-[12px] font-extrabold rounded-full px-3 py-1.5 border transition-colors ${sizeFilter === s ? 'bg-[#8fcc16] text-[#06251a] border-[#8fcc16]' : 'bg-white text-[#355c49] border-[#dfe8e1] hover:border-[#8fcc16]'}`}>
+                {s}
+              </button>
+            ))}
+          </section>
+        )}
 
         {/* Status cockpit. While searching on mobile, drop it BELOW the results
             (order-last) so results appear right under the search bar; desktop
