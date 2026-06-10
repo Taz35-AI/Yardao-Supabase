@@ -36,10 +36,21 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useAppState } from '@/hooks/common/useAppState'
 import { Vehicle, vehicleService, userProfileService } from '@/lib/firestore'
 import { supabase } from '@/lib/supabaseClient'
+import { toCamel } from '@/lib/dbMap'
 import { wireResyncTriggers, onReconnectRefetch } from '@/lib/realtime/resync'
+import {
+  normalizeDelta,
+  applyDeltas,
+  type NormalizedDelta,
+  type RealtimeRowPayload,
+} from '@/lib/realtime/deltas'
 import { ConditionCategory, conditionService } from '@/lib/conditionService'
 import { contractService } from '@/lib/contractService'
-import { buildContractColorIndex, resolveVehicleContractColor } from '@/lib/contractUtils'
+import {
+  buildContractColorIndex,
+  resolveVehicleContractColor,
+  type ContractColorIndex,
+} from '@/lib/contractUtils'
 import { logger } from '@/lib/logger'
 
 interface FleetAnalytics {
@@ -111,6 +122,16 @@ export function FleetDataProvider({ children }: { children: ReactNode }) {
   // Ref to track if data has been loaded at least once
   const dataLoadedRef = useRef(false)
   const lastLoadTimeRef = useRef<number>(0)
+  // COUNT of full loadData() round-trips in flight (a counter, not a boolean:
+  // loads can overlap, and the first one finishing must not clear the guard
+  // while a second is still running). While > 0, realtime deltas fall back to
+  // the refetch path — an in-flight snapshot may not include them, and a delta
+  // applied on top would be overwritten when the snapshot lands.
+  const loadInFlightRef = useRef(0)
+  // Live contract colour index (id/name → colour), populated by loadData.
+  // Lets the realtime delta mapper resolve a vehicle's badge colour the same
+  // way the full loader does.
+  const contractIndexRef = useRef<ContractColorIndex>({ byId: new Map(), byName: new Map() })
 
   // Load user organization
   useEffect(() => {
@@ -239,6 +260,7 @@ export function FleetDataProvider({ children }: { children: ReactNode }) {
         return
       }
 
+      loadInFlightRef.current += 1
       try {
         if (forceRefresh) {
           logger.log('🔄 [useFleetData] Force refreshing fleet data...')
@@ -274,6 +296,7 @@ export function FleetDataProvider({ children }: { children: ReactNode }) {
         try {
           const contracts = await contractService.getContracts(organizationId)
           const colorIndex = buildContractColorIndex(contracts)
+          contractIndexRef.current = colorIndex // keep the realtime delta mapper in sync
           resolvedVehicles = allVehicles.map(v => {
             const resolved = resolveVehicleContractColor(v as any, colorIndex)
             return resolved && resolved !== (v as any).contractColor
@@ -329,6 +352,7 @@ export function FleetDataProvider({ children }: { children: ReactNode }) {
         logger.error('❌ [useFleetData] Error loading fleet data:', err)
         setError(err instanceof Error ? err.message : 'Failed to load fleet data')
       } finally {
+        loadInFlightRef.current -= 1
         if (!silent) setLoading(false)
       }
     },
@@ -399,9 +423,9 @@ export function FleetDataProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user?.uid || !organizationId) return
-    // Coalesce bursts of changes into ONE silent refetch. Behaviour-preserving
-    // (the refetch reads current DB state); avoids re-downloading the whole
-    // vehicles collection once per change during bulk ops / rapid edits.
+    // FALLBACK path: coalesce bursts into ONE silent full refetch. Used by the
+    // Leg-2 resync triggers below and by any realtime event we can't apply as
+    // a delta — identical behaviour to what shipped before deltas existed.
     let refreshTimer: ReturnType<typeof setTimeout> | null = null
     const scheduleRefresh = () => {
       if (refreshTimer) clearTimeout(refreshTimer)
@@ -410,19 +434,74 @@ export function FleetDataProvider({ children }: { children: ReactNode }) {
         loadDataRef.current(true, true) // silent: no loading flash on live updates
       }, 250)
     }
+
+    // FAST path: apply realtime row changes directly to in-memory state — no
+    // re-download of the whole vehicles collection per change (the top egress
+    // cost at fleet scale). Same mapping as the full loader: snake→camel, then
+    // contract badge colour resolved from the live contracts index.
+    const mapVehicleRow = (raw: Record<string, any>): Vehicle => {
+      const v = toCamel<Vehicle>(raw) as Vehicle
+      const resolved = resolveVehicleContractColor(v as any, contractIndexRef.current)
+      return resolved && resolved !== (v as any).contractColor
+        ? ({ ...v, contractColor: resolved } as Vehicle)
+        : v
+    }
+
+    // Batch deltas so a bulk op (e.g. XLSX import) re-renders ~4×/sec instead
+    // of once per inserted row. Throttle-style: first event arms the timer,
+    // later events ride along (a debounce would starve during long bursts).
+    let pendingDeltas: NormalizedDelta<Vehicle>[] = []
+    let deltaTimer: ReturnType<typeof setTimeout> | null = null
+    const flushDeltas = () => {
+      deltaTimer = null
+      const batch = pendingDeltas
+      pendingDeltas = []
+      if (batch.length === 0) return
+      // A load may have STARTED while this batch sat in the 250ms window —
+      // re-check at flush time and defer to a full refetch if so.
+      if (loadInFlightRef.current > 0) {
+        scheduleRefresh()
+        return
+      }
+      setVehicles(prev =>
+        applyDeltas(prev, batch, {
+          // List is ordered created_at DESC; ISO strings compare correctly.
+          sortKey: v => String((v as any).createdAt ?? ''),
+        }),
+      )
+    }
+    const onRowChange = (payload: RealtimeRowPayload) => {
+      // A full load is in flight → its snapshot may not contain this change,
+      // and it will overwrite state when it lands. Take the refetch path.
+      if (loadInFlightRef.current > 0) {
+        scheduleRefresh()
+        return
+      }
+      const delta = normalizeDelta(payload, mapVehicleRow)
+      if (!delta) {
+        // Can't apply with certainty → degrade to the old full refetch.
+        scheduleRefresh()
+        return
+      }
+      pendingDeltas.push(delta)
+      if (!deltaTimer) deltaTimer = setTimeout(flushDeltas, 250)
+    }
+
     const channel = supabase
       .channel(`vehicles:${organizationId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'vehicles', filter: `organization_id=eq.${organizationId}` },
-        () => { scheduleRefresh() },
+        payload => { onRowChange(payload as unknown as RealtimeRowPayload) },
       )
-      // Leg-2 resync: refetch when realtime reconnects after a drop.
+      // Leg-2 resync: FULL refetch when realtime reconnects after a drop.
       .subscribe(onReconnectRefetch(scheduleRefresh))
-    // Leg-2 resync: refetch on tab focus / network back online too.
+    // Leg-2 resync: FULL refetch on tab focus / network back online too.
     const stopResync = wireResyncTriggers(scheduleRefresh)
     return () => {
       if (refreshTimer) clearTimeout(refreshTimer)
+      if (deltaTimer) clearTimeout(deltaTimer)
+      pendingDeltas = []
       stopResync()
       supabase.removeChannel(channel)
     }
@@ -461,7 +540,10 @@ export function FleetDataProvider({ children }: { children: ReactNode }) {
         organizationId,
         createdBy: user.uid,
       })
-      setVehicles(prev => [newVehicle, ...prev])
+      // Upsert, not blind prepend: the realtime INSERT delta for this row may
+      // have landed already (websocket can beat the REST response) — dedupe by
+      // id so the vehicle can never appear twice.
+      setVehicles(prev => [newVehicle, ...prev.filter(v => v.id !== newVehicle.id)])
       return newVehicle
     } catch (err) {
       throw new Error(err instanceof Error ? err.message : 'Failed to add vehicle')
@@ -521,7 +603,13 @@ export function FleetDataProvider({ children }: { children: ReactNode }) {
       }))
 
       const newVehicles = await vehicleService.bulkAddVehicles(vehiclesWithOrganization)
-      setVehicles(prev => [...newVehicles, ...prev])
+      // Upsert, not blind prepend: during a bulk import the realtime INSERT
+      // deltas for these rows typically arrive BEFORE this Promise resolves —
+      // dedupe by id so imported vehicles can never appear twice.
+      setVehicles(prev => {
+        const newIds = new Set(newVehicles.map(v => v.id))
+        return [...newVehicles, ...prev.filter(v => !newIds.has(v.id))]
+      })
       return newVehicles
     } catch (err) {
       throw new Error(err instanceof Error ? err.message : 'Failed to bulk add vehicles')
