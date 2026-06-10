@@ -16,8 +16,9 @@ import { Card, CardContent } from '@/components/ui/Card'
 import { useState, useEffect } from 'react'
 import { logger } from '@/lib/logger'
 import { supabase } from '@/lib/supabaseClient'
-import { toCamelList } from '@/lib/dbMap'
+import { toCamel, toCamelList } from '@/lib/dbMap'
 import { wireResyncTriggers, onReconnectRefetch } from '@/lib/realtime/resync'
+import { normalizeDelta, applyDeltas, type RealtimeRowPayload } from '@/lib/realtime/deltas'
 
 const carImages = [
   '/cars/car (1).png', '/cars/car (2).png', '/cars/car (3).png',
@@ -1206,55 +1207,119 @@ function AuthenticatedHome({ user }: { user: any }) {
           setSnapshotLoading(false)
         }
 
-        // Initial fetch + re-fetch on any change to this org's yard vehicles.
+        // Initial fetch + full re-fetch FALLBACK for this org's yard vehicles.
+        // `yardInFlight` COUNTS in-flight loads (a counter, not a boolean — the
+        // first of two overlapping loads finishing must not clear the guard)
+        // so realtime deltas can detect a racing full load.
+        let yardInFlight = 0
         const refreshYard = async () => {
-          const { data, error } = await supabase
-            .from('checked_in_vehicles')
-            .select('*')
-            .eq('organization_id', orgId)
-          if (error) throw error
-          yardVehicles = toCamelList<any>(data)
-          updateSnapshot()
+          yardInFlight += 1
+          try {
+            const { data, error } = await supabase
+              .from('checked_in_vehicles')
+              .select('*')
+              .eq('organization_id', orgId)
+            if (error) throw error
+            yardVehicles = toCamelList<any>(data)
+            updateSnapshot()
+          } finally {
+            yardInFlight -= 1
+          }
         }
 
-        // Initial fetch + re-fetch on any change to this org's fleet vehicles.
+        // Initial fetch + full re-fetch FALLBACK for this org's fleet vehicles.
+        // Same counter semantics as `yardInFlight`.
+        let fleetInFlight = 0
         const refreshFleet = async () => {
-          const { data, error } = await supabase
-            .from('vehicles')
-            .select('*')
-            .eq('organization_id', orgId)
-          if (error) throw error
-          fleetVehicles = toCamelList<any>(data)
-            .filter((v: any) => v.currentStatus !== 'defleeted' && !v.isDefleeted)
-          updateSnapshot()
+          fleetInFlight += 1
+          try {
+            const { data, error } = await supabase
+              .from('vehicles')
+              .select('*')
+              .eq('organization_id', orgId)
+            if (error) throw error
+            fleetVehicles = toCamelList<any>(data)
+              .filter((v: any) => v.currentStatus !== 'defleeted' && !v.isDefleeted)
+            updateSnapshot()
+          } finally {
+            fleetInFlight -= 1
+          }
         }
 
         await Promise.all([refreshYard(), refreshFleet()])
+
+        // Debounced fallback refetches — used by the resync triggers and any
+        // realtime event we can't apply as a delta. Coalesces bursts into one
+        // round-trip (this page previously refetched BOTH tables per change).
+        let yardTimer: ReturnType<typeof setTimeout> | null = null
+        const scheduleYardRefresh = () => {
+          if (yardTimer) clearTimeout(yardTimer)
+          yardTimer = setTimeout(() => {
+            yardTimer = null
+            refreshYard().catch(e => logger.error('Snapshot yard refetch error:', e))
+          }, 250)
+        }
+        let fleetTimer: ReturnType<typeof setTimeout> | null = null
+        const scheduleFleetRefresh = () => {
+          if (fleetTimer) clearTimeout(fleetTimer)
+          fleetTimer = setTimeout(() => {
+            fleetTimer = null
+            refreshFleet().catch(e => logger.error('Snapshot fleet refetch error:', e))
+          }, 250)
+        }
+
+        // FAST path: patch the in-memory arrays from the realtime payload and
+        // recompute the 4 snapshot numbers — no table re-download per change.
+        const onYardChange = (payload: RealtimeRowPayload) => {
+          if (yardInFlight > 0) { scheduleYardRefresh(); return }
+          const delta = normalizeDelta<any>(payload, raw => toCamel<any>(raw))
+          if (!delta) { scheduleYardRefresh(); return }
+          yardVehicles = applyDeltas(yardVehicles, [delta])
+          updateSnapshot()
+        }
+        const onFleetChange = (payload: RealtimeRowPayload) => {
+          if (fleetInFlight > 0) { scheduleFleetRefresh(); return }
+          const delta = normalizeDelta<any>(payload, raw => toCamel<any>(raw))
+          if (!delta) { scheduleFleetRefresh(); return }
+          fleetVehicles = applyDeltas(fleetVehicles, [delta], {
+            // Mirror refreshFleet()'s filter: defleeted vehicles drop out.
+            belongs: v => v.currentStatus !== 'defleeted' && !v.isDefleeted,
+          })
+          updateSnapshot()
+        }
 
         const yardChannel = supabase
           .channel(`checked_in_vehicles:${orgId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
           .on(
             'postgres_changes',
             { event: '*', schema: 'public', table: 'checked_in_vehicles', filter: `organization_id=eq.${orgId}` },
-            () => { refreshYard() },
+            payload => { onYardChange(payload as unknown as RealtimeRowPayload) },
           )
           // Leg-2 resync: deletes (defleet/checkout) arrive via the filtered
           // subscription above because checked_in_vehicles is REPLICA IDENTITY
-          // FULL (migration 0035); refetch on reconnect too.
-          .subscribe(onReconnectRefetch(refreshYard))
-        const stopYardResync = wireResyncTriggers(refreshYard)
-        unsubYard = () => { stopYardResync(); supabase.removeChannel(yardChannel) }
+          // FULL (migration 0035); FULL refetch on reconnect too.
+          .subscribe(onReconnectRefetch(scheduleYardRefresh))
+        const stopYardResync = wireResyncTriggers(scheduleYardRefresh)
+        unsubYard = () => {
+          if (yardTimer) clearTimeout(yardTimer)
+          stopYardResync()
+          supabase.removeChannel(yardChannel)
+        }
 
         const fleetChannel = supabase
           .channel(`vehicles:${orgId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
           .on(
             'postgres_changes',
             { event: '*', schema: 'public', table: 'vehicles', filter: `organization_id=eq.${orgId}` },
-            () => { refreshFleet() },
+            payload => { onFleetChange(payload as unknown as RealtimeRowPayload) },
           )
-          .subscribe(onReconnectRefetch(refreshFleet))
-        const stopFleetResync = wireResyncTriggers(refreshFleet)
-        unsubFleet = () => { stopFleetResync(); supabase.removeChannel(fleetChannel) }
+          .subscribe(onReconnectRefetch(scheduleFleetRefresh))
+        const stopFleetResync = wireResyncTriggers(scheduleFleetRefresh)
+        unsubFleet = () => {
+          if (fleetTimer) clearTimeout(fleetTimer)
+          stopFleetResync()
+          supabase.removeChannel(fleetChannel)
+        }
       } catch (e) {
         logger.error('Snapshot load error:', e)
         setSnapshotLoading(false)

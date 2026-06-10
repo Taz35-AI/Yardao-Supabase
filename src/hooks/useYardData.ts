@@ -20,6 +20,12 @@ import { branchService } from '@/lib/services/branchService'
 import { VehicleHireService } from '@/lib/services/vehicleHireService'
 import { activityLogService } from '@/lib/services/activityLogService'
 import { wireResyncTriggers, onReconnectRefetch } from '@/lib/realtime/resync'
+import {
+  normalizeDelta,
+  applyDeltas,
+  type NormalizedDelta,
+  type RealtimeRowPayload,
+} from '@/lib/realtime/deltas'
 import { 
   Analytics, 
   AuditLog, 
@@ -332,8 +338,15 @@ export function useYardDataInternal(props?: UseYardDataProps) {
         parkedAt: toDate(data.parkedAt),
       })
 
-      // Initial fetch + re-fetch on any change to this branch's vehicles.
+      // Initial fetch + full re-fetch FALLBACK. `refreshInFlight` COUNTS
+      // in-flight round-trips (a counter, not a boolean — with overlapping
+      // loads, the first one finishing must not clear the guard while the
+      // second is still running) so realtime deltas arriving mid-load take
+      // the refetch path instead (the in-flight snapshot may not include
+      // them and would overwrite the delta when it lands).
+      let refreshInFlight = 0
       const refresh = async () => {
+        refreshInFlight += 1
         try {
           const { data, error } = await supabase
             .from('checked_in_vehicles')
@@ -352,6 +365,8 @@ export function useYardDataInternal(props?: UseYardDataProps) {
           logger.error('❌ Error in yard data subscription:', err)
           setError('Failed to load vehicles')
           setLoading(false)
+        } finally {
+          refreshInFlight -= 1
         }
       }
 
@@ -370,6 +385,56 @@ export function useYardDataInternal(props?: UseYardDataProps) {
         }, 250)
       }
 
+      // FAST path: apply realtime row changes directly to in-memory state — no
+      // re-download of the whole branch per change. Same mapping as refresh():
+      // snake→camel via toCamel, then mapRow (dates → Date, contract colour,
+      // hire defaults). Batched so bulk ops re-render ~4×/sec, not per row.
+      let pendingDeltas: NormalizedDelta<CheckedInVehicle>[] = []
+      let deltaTimer: ReturnType<typeof setTimeout> | null = null
+      const flushDeltas = () => {
+        deltaTimer = null
+        const batch = pendingDeltas
+        pendingDeltas = []
+        if (batch.length === 0) return
+        // A full load started during the 250ms batching window — its snapshot
+        // may not include these rows and would overwrite them after we apply.
+        // Drop the batch and defer to a refetch (always reads current DB state).
+        if (refreshInFlight > 0) {
+          scheduleRefresh()
+          return
+        }
+        setCheckedInVehicles(prev =>
+          applyDeltas(prev, batch, {
+            // The subscription is org-wide but this hook's state only holds
+            // ONE branch — mirror refresh()'s `.eq('branch_id', …)` exactly,
+            // on the raw row. Rows that moved to another branch get removed;
+            // other branches' events are ignored (no refetch needed at all).
+            belongs: (_row, raw) => raw.branch_id === listenBranchId,
+            // List is ordered created_at DESC; mapRow coerced createdAt to Date.
+            sortKey: v => {
+              const t = v.createdAt instanceof Date ? v.createdAt.getTime() : new Date(v.createdAt as any).getTime()
+              return Number.isFinite(t) ? t : 0
+            },
+          }),
+        )
+      }
+      const onRowChange = (payload: RealtimeRowPayload) => {
+        // Full refresh in flight → its snapshot may miss this change; take the
+        // old refetch path for correctness.
+        if (refreshInFlight > 0) {
+          scheduleRefresh()
+          return
+        }
+        const delta = normalizeDelta(payload, raw => mapRow(toCamel<any>(raw)))
+        if (!delta) {
+          // Can't apply with certainty → degrade to the old full refetch.
+          scheduleRefresh()
+          return
+        }
+        pendingDeltas.push(delta)
+        if (!deltaTimer) deltaTimer = setTimeout(flushDeltas, 250)
+      }
+
       const channel = supabase
         .channel(`checked_in_vehicles:${orgId}:${listenBranchId}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
         .on(
@@ -380,21 +445,24 @@ export function useYardDataInternal(props?: UseYardDataProps) {
             table: 'checked_in_vehicles',
             filter: `organization_id=eq.${orgId}`,
           },
-          () => {
-            scheduleRefresh()
+          payload => {
+            onRowChange(payload as unknown as RealtimeRowPayload)
           },
         )
-        // Leg-2 resync: refetch when realtime reconnects after a drop. Deletes
-        // (defleet/checkout) arrive through the filtered subscription above
-        // because checked_in_vehicles is REPLICA IDENTITY FULL (migration 0035).
+        // Leg-2 resync: FULL refetch when realtime reconnects after a drop.
+        // Deletes (defleet/checkout) arrive through the filtered subscription
+        // above because checked_in_vehicles is REPLICA IDENTITY FULL
+        // (migration 0035) — that's also what makes DELETE deltas applicable.
         .subscribe(onReconnectRefetch(scheduleRefresh))
 
-      // Leg-2 resync: also refetch on tab focus / network back online, catching
-      // anything the live stream missed while backgrounded or offline.
+      // Leg-2 resync: also FULL refetch on tab focus / network back online,
+      // catching anything the live stream missed while backgrounded or offline.
       const stopResync = wireResyncTriggers(scheduleRefresh)
 
       unsubscribeRef.current = () => {
         if (refreshTimer) clearTimeout(refreshTimer)
+        if (deltaTimer) clearTimeout(deltaTimer)
+        pendingDeltas = []
         stopResync()
         supabase.removeChannel(channel)
       }
