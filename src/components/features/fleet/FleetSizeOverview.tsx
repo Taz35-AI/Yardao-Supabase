@@ -63,8 +63,10 @@ function Pill({ text, color, bg }: { text: string; color: string; bg: string }) 
 function datePill(label: string, iso?: string | null) {
   const d = daysUntil(iso)
   if (!iso || d === null) return <Pill text={`${label} —`} color="#47566a" bg="#eef1f4" />
-  if (d < 0) return <Pill text={`${label} ${fmtDate(iso)}`} color="#bf1d19" bg="#fff0ee" />
-  if (d <= 30) return <Pill text={`${label} ${fmtDate(iso)}`} color="#a25a00" bg="#fff4e4" />
+  // Due soon / expired: show days alongside the date, matching the fleet table.
+  if (d < 0) return <Pill text={`${label} ${fmtDate(iso)} · ${Math.abs(d)}d exp`} color="#bf1d19" bg="#fff0ee" />
+  if (d === 0) return <Pill text={`${label} ${fmtDate(iso)} · today`} color="#bf1d19" bg="#fff0ee" />
+  if (d <= 30) return <Pill text={`${label} ${fmtDate(iso)} · ${d}d left`} color="#a25a00" bg="#fff4e4" />
   return <Pill text={`${label} ${fmtDate(iso)}`} color="#47566a" bg="#eef1f4" />
 }
 function insurancePill(v: FleetVehicle) {
