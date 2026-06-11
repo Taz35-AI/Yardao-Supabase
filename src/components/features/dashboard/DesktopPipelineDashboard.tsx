@@ -203,12 +203,19 @@ export function DesktopPipelineDashboard({
     return null
   }, [quickFilter, scoped])
 
+  // While a search or quick filter is active, the status cockpit cascades to
+  // the matching vehicles only (e.g. one on-hire reg → "On hire 1", rest 0).
+  const cockpitList = useMemo(
+    () => (!parsed.isEmpty ? results : (quick ? quick.list : null)),
+    [parsed.isEmpty, results, quick]
+  )
+
   // Bucket the working set by effective status.
   const byBucket = useMemo(() => {
     const m: Record<StatusBucket, CheckedInVehicle[]> = {
       'Ready': [], 'Pending checks': [], 'Repairs needed': [], 'Non-Starter': [], 'on_hire': [],
     }
-    for (const v of scoped) m[vehicleBucket(v)].push(v)
+    for (const v of (cockpitList ?? scoped)) m[vehicleBucket(v)].push(v)
     // Most-recently moved to the status first (newest at the top of each queue).
     const movedTs = (v: CheckedInVehicle) => {
       const d = vehicleBucket(v) === 'on_hire'
@@ -218,7 +225,7 @@ export function DesktopPipelineDashboard({
     }
     for (const k of Object.keys(m) as StatusBucket[]) m[k].sort((a, b) => movedTs(b) - movedTs(a))
     return m
-  }, [scoped])
+  }, [cockpitList, scoped])
 
   const count = (b: StatusBucket) => byBucket[b].length
 
