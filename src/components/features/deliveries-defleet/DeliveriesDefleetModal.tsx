@@ -542,7 +542,13 @@ export function DeliveriesDefleetModal({
                 )}
               </div>
               <FieldError msg={errors.registration} />
-              {formData.operationType === 'delivery' && lookup.error && (
+              {formData.operationType === 'delivery' && lookup.error && lookup.notFound && (
+                <p className="flex items-start gap-1.5 mt-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
+                  No DVLA record yet — brand-new vehicles take a while to appear. Enter make and model manually.
+                </p>
+              )}
+              {formData.operationType === 'delivery' && lookup.error && !lookup.notFound && (
                 <p className="flex items-start gap-1.5 mt-1.5 text-[11px] text-red-600 dark:text-red-400">
                   <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-px" />{lookup.error}
                 </p>
