@@ -114,8 +114,10 @@ const STATUS_META: Record<StatusBucket, { label: string; color: string; bg: stri
 
 // Crystal-clear location + status so a reg lookup is never ambiguous:
 //   On hire · At garage · In transit · In yard · {Ready/Pending/Repairs/…}
-function locationState(v: CheckedInVehicle): { label: string; color: string; bg: string } {
-  if (v.hireStatus === 'Out on Hire') return { label: 'On hire', color: '#0a6b4d', bg: '#e3f3ec' }
+// `emphasis` renders a bigger, bordered pill — used for on-hire so a reg
+// search makes it unmissable that the vehicle is NOT in the yard.
+function locationState(v: CheckedInVehicle): { label: string; color: string; bg: string; emphasis?: boolean } {
+  if (v.hireStatus === 'Out on Hire') return { label: 'Not in yard — Currently on hire', color: '#0a6b4d', bg: '#e3f3ec', emphasis: true }
   if (v.transferStatus === 'at_external_garage') return { label: 'At garage', color: '#a25a00', bg: '#fff4e4' }
   if (v.transferStatus === 'in_transit') return { label: 'In transit', color: '#2563eb', bg: '#eaf1fe' }
   const meta = STATUS_META[vehicleBucket(v)]
@@ -149,8 +151,12 @@ function VRow({ v, onClick, showStatus }: { v: CheckedInVehicle; onClick: () => 
       </div>
       <div className="flex flex-col items-end gap-1">
         {showStatus && (
-          <span className="text-[10px] font-extrabold rounded-full px-2 py-0.5 inline-flex items-center gap-1 whitespace-nowrap" style={{ color: st.color, background: st.bg }}>
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: st.color }} />{st.label}
+          <span
+            className={st.emphasis
+              ? 'text-[12px] font-extrabold rounded-full px-3 py-1 inline-flex items-center gap-1.5 whitespace-nowrap'
+              : 'text-[10px] font-extrabold rounded-full px-2 py-0.5 inline-flex items-center gap-1 whitespace-nowrap'}
+            style={{ color: st.color, background: st.bg, border: st.emphasis ? `1.5px solid ${st.color}` : undefined }}>
+            <span className={st.emphasis ? 'w-2 h-2 rounded-full' : 'w-1.5 h-1.5 rounded-full'} style={{ background: st.color }} />{st.label}
           </span>
         )}
         {flag && (
