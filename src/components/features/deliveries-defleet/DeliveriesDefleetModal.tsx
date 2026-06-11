@@ -21,9 +21,12 @@ import {
   Building2,
   FileText,
   StickyNote,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react'
 import { DeliveryDefleelEntry, DeliveryOperationType } from './DeliveriesDefleetContent'
 import { logger } from '@/lib/logger'
+import { useRegLookup } from '@/hooks/useRegLookup'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -258,6 +261,20 @@ export function DeliveriesDefleetModal({
       isFleetVehicle: vehicle.isFleetVehicle,
     }))
     setShowVehicleSearch(false)
+  }
+
+  // ── DVLA lookup (deliveries only — defleet auto-fills from the fleet) ────────
+
+  const lookup = useRegLookup()
+  const runLookup = async () => {
+    const data = await lookup.run(formData.registration)
+    if (!data) return
+    setFormData(prev => ({
+      ...prev,
+      make:  data.make  || prev.make,
+      model: data.model || prev.model,
+    }))
+    setErrors(prev => ({ ...prev, make: '', model: '' }))
   }
 
   // ── Validation (PRESERVED) ───────────────────────────────────────────────────
@@ -498,18 +515,43 @@ export function DeliveriesDefleetModal({
             {/* Registration */}
             <div className="relative">
               <FieldLabel required>Registration</FieldLabel>
-              <div className="relative">
-                <input
-                  value={formData.registration}
-                  onChange={e => handleInputChange('registration', e.target.value.toUpperCase())}
-                  placeholder="AB12 CDE"
-                  className={`${inputCls(!!errors.registration)} font-black text-base tracking-[0.18em] uppercase`}
-                />
-                {formData.operationType === 'defleet' && formData.registration.length >= 2 && (
-                  <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    value={formData.registration}
+                    onChange={e => { handleInputChange('registration', e.target.value.toUpperCase()); lookup.reset() }}
+                    placeholder="AB12 CDE"
+                    className={`${inputCls(!!errors.registration)} font-black text-base tracking-[0.18em] uppercase`}
+                  />
+                  {formData.operationType === 'defleet' && formData.registration.length >= 2 && (
+                    <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  )}
+                </div>
+                {/* DVLA lookup — only for deliveries (defleet auto-fills from the fleet search) */}
+                {formData.operationType === 'delivery' && (
+                  <button
+                    type="button"
+                    onClick={runLookup}
+                    disabled={lookup.loading || !formData.registration.trim()}
+                    title="Look up vehicle details from DVLA"
+                    className="flex-shrink-0 inline-flex items-center gap-1.5 bg-[#025940] hover:bg-[#012619] text-white font-semibold px-3.5 rounded-xl text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {lookup.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                    <span className="hidden sm:inline">Look up</span>
+                  </button>
                 )}
               </div>
               <FieldError msg={errors.registration} />
+              {formData.operationType === 'delivery' && lookup.error && (
+                <p className="flex items-start gap-1.5 mt-1.5 text-[11px] text-red-600 dark:text-red-400">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-px" />{lookup.error}
+                </p>
+              )}
+              {formData.operationType === 'delivery' && lookup.done && !lookup.error && (
+                <p className="flex items-start gap-1.5 mt-1.5 text-[11px] text-[#025940] dark:text-[#72A68E]">
+                  <Check className="w-3.5 h-3.5 flex-shrink-0 mt-px" />Details found and filled in.
+                </p>
+              )}
 
               {/* Vehicle search dropdown */}
               {showVehicleSearch && (

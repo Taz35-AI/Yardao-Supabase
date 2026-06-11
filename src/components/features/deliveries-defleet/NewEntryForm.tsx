@@ -7,9 +7,10 @@ import { VehicleSearchInput } from './VehicleSearchInput'
 import {
   Save, Calendar, Package, RouteOff, Car,
   Clock, Building, FileText, MapPin, MessageSquare,
-  Truck, TruckIcon, Check, X,
+  Truck, TruckIcon, Check, X, Search, Loader2, AlertCircle,
 } from 'lucide-react'
 import { DeliveryOperationType } from './DeliveriesDefleetContent'
+import { useRegLookup } from '@/hooks/useRegLookup'
 
 // ─── Types (PRESERVED) ───────────────────────────────────────────────────────
 
@@ -60,6 +61,16 @@ export function NewEntryForm({
   onCancel,
 }: NewEntryFormProps) {
   const isDelivery = newEntryData.operationType === 'delivery'
+
+  // DVLA lookup — delivery entries are new vehicles, so make/model can be
+  // pulled from the registration (same shared hook as the fleet edit modal).
+  const lookup = useRegLookup()
+  const runLookup = async () => {
+    const data = await lookup.run(newEntryData.registration)
+    if (!data) return
+    if (data.make) onDataChange('make', data.make)
+    if (data.model) onDataChange('model', data.model)
+  }
 
   return (
     <div className="rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-800 shadow-lg mb-4">
@@ -173,14 +184,41 @@ export function NewEntryForm({
         {/* Registration */}
         <div className="px-4 py-3">
           <Label req>Registration</Label>
-          <VehicleSearchInput
-            value={newEntryData.registration}
-            onChange={value => onDataChange('registration', value)}
-            onVehicleSelect={onVehicleSelect}
-            vehicles={vehicles}
-            operationType={newEntryData.operationType}
-            placeholder={isDelivery ? 'New vehicle reg…' : 'Search fleet…'}
-          />
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <VehicleSearchInput
+                value={newEntryData.registration}
+                onChange={value => { onDataChange('registration', value); lookup.reset() }}
+                onVehicleSelect={onVehicleSelect}
+                vehicles={vehicles}
+                operationType={newEntryData.operationType}
+                placeholder={isDelivery ? 'New vehicle reg…' : 'Search fleet…'}
+              />
+            </div>
+            {/* DVLA lookup — only for deliveries (defleet auto-fills from the fleet search) */}
+            {isDelivery && (
+              <button
+                type="button"
+                onClick={runLookup}
+                disabled={lookup.loading || !newEntryData.registration.trim()}
+                title="Look up vehicle details from DVLA"
+                className="flex-shrink-0 inline-flex items-center gap-1.5 bg-[#025940] hover:bg-[#012619] text-white font-semibold px-3.5 rounded-xl text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {lookup.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                <span className="hidden sm:inline">Look up</span>
+              </button>
+            )}
+          </div>
+          {isDelivery && lookup.error && (
+            <p className="flex items-start gap-1.5 mt-1.5 text-[11px] text-red-600 dark:text-red-400">
+              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-px" />{lookup.error}
+            </p>
+          )}
+          {isDelivery && lookup.done && !lookup.error && (
+            <p className="flex items-start gap-1.5 mt-1.5 text-[11px] text-[#025940] dark:text-[#72A68E]">
+              <Check className="w-3.5 h-3.5 flex-shrink-0 mt-px" />Details found and filled in.
+            </p>
+          )}
         </div>
 
         {/* Make + Model */}
