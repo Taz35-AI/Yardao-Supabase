@@ -286,18 +286,22 @@ export function FleetTableRow({
         </div>
       </td>
 
-      {/* 8. MOT - Better aligned */}
+      {/* 8. MOT - Better aligned. Due-soon vehicles show the days-left badge
+          AND the expiry date stacked, so both are visible at a glance. */}
       <td className="hidden md:table-cell py-3 px-4" style={{ width: '110px' }}>
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-col gap-0.5">
           {motBadge && MotIcon && (
             <>
-              <div 
-                className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${motBadge.bgColor} ${motBadge.textColor}`}
+              <div
+                className={`inline-flex items-center self-start px-1.5 py-0.5 rounded text-[10px] font-bold ${motBadge.bgColor} ${motBadge.textColor}`}
                 title={motBadge.tooltip}
               >
                 <MotIcon className="w-3 h-3 mr-0.5" />
                 {motBadge.text}
               </div>
+              <span className={`text-[11px] whitespace-nowrap ${motStatus?.className || 'text-gray-500'}`}>
+                {formatDate(vehicle.motExpiry)}
+              </span>
             </>
           )}
           {!motBadge && motStatus && (
@@ -309,18 +313,22 @@ export function FleetTableRow({
         </div>
       </td>
 
-      {/* 9. Tax - Better aligned */}
+      {/* 9. Tax - Better aligned. Due-soon vehicles show the days-left badge
+          AND the expiry date stacked, matching the MOT column. */}
       <td className="hidden md:table-cell py-3 px-4" style={{ width: '110px' }}>
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-col gap-0.5">
           {taxBadge && TaxIcon && (
             <>
-              <div 
-                className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${taxBadge.bgColor} ${taxBadge.textColor}`}
+              <div
+                className={`inline-flex items-center self-start px-1.5 py-0.5 rounded text-[10px] font-bold ${taxBadge.bgColor} ${taxBadge.textColor}`}
                 title={taxBadge.tooltip}
               >
                 <TaxIcon className="w-3 h-3 mr-0.5" />
                 {taxBadge.text}
               </div>
+              <span className={`text-[11px] whitespace-nowrap ${taxStatus?.className || 'text-gray-500'}`}>
+                {formatDate(vehicle.taxExpiry)}
+              </span>
             </>
           )}
           {!taxBadge && taxStatus && (
