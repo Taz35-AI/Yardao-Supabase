@@ -596,41 +596,49 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
 
   // Find vehicle's original branch before service. Returns the matched row + its
   // id (replaces the Firestore vehicleDocRef) plus the resolved branch.
+  //
+  // 🛡️ DUPLICATE GUARD: this function previously swallowed EVERY error and
+  // returned null — and callers treat null as "vehicle doesn't exist", which
+  // made executeCompletion INSERT a second yard row for a vehicle that was
+  // sitting right there (one network hiccup = a permanent duplicate). Now:
+  //   • a failed row scan THROWS — infra errors are never "vehicle absent"
+  //   • the branch-name lookup is cosmetic only — its failure falls back to
+  //     the slug and can never turn a FOUND vehicle into "not found"
   const findVehicleOriginalBranch = async (registration: string) => {
     if (!organizationId) return null
 
     const cleanReg = registration.trim().toUpperCase().replace(/\s+/g, '')
 
+    const { data: vehicles, error: vehiclesError } = await supabase
+      .from(CHECKED_IN_VEHICLES_TABLE)
+      .select('*')
+      .eq('organization_id', organizationId)
+    if (vehiclesError) {
+      logger.error('Error finding vehicle branch:', vehiclesError)
+      throw vehiclesError
+    }
+
+    const vehicleData = (vehicles ?? []).find(
+      v => v.registration?.toUpperCase().replace(/\s+/g, '') === cleanReg,
+    )
+    if (!vehicleData) return null
+
+    const branchId = vehicleData.branch_id || 'main'
+
+    let branchName = branchId === 'main' ? 'Main Branch' : branchId
     try {
-      const { data: vehicles, error: vehiclesError } = await supabase
-        .from(CHECKED_IN_VEHICLES_TABLE)
-        .select('*')
-        .eq('organization_id', organizationId)
-      if (vehiclesError) throw vehiclesError
-
-      for (const vehicleData of vehicles ?? []) {
-        const vehicleReg = vehicleData.registration?.toUpperCase().replace(/\s+/g, '')
-
-        if (vehicleReg === cleanReg) {
-          const branchId = vehicleData.branch_id || 'main'
-
-          const { branchService } = await import('@/lib/services/branchService')
-          const branches = await branchService.getBranches(organizationId)
-          const branch = branches.find(b => b.slug === branchId)
-
-          return {
-            branchId,
-            branchName: branch?.name || (branchId === 'main' ? 'Main Branch' : branchId),
-            vehicleData,
-            vehicleId: vehicleData.id as string,
-          }
-        }
-      }
-
-      return null
+      const { branchService } = await import('@/lib/services/branchService')
+      const branches = await branchService.getBranches(organizationId)
+      branchName = branches.find(b => b.slug === branchId)?.name || branchName
     } catch (err) {
-      logger.error('Error finding vehicle branch:', err)
-      return null
+      logger.warn('Branch name lookup failed — using slug fallback:', err)
+    }
+
+    return {
+      branchId,
+      branchName,
+      vehicleData,
+      vehicleId: vehicleData.id as string,
     }
   }
 
@@ -899,8 +907,11 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
 
           // checked_in_vehicles row payload (snake_case). Cleared transfer/garage
           // columns use null (Firestore deleteField equivalent).
+          // 🛡️ Registration is stored NORMALIZED (no spaces, uppercase) — same
+          // convention as checkInVehicle — so the unique index and future
+          // matching never trip over formatting.
           const checkInData: Record<string, any> = {
-            registration: booking.registration,
+            registration: booking.registration.trim().toUpperCase().replace(/\s+/g, ''),
             make: originalVehicleData?.make || booking.make || '',
             model: originalVehicleData?.model || booking.model || '',
             colour: originalVehicleData?.colour || '',
@@ -957,7 +968,18 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        if (booking.isExternalProvider && booking.status === 'scheduled' && !shouldCheckBackIn) {
+        // 🛡️ Run the garage-flag cleanup for BOTH 'scheduled' AND
+        // 'checked_in_to_garage' completions. Previously only 'scheduled' was
+        // covered, so completing a checked-in-to-garage booking with
+        // "No, Just Complete" left the vehicle row flagged at_external_garage
+        // FOREVER — a ghost in the External Garage section that also blocked
+        // re-check-in. The service_booking_id match below guarantees we only
+        // ever touch the vehicle tied to THIS booking.
+        const wasAtGarage =
+          booking.status === 'checked_in_to_garage' ||
+          (booking.isExternalProvider && booking.status === 'scheduled')
+
+        if (wasAtGarage && !shouldCheckBackIn) {
           logger.log(`🔧 External garage booking - looking for vehicle to clear garage status...`)
 
           // 🛠️ Search by serviceBookingId — set on the vehicle row when

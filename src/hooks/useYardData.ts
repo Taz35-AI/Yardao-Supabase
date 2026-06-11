@@ -835,9 +835,21 @@ export function useYardDataInternal(props?: UseYardDataProps) {
   }, [user, userOrganizationId, userDisplayName, branchId])
 
   // CHECK-IN with ID-based relationships - INCLUDING CONDITION SYNC
+  // 🛡️ DUPLICATE GUARD: prevents two overlapping check-ins (double-click /
+  // double-submit). Without this, both calls pass the SELECT-based dedupe
+  // below before either INSERT lands → two rows for the same vehicle.
+  // Same pattern as garageCheckoutInProgressRef in DashboardBusinessLogic.
+  const checkInInProgressRef = useRef(false)
+
   const checkInVehicle = useCallback(async (vehicleData: VehicleCheckInData) => {
     if (!user || !userOrganizationId) throw new Error('User not authenticated')
-    
+
+    if (checkInInProgressRef.current) {
+      logger.warn('⚠️ Check-in already in progress — ignoring duplicate submit')
+      throw new Error('A check-in is already in progress — please wait a moment')
+    }
+    checkInInProgressRef.current = true
+
     try {
       const normalizedReg = vehicleData.registration.toUpperCase().replace(/\s+/g, '')
       logger.log(`Checking in ${normalizedReg} to branch: ${branchId}`)
@@ -908,6 +920,24 @@ export function useYardDataInternal(props?: UseYardDataProps) {
               // ✨ Phase 2.5a: vehicle is in a NEW branch — old parking space ID
               //                is meaningless here (different layout doc). Clear.
               parking_space_id: null,
+              // 🛡️ A manual check-in means the vehicle is physically HERE —
+              // clear any stale transfer/garage flags. Previously these were
+              // kept, leaving the transferred vehicle hidden from the yard
+              // grid (it still looked in_transit / at_external_garage).
+              transfer_status: null,
+              source_branch_id: null,
+              source_branch_name: null,
+              target_branch_id: null,
+              target_branch_name: null,
+              transfer_initiated_at: null,
+              transfer_initiated_by: null,
+              transfer_initiated_by_name: null,
+              external_garage_id: null,
+              external_garage_name: null,
+              service_booking_id: null,
+              checked_out_to_garage_at: null,
+              checked_out_to_garage_by: null,
+              checked_out_to_garage_by_name: null,
               // Ensure hire status is set for transfers
               hire_status: 'In Yard' as VehicleHireStatus,
               original_status: null,
@@ -1012,6 +1042,8 @@ export function useYardDataInternal(props?: UseYardDataProps) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to check in vehicle'
       setError(errorMessage)
       throw new Error(errorMessage)
+    } finally {
+      checkInInProgressRef.current = false
     }
   }, [user, userOrganizationId, branchId, userDisplayName, syncToFleet])
 
