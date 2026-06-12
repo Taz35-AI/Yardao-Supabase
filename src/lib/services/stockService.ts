@@ -406,6 +406,49 @@ export const stockService = {
     )
   },
 
+  /**
+   * Undo a part-usage row (e.g. a mis-added part on a job). Restores the
+   * quantity back onto the part's stock and deletes the usage row so it can
+   * never be invoiced. The mirror image of removePartQuantity — used by the
+   * live job-parts list's remove button.
+   */
+  async deletePartUsage(usageId: string, restock = true): Promise<void> {
+    if (!usageId) return
+
+    // Read the row first so we know which part + how much to give back.
+    const { data, error } = await supabase
+      .from(USAGE_TABLE)
+      .select('*')
+      .eq('id', usageId)
+      .single()
+    if (error) throw error
+
+    const partId = (data as any).part_id as string | null
+    const qty = Number((data as any).quantity_used) || 0
+
+    if (restock && partId && qty > 0) {
+      const part = await this.getPart(partId)
+      if (part) {
+        const { error: restockError } = await supabase
+          .from(STOCK_TABLE)
+          .update({
+            quantity: part.quantity + qty,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', partId)
+        if (restockError) throw restockError
+      }
+    }
+
+    const { error: deleteError } = await supabase
+      .from(USAGE_TABLE)
+      .delete()
+      .eq('id', usageId)
+    if (deleteError) throw deleteError
+
+    logger.log('✅ Part usage reversed + stock restored')
+  },
+
   // ==================== INVOICES ====================
 
   /**

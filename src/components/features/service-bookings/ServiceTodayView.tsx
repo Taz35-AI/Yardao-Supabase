@@ -11,11 +11,12 @@ import React, { useState } from 'react'
 import {
   RotateCcw, Clock, MapPin, Wrench,
   Edit2, Trash2, Plus, ChevronDown,
-  LayoutGrid, List,
+  LayoutGrid, List, Package,
 } from 'lucide-react'
 import { ServiceBooking } from '@/types/serviceBookings'
 import { useT, useLang, localizeWorkRequired } from '@/lib/i18n'
 import { BookingDetailsModal } from './BookingDetailsModal'
+import { JobPartsModal } from './JobPartsModal'
 import { BayGrid } from './BayGrid'
 import { useMechanics } from '@/hooks/useMechanics'
 import { useServiceBookings } from '@/hooks/useServiceBookings'
@@ -140,9 +141,13 @@ function BookingCard({
   // 👁️ Row click opens read-only details (notes, comments, mechanic, etc).
   // Editing is still reachable via the dedicated Edit button on the card.
   const [detailsOpen, setDetailsOpen] = useState(false)
+  // 🧩 Live job-parts capture — record the parts used on this job while it's
+  // open. Internal jobs only (external garages supply their own parts).
+  const [partsOpen, setPartsOpen] = useState(false)
 
   const isExternal  = !!booking.isExternalProvider
   const isSynthetic = isSyntheticGarageVehicle(booking)
+  const showParts   = !isExternal && !isSynthetic
 
   // 👤 Inline mechanic quick-assign on each card. Shared logic with the
   // "Upcoming" panel: stopPropagation prevents the row click from also
@@ -353,6 +358,16 @@ function BookingCard({
               {t('serviceBookings.action.done')}
             </span>
           )}
+          {showParts && (
+            <button
+              onClick={() => setPartsOpen(true)}
+              className="flex items-center gap-1.5 text-[#025940] dark:text-[#72A68E] border border-[#025940]/25 dark:border-[#72A68E]/30 hover:bg-[#025940]/8 dark:hover:bg-[#025940]/20 active:scale-95 text-[11px] font-black px-2.5 py-1.5 rounded-lg transition-all whitespace-nowrap"
+              title={t('stock.jobParts.title')}
+            >
+              <Package className="w-3.5 h-3.5" />
+              {t('stock.jobParts.buttonLabel')}
+            </button>
+          )}
           <div className="flex items-center gap-1">
             {!isSynthetic && (
               <button
@@ -414,6 +429,16 @@ function BookingCard({
             {t('serviceBookings.action.done')}
           </span>
         )}
+        {showParts && (
+          <button
+            onClick={() => setPartsOpen(true)}
+            className="flex items-center gap-1.5 text-[#025940] dark:text-[#72A68E] border border-[#025940]/25 dark:border-[#72A68E]/30 hover:bg-[#025940]/8 active:scale-95 text-[11px] font-black px-3 py-1.5 rounded-lg transition-all"
+            title={t('stock.jobParts.title')}
+          >
+            <Package className="w-3.5 h-3.5" />
+            {t('stock.jobParts.buttonLabel')}
+          </button>
+        )}
         {/* Spacer pushes edit/delete to the right */}
         <div className="flex-1" />
         {!isSynthetic && (
@@ -445,6 +470,15 @@ function BookingCard({
         onClose={() => setDetailsOpen(false)}
         onEdit={onBookingEdit}
       />
+
+      {/* 🧩 Live job-parts capture popup (internal jobs only). */}
+      {showParts && (
+        <JobPartsModal
+          booking={booking}
+          isOpen={partsOpen}
+          onClose={() => setPartsOpen(false)}
+        />
+      )}
     </div>
   )
 }
