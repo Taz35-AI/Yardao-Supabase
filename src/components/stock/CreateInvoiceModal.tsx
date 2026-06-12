@@ -11,7 +11,7 @@ import { vehicleService, userProfileService } from '@/lib/firestore'
 import { useAuth } from '@/contexts/AuthContext'
 import { toast } from 'sonner'
 import { Vehicle } from '@/types'
-import { PartUsageRecord, LABOUR_PRESETS, DEFAULT_LABOUR_RATE, InvoicePart, LabourLine } from '@/types/stock'
+import { PartUsageRecord, LABOUR_PRESETS, DEFAULT_LABOUR_RATE, InvoicePart, LabourLine, Invoice } from '@/types/stock'
 import { logger } from '@/lib/logger'
 import { supabase } from '@/lib/supabaseClient'
 import { toCamelList } from '@/lib/dbMap'
@@ -22,6 +22,24 @@ interface CreateInvoiceModalProps {
   isOpen: boolean
   onClose: () => void
   onSuccess: () => void
+  /** When set, the modal opens in EDIT mode: it skips the vehicle-search step,
+   *  pre-fills every field from this invoice, and saves back to it instead of
+   *  creating a new one. */
+  editInvoice?: Invoice | null
+}
+
+// Reverse the parts markup that was baked into a saved invoice, so reloading
+// it into the form (which re-applies the from-company markup) doesn't double
+// it. Identity when markup is 0. Penny-level rounding is possible but shown
+// before save.
+function reverseMarkup(parts: InvoicePart[], markupPercent: number): InvoicePart[] {
+  const f = 1 + (markupPercent || 0) / 100
+  const round2 = (n: number) => Math.round(n * 100) / 100
+  if (f === 1) return parts.map(p => ({ ...p }))
+  return parts.map(p => {
+    const unitPrice = round2(p.unitPrice / f)
+    return { ...p, unitPrice, total: round2(unitPrice * p.quantity) }
+  })
 }
 
 // One selectable completed job for the vehicle. Parts are the rows attributed
@@ -64,7 +82,7 @@ function jobWorkLabel(booking: any): string {
   return w ? String(w) : 'Service'
 }
 
-export function CreateInvoiceModal({ isOpen, onClose, onSuccess }: CreateInvoiceModalProps) {
+export function CreateInvoiceModal({ isOpen, onClose, onSuccess, editInvoice }: CreateInvoiceModalProps) {
   const t = useT()
   const { user } = useAuth()
   const [organizationId, setOrganizationId] = useState<string | null>(null)
@@ -109,18 +127,59 @@ export function CreateInvoiceModal({ isOpen, onClose, onSuccess }: CreateInvoice
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
 
   // Default the discount % from the selected from-company (still editable per invoice).
+  // Skipped in edit mode so the invoice's saved discount isn't clobbered.
   useEffect(() => {
+    if (editInvoice) return
     setDiscountPercent(selectedFromCompany?.discountPercent || 0)
-  }, [selectedFromCompany])
+  }, [selectedFromCompany, editInvoice])
 
   // Pre-fill the odometer from the selected vehicle, if it carries a mileage.
+  // Skipped in edit mode (the invoice's own mileage is loaded instead).
   useEffect(() => {
+    if (editInvoice) return
     if (selectedVehicle) {
       const m = (selectedVehicle as any).mileage
       setMileage(m != null && m !== '' ? String(m) : '')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedVehicle?.id, selectedVehicle?.registration])
+  }, [selectedVehicle?.id, selectedVehicle?.registration, editInvoice])
+
+  // ✏️ EDIT MODE — pre-fill the whole form from a saved invoice. Skips the
+  // vehicle-search step and never runs the per-job loaders (guarded below), so
+  // the saved parts/labour are preserved exactly.
+  useEffect(() => {
+    if (!isOpen || !editInvoice) return
+    const v: Vehicle = {
+      registration: editInvoice.vehicleRegistration,
+      make: editInvoice.vehicleMake || '',
+      model: editInvoice.vehicleModel || '',
+      colour: '',
+      size: '',
+      motExpiry: '',
+      taxExpiry: '',
+      comments: '',
+      condition: '',
+      insurancePolicyId: null,
+      insurancePolicyName: null,
+      insurancePolicyExpiry: null,
+      createdAt: new Date().toISOString(),
+      organizationId: editInvoice.organizationId,
+      createdBy: '',
+    }
+    if (editInvoice.vehicleId) v.id = editInvoice.vehicleId
+    setSelectedVehicle(v)
+    setSearchTerm(editInvoice.vehicleRegistration)
+    setStep('details')
+    setInvoiceDate(editInvoice.invoiceDate)
+    setParts(reverseMarkup(editInvoice.parts || [], editInvoice.markupPercent || 0))
+    setLabour(editInvoice.labour || [])
+    setLabourRate(editInvoice.labour?.[0]?.rate || DEFAULT_LABOUR_RATE)
+    setDiscountPercent(editInvoice.discountPercent || 0)
+    setMileage(editInvoice.vehicleMileage || '')
+    setVehicleJobs([])
+    setSelectedJobId(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, editInvoice])
 
   // Fetch organizationId and user profile
   useEffect(() => {
@@ -393,13 +452,26 @@ const loadServiceBookingHoursAndCustomer = async () => {
         
         setFromCompanies(from)
         setToCompanies(to)
-        
-        // Auto-select first company if available
-        if (from.length > 0 && !selectedFromCompany) {
-          setSelectedFromCompany(from[0])
-        }
-        if (to.length > 0 && !selectedToCompany) {
-          setSelectedToCompany(to[0])
+
+        if (editInvoice) {
+          // Edit mode: select the invoice's saved companies by name. If a
+          // from-company was renamed/removed we fall back to the first (its
+          // markup/logo can't be recovered from the stored name alone).
+          setSelectedFromCompany(from.find(c => c.name === editInvoice.fromCompany) || from[0] || null)
+          setSelectedToCompany(
+            to.find(c => c.name === editInvoice.toCompany) ||
+            (editInvoice.toCompany
+              ? { name: editInvoice.toCompany, address: '', postcode: '', email: '' }
+              : to[0] || null),
+          )
+        } else {
+          // Auto-select first company if available
+          if (from.length > 0 && !selectedFromCompany) {
+            setSelectedFromCompany(from[0])
+          }
+          if (to.length > 0 && !selectedToCompany) {
+            setSelectedToCompany(to[0])
+          }
         }
       } catch (error) {
         logger.error('Error loading companies:', error)
@@ -440,10 +512,13 @@ const loadServiceBookingHoursAndCustomer = async () => {
   // also idempotent now as a belt-and-braces guard.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
+    // In edit mode the saved parts/labour are loaded from the invoice — never
+    // overwrite them with the per-job/window loaders.
+    if (editInvoice) return
     if (selectedVehicle && step === 'details') {
       loadForVehicle()
     }
-  }, [selectedVehicle?.id, selectedVehicle?.registration, step])
+  }, [selectedVehicle?.id, selectedVehicle?.registration, step, editInvoice])
 
   const loadVehicles = async () => {
     if (!organizationId) return
@@ -810,11 +885,11 @@ const loadServiceBookingHoursAndCustomer = async () => {
 
     setLoading(true)
     try {
-      const invoiceNumber = await stockService.generateInvoiceNumber(organizationId)
       const totals = calculateTotals()
-      
-      await stockService.createInvoice({
-        invoiceNumber,
+
+      // Fields shared by create + edit. Parts are stored at the marked-up price
+      // (reversed back to raw when re-editing — see reverseMarkup).
+      const editableFields = {
         invoiceDate,
         // Empty string when invoicing a custom (non-fleet) vehicle —
         // we still capture the registration so the invoice is fully
@@ -824,9 +899,9 @@ const loadServiceBookingHoursAndCustomer = async () => {
         vehicleMake: selectedVehicle.make || '',
         vehicleModel: selectedVehicle.model || '',
         vehicleMileage: mileage,
-        fromCompany: selectedFromCompany.name, // Just the name for now
-        toCompany: selectedToCompany.name,     // Just the name for now
-        parts: totals.markedParts,             // parts stored at the marked-up price
+        fromCompany: selectedFromCompany.name,
+        toCompany: selectedToCompany.name,
+        parts: totals.markedParts,
         labour,
         subtotal: totals.subtotal,
         discount: totals.discount,
@@ -835,19 +910,31 @@ const loadServiceBookingHoursAndCustomer = async () => {
         vat: totals.vat,
         total: totals.total,
         fromLogo: selectedFromCompany.logo || '',
-        createdBy: user.uid,
-        createdByName: userDisplayName,
-        organizationId,
-        status: 'draft'
-      })
+      }
 
-      toast.success(t('stock.createInvoice.created'))
+      if (editInvoice) {
+        // Edit: update the same row — number, status, createdAt stay as-is.
+        await stockService.updateInvoice(editInvoice.id!, editableFields)
+        toast.success(t('stock.createInvoice.updated'))
+      } else {
+        const invoiceNumber = await stockService.generateInvoiceNumber(organizationId)
+        await stockService.createInvoice({
+          invoiceNumber,
+          ...editableFields,
+          createdBy: user.uid,
+          createdByName: userDisplayName,
+          organizationId,
+          status: 'draft',
+        })
+        toast.success(t('stock.createInvoice.created'))
+      }
+
       onSuccess()
       resetForm()
       onClose()
     } catch (error) {
-      logger.error('Error creating invoice:', error)
-      toast.error(t('stock.createInvoice.createFail'))
+      logger.error('Error saving invoice:', error)
+      toast.error(t(editInvoice ? 'stock.createInvoice.updateFail' : 'stock.createInvoice.createFail'))
     } finally {
       setLoading(false)
     }
@@ -884,9 +971,11 @@ const loadServiceBookingHoursAndCustomer = async () => {
               <FileText className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('stock.createInvoice.title')}</h2>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t(editInvoice ? 'stock.createInvoice.editTitle' : 'stock.createInvoice.title')}</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                {t(step === 'vehicle' ? 'stock.createInvoice.step1' : 'stock.createInvoice.step2')}
+                {editInvoice
+                  ? t('stock.createInvoice.editingNumber', { number: editInvoice.invoiceNumber })
+                  : t(step === 'vehicle' ? 'stock.createInvoice.step1' : 'stock.createInvoice.step2')}
               </p>
             </div>
           </div>
@@ -1477,7 +1566,9 @@ const loadServiceBookingHoursAndCustomer = async () => {
               <button
                 type="button"
                 onClick={() => {
-                  if (step === 'details') {
+                  // In edit mode there's no vehicle-search step to go back to —
+                  // the left button just cancels.
+                  if (step === 'details' && !editInvoice) {
                     setStep('vehicle')
                   } else {
                     onClose()
@@ -1487,16 +1578,18 @@ const loadServiceBookingHoursAndCustomer = async () => {
                 className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                 disabled={loading}
               >
-                {t(step === 'details' ? 'stock.btn.back' : 'stock.btn.cancel')}
+                {t(step === 'details' && !editInvoice ? 'stock.btn.back' : 'stock.btn.cancel')}
               </button>
-              
+
               {step === 'details' && (
                 <button
                   type="submit"
                   disabled={loading}
                   className="px-6 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all disabled:opacity-50"
                 >
-                  {loading ? t('stock.createInvoice.creating') : t('stock.createInvoice.createInvoiceBtn')}
+                  {loading
+                    ? t(editInvoice ? 'stock.createInvoice.saving' : 'stock.createInvoice.creating')
+                    : t(editInvoice ? 'stock.createInvoice.saveChanges' : 'stock.createInvoice.createInvoiceBtn')}
                 </button>
               )}
             </div>

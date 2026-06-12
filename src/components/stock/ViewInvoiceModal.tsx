@@ -6,7 +6,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { X, FileDown } from 'lucide-react'
+import { X, FileDown, Pencil } from 'lucide-react'
 import { Invoice } from '@/types/stock'
 import { stockService } from '@/lib/services/stockService'
 import { settingsService, FromCompanyDetails, ToCompanyDetails } from '@/lib/services/settingsService'
@@ -22,9 +22,11 @@ interface ViewInvoiceModalProps {
   onClose: () => void
   invoice: Invoice | null
   onStatusChange: () => void
+  /** Optional — when provided, an Edit button opens this invoice in the editor. */
+  onEdit?: (invoice: Invoice) => void
 }
 
-export function ViewInvoiceModal({ isOpen, onClose, invoice, onStatusChange }: ViewInvoiceModalProps) {
+export function ViewInvoiceModal({ isOpen, onClose, invoice, onStatusChange, onEdit }: ViewInvoiceModalProps) {
   const t = useT()
   const { user } = useAuth()
   
@@ -140,6 +142,18 @@ export function ViewInvoiceModal({ isOpen, onClose, invoice, onStatusChange }: V
               <option value="issued">{t('stock.viewInvoice.statusIssued')}</option>
               <option value="paid">{t('stock.viewInvoice.statusPaid')}</option>
             </select>
+
+            {/* Edit Button */}
+            {onEdit && (
+              <button
+                onClick={() => onEdit(invoice)}
+                className="flex items-center space-x-1.5 px-3 py-1.5 bg-white dark:bg-gray-700 border border-[#025940]/40 hover:bg-[#025940]/10 text-[#025940] dark:text-[#72A68E] rounded-lg transition-colors text-sm font-medium"
+                title={t('stock.viewInvoice.editInvoice')}
+              >
+                <Pencil className="w-4 h-4" />
+                <span className="hidden sm:inline">{t('stock.viewInvoice.editInvoice')}</span>
+              </button>
+            )}
 
             {/* Download PDF Button */}
             <button

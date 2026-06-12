@@ -6,7 +6,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { FileText, Plus, Eye, Search, Trash2, Calendar, Building2, PoundSterling, X } from 'lucide-react'
+import { FileText, Plus, Eye, Search, Trash2, Calendar, Building2, PoundSterling, X, Pencil } from 'lucide-react'
 import { stockService } from '@/lib/services/stockService'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
@@ -31,6 +31,17 @@ export function InvoicingTab() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showViewModal, setShowViewModal] = useState(false)
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
+  // When set, the create modal opens in EDIT mode for this invoice.
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null)
+
+  const openCreate = () => {
+    setEditingInvoice(null)
+    setShowCreateModal(true)
+  }
+  const openEdit = (invoice: Invoice) => {
+    setEditingInvoice(invoice)
+    setShowCreateModal(true)
+  }
 
   // Fetch organizationId and user profile
   useEffect(() => {
@@ -210,7 +221,7 @@ export function InvoicingTab() {
 
           {/* Create Invoice Button - Hero CTA */}
           <button
-            onClick={() => setShowCreateModal(true)}
+            onClick={openCreate}
             className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-[10px] sm:text-sm font-bold bg-gradient-to-r from-[#025940] to-[#012619] text-[#b3f243] shadow-lg shadow-[#025940]/30 transition-all hover:shadow-xl hover:shadow-[#025940]/40 hover:scale-105 whitespace-nowrap"
           >
             <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -239,7 +250,7 @@ export function InvoicingTab() {
           </p>
           {!searchTerm && (
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={openCreate}
               className="px-5 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-[#025940] to-[#012619] text-[#b3f243] shadow-lg shadow-[#025940]/30 hover:scale-105 transition-all"
             >
               <Plus className="w-4 h-4 inline mr-1.5" />
@@ -315,7 +326,16 @@ export function InvoicingTab() {
                   >
                     <Eye className="w-4 h-4 sm:w-5 sm:h-5" />
                   </button>
-                  
+
+                  {/* Edit Button */}
+                  <button
+                    onClick={() => openEdit(invoice)}
+                    className="p-2 text-[#025940] dark:text-[#72A68E] hover:bg-[#025940]/10 dark:hover:bg-[#025940]/20 rounded-lg transition-all"
+                    title={t('stock.invoicing.editInvoice')}
+                  >
+                    <Pencil className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </button>
+
                   {/* Delete Button - Admin Only */}
                   {isAdmin && (
                     <button
@@ -338,10 +358,14 @@ export function InvoicingTab() {
         </div>
       )}
 
-      {/* Modals - Preserved exactly */}
+      {/* Modals */}
       <CreateInvoiceModal
         isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
+        editInvoice={editingInvoice}
+        onClose={() => {
+          setShowCreateModal(false)
+          setEditingInvoice(null)
+        }}
         onSuccess={loadInvoices}
       />
 
@@ -353,6 +377,11 @@ export function InvoicingTab() {
         }}
         invoice={selectedInvoice}
         onStatusChange={loadInvoices}
+        onEdit={(inv) => {
+          setShowViewModal(false)
+          setSelectedInvoice(null)
+          openEdit(inv)
+        }}
       />
     </div>
   )

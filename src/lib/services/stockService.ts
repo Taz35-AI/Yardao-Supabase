@@ -517,6 +517,22 @@ export const stockService = {
   },
 
   /**
+   * Update an existing invoice (full edit). Pass only the editable fields —
+   * invoice number, status, createdAt and organization stay as they were.
+   * Serialised exactly like createInvoice so the stored shape is identical.
+   */
+  async updateInvoice(
+    invoiceId: string,
+    invoice: Partial<Omit<Invoice, 'id' | 'createdAt' | 'invoiceNumber' | 'organizationId'>>,
+  ): Promise<void> {
+    const { error } = await supabase
+      .from(INVOICE_TABLE)
+      .update(toSnake(invoice))
+      .eq('id', invoiceId)
+    if (error) throw error
+  },
+
+  /**
    * Delete invoice
    */
   async deleteInvoice(invoiceId: string): Promise<void> {
