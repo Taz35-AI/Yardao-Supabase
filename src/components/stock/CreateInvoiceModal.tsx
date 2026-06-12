@@ -4,7 +4,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { X, FileText, Plus, Trash2, Search, Building2, ChevronDown } from 'lucide-react'
+import { X, FileText, Plus, Trash2, Search, Building2, ChevronDown, Check } from 'lucide-react'
 import { stockService } from '@/lib/services/stockService'
 import { settingsService, FromCompanyDetails, ToCompanyDetails } from '@/lib/services/settingsService'
 import { vehicleService, userProfileService } from '@/lib/firestore'
@@ -22,6 +22,46 @@ interface CreateInvoiceModalProps {
   isOpen: boolean
   onClose: () => void
   onSuccess: () => void
+}
+
+// One selectable completed job for the vehicle. Parts are the rows attributed
+// to that exact booking (migration 0039), so picking a job invoices only its
+// parts + labour — never two services merged by a date window.
+interface JobOption {
+  id: string
+  date: string
+  workLabel: string
+  booking: any
+  parts: InvoicePart[]
+  partsTotal: number
+}
+
+// Aggregate raw usage rows into invoice part lines (sum quantities per part).
+function aggregateUsage(records: PartUsageRecord[]): InvoicePart[] {
+  const map = new Map<string, InvoicePart>()
+  records.forEach(r => {
+    const existing = map.get(r.partId)
+    if (existing) {
+      existing.quantity += r.quantityUsed
+      existing.total = existing.quantity * existing.unitPrice
+    } else {
+      map.set(r.partId, {
+        partId: r.partId,
+        partName: r.partName,
+        partNumber: r.partNumber,
+        quantity: r.quantityUsed,
+        unitPrice: r.netPrice,
+        total: r.totalCost,
+      })
+    }
+  })
+  return Array.from(map.values())
+}
+
+function jobWorkLabel(booking: any): string {
+  const w = booking.workRequired
+  if (Array.isArray(w)) return w.filter(Boolean).join(', ') || 'Service'
+  return w ? String(w) : 'Service'
 }
 
 export function CreateInvoiceModal({ isOpen, onClose, onSuccess }: CreateInvoiceModalProps) {
@@ -61,6 +101,12 @@ export function CreateInvoiceModal({ isOpen, onClose, onSuccess }: CreateInvoice
   // truth for who the work was actually done for, especially for custom
   // (non-fleet) vehicles.
   const [customerFromBookings, setCustomerFromBookings] = useState<ToCompanyDetails | null>(null)
+  // 🧩 Per-job invoicing (migration 0039). The vehicle's recent completed jobs;
+  // picking one pulls only that job's attributed parts + that job's labour.
+  // selectedJobId === null means the legacy "last 10 days" window is in use
+  // (the fallback for vehicles whose parts were never tied to a job).
+  const [vehicleJobs, setVehicleJobs] = useState<JobOption[]>([])
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
 
   // Default the discount % from the selected from-company (still editable per invoice).
   useEffect(() => {
@@ -395,9 +441,7 @@ const loadServiceBookingHoursAndCustomer = async () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (selectedVehicle && step === 'details') {
-      loadVehiclePartsUsage()
-      loadBodyshopHours()
-      loadServiceBookingHoursAndCustomer()
+      loadForVehicle()
     }
   }, [selectedVehicle?.id, selectedVehicle?.registration, step])
 
@@ -475,6 +519,145 @@ const loadServiceBookingHoursAndCustomer = async () => {
     } catch (error) {
       logger.error('Error loading parts usage:', error)
       toast.error(t('stock.createInvoice.loadPartsFail'))
+    }
+  }
+
+  // Labour lines derived from ONE booking's slots (mirrors the per-booking
+  // maths used by the legacy window loader, scoped to a single job).
+  const computeBookingLabour = (b: any): LabourLine[] => {
+    const slots = getEffectiveSlotCount({
+      timeSlot: b.timeSlot ?? '',
+      slotCount: typeof b.slotCount === 'number' ? b.slotCount : 1,
+    })
+    const hours = slots * 0.5
+    const workArr: string[] = Array.isArray(b.workRequired)
+      ? b.workRequired.filter(Boolean)
+      : b.workRequired
+        ? [String(b.workRequired)]
+        : ['Service']
+    const perType = hours / Math.max(1, workArr.length)
+    const byType: Record<string, number> = {}
+    workArr.forEach(w => { byType[w] = (byType[w] || 0) + perType })
+    return Object.entries(byType)
+      .filter(([, h]) => h > 0)
+      .map(([w, h]) => ({
+        id: `service-${w}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        description: `Service - ${w}`,
+        hours: Math.round(h * 100) / 100,
+        rate: labourRate,
+        total: Math.round(h * labourRate * 100) / 100,
+      }))
+  }
+
+  // Invoice from ONE completed job: only its attributed parts + its labour.
+  const applyJob = (job: JobOption) => {
+    setSelectedJobId(job.id)
+    setParts(job.parts)
+    // Replace service-derived labour with just this job's; keep manual/bodyshop.
+    setLabour(prev => [
+      ...prev.filter(l => !l.id.startsWith('service-')),
+      ...computeBookingLabour(job.booking),
+    ])
+    const b = job.booking
+    if (b.mileage != null && String(b.mileage).trim() !== '') {
+      setMileage(String(b.mileage).trim())
+    }
+    if (b.customerName || b.customerPhone) {
+      setCustomerFromBookings({
+        name: b.customerName?.trim() || b.customerPhone || 'Customer',
+        address: '',
+        postcode: '',
+        email: b.customerEmail || '',
+      })
+    }
+    // Backfill make/model onto a custom (non-fleet) vehicle from the booking.
+    if (b.make || b.model) {
+      setSelectedVehicle(prev =>
+        prev && !prev.id && !prev.make && !prev.model
+          ? { ...prev, make: (b.make || '').trim(), model: (b.model || '').trim() }
+          : prev,
+      )
+    }
+  }
+
+  // Fallback: the original "everything for this reg in the last 10 days" path.
+  // Used when no job has attributed parts (legacy data) or the user picks it.
+  const applyLegacyWindow = () => {
+    setSelectedJobId(null)
+    setParts([])
+    loadVehiclePartsUsage()
+    loadServiceBookingHoursAndCustomer()
+  }
+
+  // Orchestrates step-2 loading: bodyshop hours (job-independent), then builds
+  // the completed-job list and defaults to the most recent job that actually
+  // has parts attributed — falling back to the legacy 10-day window otherwise.
+  const loadForVehicle = async () => {
+    if (!selectedVehicle || !organizationId) return
+
+    loadBodyshopHours()
+
+    try {
+      // Wider 90-day window so a job picker is meaningful, grouped by job id.
+      const since = new Date()
+      since.setDate(since.getDate() - 90)
+      const sinceIso = since.toISOString()
+      const sinceDate = sinceIso.split('T')[0]
+
+      const usagePromise = selectedVehicle.id
+        ? stockService.getVehicleUsageHistory(organizationId, selectedVehicle.id, sinceIso)
+        : stockService.getVehicleUsageHistoryByRegistration(organizationId, selectedVehicle.registration, sinceIso)
+
+      const bookingsPromise = supabase
+        .from('service_bookings')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('registration', selectedVehicle.registration)
+        .gte('date', sinceDate)
+
+      const [usage, bookingsRes] = await Promise.all([usagePromise, bookingsPromise])
+      if (bookingsRes.error) throw bookingsRes.error
+      const bookings = toCamelList<any>(bookingsRes.data || [])
+
+      // Group attributed usage rows by their job id.
+      const byJob = new Map<string, PartUsageRecord[]>()
+      usage.forEach(u => {
+        if (!u.serviceBookingId) return
+        const arr = byJob.get(u.serviceBookingId) || []
+        arr.push(u)
+        byJob.set(u.serviceBookingId, arr)
+      })
+
+      const options: JobOption[] = bookings
+        .filter(b => b.status === 'completed' && !b.isExternalProvider)
+        .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+        .map(b => {
+          const recs = byJob.get(b.id) || []
+          const parts = aggregateUsage(recs)
+          return {
+            id: b.id,
+            date: b.date,
+            workLabel: jobWorkLabel(b),
+            booking: b,
+            parts,
+            partsTotal: parts.reduce((s, p) => s + p.total, 0),
+          }
+        })
+
+      setVehicleJobs(options)
+
+      // Default to the most recent job that has parts; else the legacy window.
+      const firstWithParts = options.find(o => o.parts.length > 0)
+      if (firstWithParts) {
+        applyJob(firstWithParts)
+      } else {
+        applyLegacyWindow()
+      }
+    } catch (error) {
+      logger.error('Error loading vehicle jobs:', error)
+      // Never leave the user stuck — fall back to the proven window loader.
+      setVehicleJobs([])
+      applyLegacyWindow()
     }
   }
 
@@ -683,6 +866,8 @@ const loadServiceBookingHoursAndCustomer = async () => {
     setDiscountPercent(fromCompanies[0]?.discountPercent || 0)
     setMileage('')
     setCustomerFromBookings(null)
+    setVehicleJobs([])
+    setSelectedJobId(null)
   }
 
   if (!isOpen) return null
@@ -831,6 +1016,57 @@ const loadServiceBookingHoursAndCustomer = async () => {
                     </button>
                   </div>
                 </div>
+
+                {/* 🧩 Which job? — pick a completed job to invoice only its
+                    parts + labour. Hidden when the vehicle has no completed
+                    jobs in range (legacy 10-day window used silently). */}
+                {vehicleJobs.length > 0 && (
+                  <div className="rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-[#f6f8f7] dark:bg-gray-900/40 p-4">
+                    <label className="block text-sm font-semibold text-[#012619] dark:text-white mb-2">
+                      {t('stock.createInvoice.whichJob')}
+                    </label>
+                    <div className="flex flex-col gap-1.5">
+                      {vehicleJobs.map(job => {
+                        const active = selectedJobId === job.id
+                        return (
+                          <button
+                            key={job.id}
+                            type="button"
+                            onClick={() => applyJob(job)}
+                            className={`flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors ${
+                              active
+                                ? 'border-[#025940] bg-[#f0f7f4] dark:bg-[#025940]/20'
+                                : 'border-[#e2e8e5] dark:border-gray-700 hover:border-[#72A68E] bg-white dark:bg-gray-800'
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-[#012619] dark:text-white truncate">
+                                {new Date(job.date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · {job.workLabel}
+                              </p>
+                              <p className="text-[11px] text-[#72A68E]">
+                                {job.parts.length > 0
+                                  ? t('stock.createInvoice.jobParts', { count: job.parts.length, total: job.partsTotal.toFixed(2) })
+                                  : t('stock.createInvoice.jobNoParts')}
+                              </p>
+                            </div>
+                            {active && <Check className="w-4 h-4 text-[#025940] dark:text-[#72A68E] flex-shrink-0" />}
+                          </button>
+                        )
+                      })}
+                      <button
+                        type="button"
+                        onClick={applyLegacyWindow}
+                        className={`px-3 py-2 rounded-lg border text-left text-xs transition-colors ${
+                          selectedJobId === null
+                            ? 'border-[#025940] bg-[#f0f7f4] dark:bg-[#025940]/20 text-[#025940] dark:text-[#72A68E] font-semibold'
+                            : 'border-[#e2e8e5] dark:border-gray-700 hover:border-[#72A68E] text-gray-500 dark:text-gray-400'
+                        }`}
+                      >
+                        {t('stock.createInvoice.legacyWindow')}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Invoice Header */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
