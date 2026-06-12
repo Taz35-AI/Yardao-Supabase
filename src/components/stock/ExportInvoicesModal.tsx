@@ -1,19 +1,22 @@
 // src/components/stock/ExportInvoicesModal.tsx
-// 📊 Export completed jobs to Excel — one row per invoice in the chosen date
-// range. Money comes straight off the invoice; Comments are matched from the
-// vehicle's completed booking (best-effort).
+// 📊 Export completed jobs to Excel — ONE ROW PER COMPLETED BOOKING in the
+// chosen date range (so cash / un-invoiced jobs still appear). Labour from the
+// booking, parts cost from the parts logged to the job, invoice net/gross
+// joined in when a matching invoice exists.
 
 'use client'
 
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { X, FileSpreadsheet, Download } from 'lucide-react'
 import { Invoice } from '@/types/stock'
 import { supabase } from '@/lib/supabaseClient'
+import { toCamelList } from '@/lib/dbMap'
 import {
   RangeKey,
+  JobBooking,
   getRangeDates,
-  countInRange,
-  buildInvoiceReportRows,
+  inRange,
+  buildJobReportRows,
   downloadInvoiceReport,
 } from '@/lib/utils/invoiceReport'
 import { toast } from 'sonner'
@@ -42,34 +45,68 @@ export function ExportInvoicesModal({ isOpen, onClose, invoices, organizationId 
   const [customTo, setCustomTo] = useState('')
   const [downloading, setDownloading] = useState(false)
 
-  // Today is read once per render; fine for a one-shot export action.
+  // Completed bookings + per-job parts cost, loaded once when the modal opens.
+  const [bookings, setBookings] = useState<JobBooking[]>([])
+  const [partsCost, setPartsCost] = useState<Record<string, number>>({})
+  const [loadingData, setLoadingData] = useState(false)
+
+  useEffect(() => {
+    if (!isOpen || !organizationId) return
+    let cancelled = false
+
+    const load = async () => {
+      setLoadingData(true)
+      try {
+        const [bookingsRes, usageRes] = await Promise.all([
+          supabase
+            .from('service_bookings')
+            .select('id, registration, date, notes, customer_name, slot_count, time_slot, is_external_provider, external_provider')
+            .eq('organization_id', organizationId)
+            .eq('status', 'completed'),
+          supabase
+            .from('part_usage')
+            .select('service_booking_id, total_cost')
+            .eq('organization_id', organizationId),
+        ])
+        if (cancelled) return
+        if (bookingsRes.error) throw bookingsRes.error
+
+        setBookings(toCamelList<JobBooking>(bookingsRes.data || []))
+
+        const costMap: Record<string, number> = {}
+        ;(usageRes.data || []).forEach((r: any) => {
+          const id = r.service_booking_id
+          if (!id) return
+          costMap[id] = (costMap[id] || 0) + (Number(r.total_cost) || 0)
+        })
+        setPartsCost(costMap)
+      } catch (error) {
+        logger.error('Error loading export data:', error)
+        toast.error(t('stock.export.fail'))
+      } finally {
+        if (!cancelled) setLoadingData(false)
+      }
+    }
+
+    load()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, organizationId])
+
   const { fromStr, toStr } = getRangeDates(rangeKey, customFrom, customTo, new Date())
   const count = useMemo(
-    () => countInRange(invoices, fromStr, toStr),
-    [invoices, fromStr, toStr],
+    () => bookings.filter(b => inRange(b.date, fromStr, toStr)).length,
+    [bookings, fromStr, toStr],
   )
 
   const handleDownload = async () => {
     setDownloading(true)
     try {
-      // Completed bookings supply the Comments column (best-effort, by reg).
-      let bookings: any[] = []
-      if (organizationId) {
-        const { data, error } = await supabase
-          .from('service_bookings')
-          .select('registration, date, notes')
-          .eq('organization_id', organizationId)
-          .eq('status', 'completed')
-        if (error) throw error
-        bookings = data || []
-      }
-
-      const rows = buildInvoiceReportRows(invoices, bookings, fromStr, toStr)
+      const rows = buildJobReportRows(bookings, invoices, partsCost, fromStr, toStr)
       if (rows.length === 0) {
         toast.error(t('stock.export.noneInRange'))
         return
       }
-
       await downloadInvoiceReport(rows, `completed-jobs_${fromStr}_to_${toStr}.xlsx`)
       toast.success(t('stock.export.done', { count: rows.length }))
       onClose()
@@ -166,7 +203,7 @@ export function ExportInvoicesModal({ isOpen, onClose, invoices, organizationId 
           <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-[#f6f8f7] dark:bg-gray-900/40 border border-[#e2e8e5] dark:border-gray-700">
             <span className="text-xs text-[#72A68E]">{t('stock.export.rangePreview', { from: fromStr, to: toStr })}</span>
             <span className="text-sm font-semibold tabular-nums text-[#012619] dark:text-white">
-              {t('stock.export.countInRange', { count })}
+              {loadingData ? '…' : t('stock.export.countInRange', { count })}
             </span>
           </div>
         </div>
@@ -181,7 +218,7 @@ export function ExportInvoicesModal({ isOpen, onClose, invoices, organizationId 
           </button>
           <button
             onClick={handleDownload}
-            disabled={downloading || count === 0}
+            disabled={downloading || loadingData || count === 0}
             className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold bg-[#025940] text-white hover:bg-[#012619] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {downloading

@@ -2096,7 +2096,7 @@ export const en = {
       // Export completed jobs to Excel
       button: 'Export',
       title: 'Export completed jobs',
-      subtitle: 'Download to Excel (one row per invoice)',
+      subtitle: 'Download to Excel (one row per completed job)',
       rangeLabel: 'Date range',
       last7: 'Last 7 days',
       last30: 'Last 30 days',
@@ -2106,7 +2106,7 @@ export const en = {
       from: 'From',
       to: 'To',
       rangePreview: '{from} → {to}',
-      countInRange: '{count} invoice(s)',
+      countInRange: '{count} completed job(s)',
       download: 'Download Excel',
       downloading: 'Preparing...',
       noneInRange: 'No invoices in that date range',
