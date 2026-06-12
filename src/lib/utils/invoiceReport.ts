@@ -1,15 +1,14 @@
 // src/lib/utils/invoiceReport.ts
-// Builds the "completed jobs" financial export — ONE ROW PER COMPLETED BOOKING
-// (so cash / un-invoiced jobs still appear). Labour comes from the booking's
-// slots, parts cost from the parts logged to the job (falling back to the
-// invoice's parts for older un-linked jobs), and the invoice net/gross are
-// joined in when a matching invoice exists. Produces a real .xlsx.
+// Builds the completed-jobs financial export — ONE ROW PER INVOICE. Every money
+// column comes straight off the invoice (its own stored, internally-consistent
+// figures), so the maths ties out exactly:
+//   Labour cost + Parts cost − Discount = Net,  Net + VAT = Gross.
+// Comments are matched (best-effort) from the vehicle's completed booking.
 
 import * as XLSX from 'xlsx'
 import { Invoice } from '@/types/stock'
 import { downloadExcelFile } from '@/utils/excelDownload'
 import { normalizeReg } from '@/lib/utils/registration'
-import { getEffectiveSlotCount } from '@/utils/serviceBookings/slotHelpers'
 
 export type RangeKey = '7d' | '30d' | '3m' | '6m' | 'custom'
 
@@ -43,103 +42,85 @@ function ddmmyyyy(iso: string): string {
   return y && m && d ? `${d}/${m}/${y}` : iso
 }
 
-function dayDiff(a: string, b: string): number {
-  const da = Date.parse(`${a}T00:00:00`)
-  const db = Date.parse(`${b}T00:00:00`)
-  if (isNaN(da) || isNaN(db)) return Infinity
-  return Math.abs(Math.round((db - da) / 86400000))
-}
-
-/** Completed-booking shape this report needs (camelCase). */
-export interface JobBooking {
-  id: string
+export interface BookingNote {
   registration?: string | null
   date?: string | null
   notes?: string | null
-  customerName?: string | null
-  slotCount?: number | null
-  timeSlot?: string | null
-  isExternalProvider?: boolean | null
-  externalProvider?: { garageName?: string } | null
 }
 
-// Column keys ARE the spreadsheet headers (human-friendly, in the asked order).
+// Column keys ARE the spreadsheet headers (human-friendly, in order).
 export interface ReportRow {
   Date: string
   Garage: string
   Customer: string
+  Registration: string
+  Make: string
+  Model: string
   'Labour time (hrs)': number
+  'Labour cost (£)': number
   'Parts cost (£)': number
-  'Invoice net (£)': number | string
-  'Invoice gross (£)': number | string
-  Invoiced: string
+  'Discount (£)': number
+  'Net (£)': number
+  'VAT (£)': number
+  'Gross (£)': number
   Comments: string
 }
 
-export function inRange(dateStr: string | null | undefined, fromStr: string, toStr: string): boolean {
-  return !!dateStr && dateStr >= fromStr && dateStr <= toStr
+export function countInRange(invoices: Invoice[], fromStr: string, toStr: string): number {
+  return invoices.filter(inv => inv.invoiceDate >= fromStr && inv.invoiceDate <= toStr).length
 }
 
-/**
- * One row per completed booking in range. Each booking is matched to the
- * nearest invoice for the same registration (within ~120 days) to pull the
- * net/gross; un-matched bookings are flagged Invoiced = No with blank money.
- */
-export function buildJobReportRows(
-  bookings: JobBooking[],
+/** One row per invoice in range, fully broken down from the invoice's figures. */
+export function buildInvoiceReportRows(
   invoices: Invoice[],
-  partsCostByBooking: Record<string, number>,
+  bookings: BookingNote[],
   fromStr: string,
   toStr: string,
 ): ReportRow[] {
-  // reg → invoices (for nearest-date matching).
-  const invByReg = new Map<string, Invoice[]>()
-  invoices.forEach(inv => {
-    const key = normalizeReg(inv.vehicleRegistration || '')
+  // reg → completed-booking notes, newest first (for the Comments match).
+  const byReg = new Map<string, { date: string; notes: string }[]>()
+  bookings.forEach(b => {
+    const key = normalizeReg(b.registration || '')
     if (!key) return
-    const arr = invByReg.get(key) || []
-    arr.push(inv)
-    invByReg.set(key, arr)
+    const arr = byReg.get(key) || []
+    arr.push({ date: b.date || '', notes: (b.notes || '').trim() })
+    byReg.set(key, arr)
   })
+  byReg.forEach(arr => arr.sort((a, b) => (b.date || '').localeCompare(a.date || '')))
 
-  return bookings
-    .filter(b => inRange(b.date, fromStr, toStr))
-    .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
-    .map(b => {
-      // Nearest invoice for this reg (best-effort).
-      const cands = invByReg.get(normalizeReg(b.registration || '')) || []
-      let inv: Invoice | null = null
-      let best = Infinity
-      for (const c of cands) {
-        const diff = dayDiff(b.date || '', c.invoiceDate || '')
-        if (diff < best) { best = diff; inv = c }
-      }
-      if (best > 120) inv = null
+  return invoices
+    .filter(inv => inv.invoiceDate >= fromStr && inv.invoiceDate <= toStr)
+    .sort((a, b) => (a.invoiceDate || '').localeCompare(b.invoiceDate || ''))
+    .map(inv => {
+      const labourHrs = round2((inv.labour || []).reduce((s, l) => s + (l.hours || 0), 0))
+      const labourCost = round2((inv.labour || []).reduce((s, l) => s + (l.total || 0), 0))
+      const partsCost = round2((inv.parts || []).reduce((s, p) => s + (p.total || 0), 0))
+      const discount = round2(inv.discount || 0)
+      // Net = subtotal (parts + labour) − discount; tie out to the stored totals.
+      const net = round2((inv.subtotal || 0) - discount)
+      const vat = round2(inv.vat || 0)
+      const gross = round2(inv.total || 0)
 
-      const slots = getEffectiveSlotCount({
-        timeSlot: b.timeSlot ?? '',
-        slotCount: typeof b.slotCount === 'number' ? b.slotCount : 1,
-      })
-      const labourHrs = round2(slots * 0.5)
-
-      // Parts cost: logged-to-job cost first; else the invoice's parts (older
-      // jobs whose parts were never linked).
-      const linkedCost = partsCostByBooking[b.id] || 0
-      const invPartsCost = inv ? (inv.parts || []).reduce((s, p) => s + (p.total || 0), 0) : 0
-      const partsCost = round2(linkedCost > 0 ? linkedCost : invPartsCost)
-
-      const garage = inv?.fromCompany || (b.isExternalProvider ? b.externalProvider?.garageName || '' : '')
+      // Comments: the completed booking for this reg dated on/before the
+      // invoice (else most recent). Best-effort — blank if no match.
+      const arr = byReg.get(normalizeReg(inv.vehicleRegistration || '')) || []
+      const matched = arr.find(b => b.date && b.date <= inv.invoiceDate) || arr[0]
 
       return {
-        Date: ddmmyyyy(b.date || ''),
-        Garage: garage,
-        Customer: (b.customerName || inv?.toCompany || '').trim(),
+        Date: ddmmyyyy(inv.invoiceDate),
+        Garage: inv.fromCompany || '',
+        Customer: inv.toCompany || '',
+        Registration: inv.vehicleRegistration || '',
+        Make: inv.vehicleMake || '',
+        Model: inv.vehicleModel || '',
         'Labour time (hrs)': labourHrs,
+        'Labour cost (£)': labourCost,
         'Parts cost (£)': partsCost,
-        'Invoice net (£)': inv ? round2((inv.subtotal || 0) - (inv.discount || 0)) : '',
-        'Invoice gross (£)': inv ? round2(inv.total || 0) : '',
-        Invoiced: inv ? 'Yes' : 'No',
-        Comments: (b.notes || '').trim(),
+        'Discount (£)': discount,
+        'Net (£)': net,
+        'VAT (£)': vat,
+        'Gross (£)': gross,
+        Comments: matched?.notes || '',
       }
     })
 }
@@ -149,13 +130,18 @@ export async function downloadInvoiceReport(rows: ReportRow[], filename: string)
   const ws = XLSX.utils.json_to_sheet(rows)
   ws['!cols'] = [
     { wch: 12 }, // Date
-    { wch: 24 }, // Garage
-    { wch: 24 }, // Customer
-    { wch: 14 }, // Labour
-    { wch: 14 }, // Parts
-    { wch: 14 }, // Net
-    { wch: 14 }, // Gross
-    { wch: 10 }, // Invoiced
+    { wch: 22 }, // Garage
+    { wch: 22 }, // Customer
+    { wch: 12 }, // Registration
+    { wch: 14 }, // Make
+    { wch: 14 }, // Model
+    { wch: 13 }, // Labour time
+    { wch: 13 }, // Labour cost
+    { wch: 13 }, // Parts cost
+    { wch: 12 }, // Discount
+    { wch: 12 }, // Net
+    { wch: 12 }, // VAT
+    { wch: 12 }, // Gross
     { wch: 40 }, // Comments
   ]
   const wb = XLSX.utils.book_new()
