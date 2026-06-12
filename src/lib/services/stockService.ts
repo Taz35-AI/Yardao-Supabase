@@ -164,7 +164,12 @@ export const stockService = {
     userId: string,
     userName: string,
     organizationId: string,
-    notes?: string
+    notes?: string,
+    // Optional job link (migration 0039). When a part is used from a specific
+    // service booking (the B1 live-parts flow), pass the booking id so the row
+    // is attributed to exactly that job — this is what lets invoicing pull a
+    // single job's parts instead of a 10-day window. Omitted = unattributed.
+    serviceBookingId?: string | null
   ): Promise<void> {
     const part = await this.getPart(partId)
     if (!part) throw new Error('Part not found')
@@ -208,6 +213,12 @@ export const stockService = {
     // Only add notes if provided
     if (notes) {
       usageRecord.notes = notes
+    }
+
+    // Stamp the job link when this usage belongs to a specific booking
+    // (toSnake maps serviceBookingId → service_booking_id).
+    if (serviceBookingId) {
+      usageRecord.serviceBookingId = serviceBookingId
     }
 
     const { error: usageError } = await supabase.from(USAGE_TABLE).insert(toSnake(usageRecord))
@@ -371,6 +382,28 @@ export const stockService = {
       .order('used_at', { ascending: false })
     if (error) throw error
     return toCamelList<PartUsageRecord>(data)
+  },
+
+  /**
+   * Get every part-usage row attributed to one service booking (job).
+   * This is the bullet-proof path for invoicing + the live job-parts list:
+   * parts are matched by the exact job they were used on (service_booking_id,
+   * migration 0039), never by a fuzzy date window. Newest first.
+   */
+  async getUsageByBooking(
+    organizationId: string,
+    serviceBookingId: string,
+  ): Promise<PartUsageRecord[]> {
+    if (!serviceBookingId) return []
+    const { data, error } = await supabase
+      .from(USAGE_TABLE)
+      .select('*')
+      .eq('organization_id', organizationId)
+      .eq('service_booking_id', serviceBookingId)
+    if (error) throw error
+    return toCamelList<PartUsageRecord>(data).sort((a, b) =>
+      (b.usedAt ?? '').localeCompare(a.usedAt ?? ''),
+    )
   },
 
   // ==================== INVOICES ====================

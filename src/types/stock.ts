@@ -53,6 +53,11 @@ export interface PartUsageRecord {
    *  after the custom-vehicle parts work; the join key for non-fleet
    *  vehicles whose usage can't be fetched by vehicleId. */
   vehicleRegistrationKey?: string
+  /** The service booking (job) this part was used on. Null/undefined = not
+   *  tied to a job — legacy rows + ad-hoc scans with no open job. Added 0039;
+   *  this is the link that lets invoicing scope parts to a single job instead
+   *  of a fuzzy 10-day window. */
+  serviceBookingId?: string | null
   quantityUsed: number
   unit: 'pieces' | 'liters'
   usedBy: string
