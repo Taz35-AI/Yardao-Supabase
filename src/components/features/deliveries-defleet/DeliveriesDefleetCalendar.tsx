@@ -223,15 +223,15 @@ export const DeliveriesDefleetCalendar = forwardRef<DeliveriesDefleetCalendarRef
           MAIN CALENDAR — 2/3 width on desktop
       ══════════════════════════════════════════════════════════════════════ */}
       <div className="lg:col-span-2">
-        <div className="bg-white dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-gray-800/50 rounded-2xl border border-[#e2e8e5] dark:border-gray-700 overflow-hidden">
 
-          {/* Calendar header — dark green, matches Service Bookings calendar header */}
-          <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-[#012619] to-[#025940]">
+          {/* Calendar header — solid forest + lime chip */}
+          <div className="flex items-center justify-between px-4 py-3 bg-[#012619]">
             <div className="flex items-center gap-2.5">
-              <div className="p-1.5 bg-white/15 rounded-lg">
-                <Calendar className="w-4 h-4 text-white" />
+              <div className="w-8 h-8 rounded-lg bg-[#b3f243] flex items-center justify-center">
+                <Calendar className="w-4 h-4 text-[#012619]" />
               </div>
-              <h2 className="text-base font-bold text-white">
+              <h2 className="text-base font-semibold text-white">
                 {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
               </h2>
             </div>
@@ -302,8 +302,8 @@ export const DeliveriesDefleetCalendar = forwardRef<DeliveriesDefleetCalendarRef
                       ${!isCurrentM
                         ? 'border-transparent bg-gray-50/40 dark:bg-gray-800/20'
                         : isTodayDate
-                          ? 'border-[#025940] bg-[#025940]/5 dark:bg-[#025940]/15 shadow-sm'
-                          : 'border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800/30 hover:border-[#72A68E]/50 hover:bg-[#f0f9f5] dark:hover:bg-[#025940]/10'
+                          ? 'border-[#025940] bg-[#f0f7f4] dark:bg-[#025940]/15'
+                          : 'border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800/30 hover:border-[#72A68E] hover:bg-[#f0f7f4] dark:hover:bg-[#025940]/10'
                       }
                       ${isSelectedDate ? 'ring-2 ring-[#025940] dark:ring-[#72A68E] ring-offset-1 shadow-md' : ''}
                       ${hasMatchingReg && isCurrentM ? 'ring-2 ring-orange-400 ring-offset-1 bg-orange-50 dark:bg-orange-900/15 border-orange-200 dark:border-orange-700' : ''}
@@ -427,13 +427,13 @@ export const DeliveriesDefleetCalendar = forwardRef<DeliveriesDefleetCalendarRef
           DAY DETAIL PANEL — 1/3 width on desktop (matches Service Bookings mini panel)
       ══════════════════════════════════════════════════════════════════════ */}
       <div className="hidden lg:block">
-        <div className="bg-white dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden sticky top-4">
+        <div className="bg-white dark:bg-gray-800/50 rounded-2xl border border-[#e2e8e5] dark:border-gray-700 overflow-hidden sticky top-4">
 
-          {/* Panel header */}
-          <div className="px-4 py-3 bg-gradient-to-r from-[#012619] to-[#025940]">
+          {/* Panel header — solid forest + lime chip */}
+          <div className="px-4 py-3 bg-[#012619]">
             <div className="flex items-center gap-2.5">
-              <div className="p-1.5 bg-white/15 rounded-lg flex-shrink-0">
-                <Calendar className="w-4 h-4 text-white" />
+              <div className="w-8 h-8 rounded-lg bg-[#b3f243] flex items-center justify-center flex-shrink-0">
+                <Calendar className="w-4 h-4 text-[#012619]" />
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-bold text-white leading-tight truncate">
@@ -471,7 +471,7 @@ export const DeliveriesDefleetCalendar = forwardRef<DeliveriesDefleetCalendarRef
                 {/* Add entry button */}
                 <button
                   onClick={() => handleAddEntry(selectedDate)}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-[#b3f243] hover:bg-[#9fd93a] text-[#012619] text-sm font-bold rounded-xl transition-colors shadow-sm"
+                  className="w-full flex items-center justify-center gap-1.5 py-2.5 px-3 bg-[#025940] hover:bg-[#012619] text-white text-sm font-semibold rounded-xl transition-colors"
                 >
                   <Plus className="w-4 h-4" />
                   Add Entry
@@ -480,8 +480,8 @@ export const DeliveriesDefleetCalendar = forwardRef<DeliveriesDefleetCalendarRef
                 {/* Entries list */}
                 {getEntriesForDate(formatDateString(selectedDate)).length === 0 ? (
                   <div className="text-center py-6">
-                    <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center mx-auto mb-2">
-                      <Calendar className="w-5 h-5 text-gray-400" />
+                    <div className="w-10 h-10 rounded-xl bg-[#f0f7f4] dark:bg-[#025940]/20 border border-[#e2e8e5] dark:border-gray-700 flex items-center justify-center mx-auto mb-2">
+                      <Calendar className="w-5 h-5 text-[#72A68E]" />
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">No entries for this day</p>
                   </div>

@@ -119,18 +119,11 @@ export function DeliveriesDefleetList({
 
   // ── Badge helpers (PRESERVED — only class strings updated) ───────────────────
   const getOperationBadge = (operationType: 'delivery' | 'defleet') => {
-    if (operationType === 'delivery') {
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#025940]/10 text-[#025940] dark:bg-[#025940]/25 dark:text-[#72A68E] border border-[#025940]/20 dark:border-[#025940]/40 uppercase tracking-wide">
-          <Package className="w-2.5 h-2.5" />
-          Delivery
-        </span>
-      )
-    }
+    const isDelivery = operationType === 'delivery'
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300 border border-red-200 dark:border-red-800/50 uppercase tracking-wide">
-        <RouteOff className="w-2.5 h-2.5" />
-        Defleet
+      <span className={`inline-flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide ${isDelivery ? 'text-[#025940] dark:text-[#72A68E]' : 'text-red-600 dark:text-red-400'}`}>
+        <span className={`w-1.5 h-1.5 rounded-full ${isDelivery ? 'bg-[#025940] dark:bg-[#72A68E]' : 'bg-red-500'}`}></span>
+        {isDelivery ? 'Delivery' : 'Defleet'}
       </span>
     )
   }
@@ -138,15 +131,15 @@ export function DeliveriesDefleetList({
   const getCompletionBadge = (entry: DeliveryDefleelEntry) => {
     if (entry.isCompleted) {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#b3f243]/20 text-[#012619] dark:bg-[#b3f243]/10 dark:text-[#b3f243] border border-[#b3f243]/30 uppercase tracking-wide">
-          <CheckCircle className="w-2.5 h-2.5" />
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-[#025940] dark:text-[#72A68E]">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#025940] dark:bg-[#72A68E]"></span>
           Completed
         </span>
       )
     }
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300 border border-amber-200 dark:border-amber-700/50 uppercase tracking-wide">
-        <Clock className="w-2.5 h-2.5" />
+      <span className="inline-flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-amber-600 dark:text-amber-400">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
         Pending
       </span>
     )
@@ -169,15 +162,15 @@ export function DeliveriesDefleetList({
       {/* ════════════════════════════════════════════════════════════════════════
           FILTERS + SEARCH — clean card matching Service Bookings style
       ════════════════════════════════════════════════════════════════════════ */}
-      <div className="bg-white dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-gray-800/50 rounded-2xl border border-[#e2e8e5] dark:border-gray-700 overflow-hidden">
 
         {/* Section header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#e2e8e5] dark:border-gray-700">
           <div className="flex items-center gap-2">
             <Filter className="w-3.5 h-3.5 text-[#025940] dark:text-[#72A68E]" />
-            <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Filters</span>
+            <span className="text-sm font-semibold text-[#012619] dark:text-gray-200">Filters</span>
           </div>
-          <span className="text-xs text-gray-400 dark:text-gray-500">
+          <span className="text-xs text-[#72A68E]">
             {filteredAndSortedEntries.length} of {entries.length} entries
           </span>
         </div>
@@ -186,12 +179,12 @@ export function DeliveriesDefleetList({
 
           {/* Search input */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#72A68E]" />
             <input
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               placeholder="Search by reg, make, model, supplier, notes..."
-              className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#025940]/30 focus:border-[#025940]"
+              className="w-full pl-9 pr-4 py-2 text-sm border border-[#e2e8e5] dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-[#012619] dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#025940]/30 focus:border-[#025940] transition-colors"
             />
           </div>
 
@@ -199,7 +192,7 @@ export function DeliveriesDefleetList({
           <div className="flex items-center gap-3 flex-wrap">
 
             {/* Operation type filter pill group */}
-            <div className="flex items-center bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5 gap-0.5">
+            <div className="flex items-center bg-[#f0f7f4] dark:bg-gray-700 rounded-lg p-0.5 gap-0.5">
               {[
                 { value: 'all',      label: 'All'      },
                 { value: 'delivery', label: 'Deliveries' },
@@ -208,10 +201,10 @@ export function DeliveriesDefleetList({
                 <button
                   key={opt.value}
                   onClick={() => setOperationFilter(opt.value)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap ${
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap ${
                     operationFilter === opt.value
-                      ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
-                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                      ? 'bg-[#025940] text-white shadow-sm'
+                      : 'text-[#72A68E] dark:text-gray-400 hover:text-[#012619] dark:hover:text-gray-200'
                   }`}
                 >
                   {opt.label}
@@ -224,7 +217,7 @@ export function DeliveriesDefleetList({
               <select
                 value={sortBy}
                 onChange={e => setSortBy(e.target.value as 'date' | 'registration' | 'operationType')}
-                className="appearance-none pl-3 pr-8 py-1.5 text-xs font-medium border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-[#025940]/30 focus:border-[#025940] cursor-pointer"
+                className="appearance-none pl-3 pr-8 py-1.5 text-xs font-medium border border-[#e2e8e5] dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-[#025940]/30 focus:border-[#025940] cursor-pointer"
               >
                 <option value="date">Sort: Date</option>
                 <option value="registration">Sort: Reg</option>
@@ -251,11 +244,11 @@ export function DeliveriesDefleetList({
 
       {filteredAndSortedEntries.length === 0 ? (
         /* Empty state */
-        <div className="bg-white dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm py-16 text-center">
-          <div className="w-14 h-14 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center mx-auto mb-4">
-            <FileText className="w-7 h-7 text-gray-400" />
+        <div className="bg-white dark:bg-gray-800/50 rounded-2xl border border-[#e2e8e5] dark:border-gray-700 py-16 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-[#f0f7f4] dark:bg-[#025940]/20 border border-[#e2e8e5] dark:border-gray-700 flex items-center justify-center mx-auto mb-4">
+            <FileText className="w-7 h-7 text-[#72A68E]" />
           </div>
-          <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">No entries found</h3>
+          <h3 className="text-base font-semibold text-[#012619] dark:text-white mb-1">No entries found</h3>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {searchTerm || operationFilter !== 'all'
               ? 'Try adjusting your search or filters'
@@ -268,51 +261,46 @@ export function DeliveriesDefleetList({
           {filteredAndSortedEntries.map(entry => (
             <div
               key={entry.id}
-              className={`bg-white dark:bg-gray-800/50 rounded-2xl border shadow-sm overflow-hidden transition-shadow hover:shadow-md ${
+              className={`bg-white dark:bg-gray-800 rounded-2xl border border-[#e2e8e5] dark:border-gray-700 border-l-4 overflow-hidden transition-shadow hover:shadow-sm ${
                 entry.isCompleted
-                  ? 'border-gray-100 dark:border-gray-700/50 opacity-80'
+                  ? 'border-l-[#72A68E] opacity-80'
                   : entry.operationType === 'delivery'
-                    ? 'border-[#C5D9D0] dark:border-[#025940]/40'
-                    : 'border-red-100 dark:border-red-900/40'
+                    ? 'border-l-[#025940]'
+                    : 'border-l-red-400'
               }`}
             >
               {/* ── Entry header bar ─────────────────────────────────────────── */}
-              <div className={`flex items-center justify-between px-4 py-3 border-b ${
-                entry.isCompleted
-                  ? 'bg-gray-50 dark:bg-gray-800/30 border-gray-100 dark:border-gray-700/50'
-                  : entry.operationType === 'delivery'
-                    ? 'bg-[#025940]/5 dark:bg-[#025940]/15 border-[#C5D9D0] dark:border-[#025940]/40'
-                    : 'bg-red-50/60 dark:bg-red-900/10 border-red-100 dark:border-red-900/30'
-              }`}>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-[#e2e8e5] dark:border-gray-700">
                 <div className="flex items-center gap-2.5 min-w-0">
                   {/* Operation icon */}
                   <div className={`p-1.5 rounded-lg flex-shrink-0 ${
                     entry.isCompleted
-                      ? 'bg-gray-200 dark:bg-gray-700'
+                      ? 'bg-[#f0f7f4] dark:bg-gray-700'
                       : entry.operationType === 'delivery'
-                        ? 'bg-[#025940]/10 dark:bg-[#025940]/25'
-                        : 'bg-red-100 dark:bg-red-900/30'
+                        ? 'bg-[#f0f7f4] dark:bg-[#025940]/20'
+                        : 'bg-red-50 dark:bg-red-900/30'
                   }`}>
                     {entry.operationType === 'delivery'
-                      ? <Truck className={`w-3.5 h-3.5 ${entry.isCompleted ? 'text-gray-400' : 'text-[#025940] dark:text-[#72A68E]'}`} />
-                      : <TruckIcon className={`w-3.5 h-3.5 ${entry.isCompleted ? 'text-gray-400' : 'text-red-500 dark:text-red-400'}`} />
+                      ? <Truck className={`w-3.5 h-3.5 ${entry.isCompleted ? 'text-[#72A68E]' : 'text-[#025940] dark:text-[#72A68E]'}`} />
+                      : <TruckIcon className={`w-3.5 h-3.5 ${entry.isCompleted ? 'text-[#72A68E]' : 'text-red-500 dark:text-red-400'}`} />
                     }
                   </div>
 
                   {/* Reg + vehicle */}
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-sm font-black tracking-wide ${
+                      <span className={`text-sm font-semibold tracking-wide ${
                         entry.isCompleted
                           ? 'text-gray-400 dark:text-gray-500 line-through'
-                          : 'text-gray-900 dark:text-white'
+                          : 'text-[#012619] dark:text-white'
                       }`}>
                         {entry.registration}
                       </span>
                       {getOperationBadge(entry.operationType)}
                       {getCompletionBadge(entry)}
                       {entry.isFleetVehicle && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#72A68E]/15 text-[#025940] dark:text-[#72A68E] border border-[#72A68E]/25 uppercase tracking-wide">
+                        <span className="inline-flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-[#72A68E]">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#72A68E]"></span>
                           Fleet
                         </span>
                       )}

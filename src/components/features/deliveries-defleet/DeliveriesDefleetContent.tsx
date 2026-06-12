@@ -309,13 +309,18 @@ export function DeliveriesDefleetContent() {
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
 
         {/* Left: Title */}
-        <div className="flex-shrink-0">
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white leading-tight">
-            Deliveries & Defleet
-          </h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            Track vehicle deliveries and defleet operations
-          </p>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-[#012619] flex items-center justify-center flex-shrink-0">
+            <Truck className="w-5 h-5 text-[#b3f243]" />
+          </div>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-semibold text-[#012619] dark:text-white leading-tight">
+              Deliveries & Defleet
+            </h1>
+            <p className="text-xs text-[#72A68E] mt-0.5">
+              Track vehicle deliveries and defleet operations
+            </p>
+          </div>
         </div>
 
         {/* Centre: Registration search */}
@@ -328,7 +333,7 @@ export function DeliveriesDefleetContent() {
               onChange={e => setSearchReg(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleNavigateToSearchResult()}
               placeholder="Search reg..."
-              className="w-full pl-8 pr-7 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#025940]/40 focus:border-[#025940]"
+              className="w-full pl-8 pr-7 py-2 text-sm border border-[#e2e8e5] dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-[#012619] dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#025940]/30 focus:border-[#025940] transition-colors"
             />
             {searchReg && (
               <button
@@ -364,8 +369,8 @@ export function DeliveriesDefleetContent() {
         {/* Right: View toggle + Refresh + Export + Add */}
         <div className="flex items-center gap-2 flex-shrink-0">
 
-          {/* Calendar / List toggle pill — matches Service Bookings style */}
-          <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5 gap-0.5">
+          {/* Calendar / List toggle pill */}
+          <div className="flex items-center bg-[#f0f7f4] dark:bg-gray-800 rounded-lg p-0.5 gap-0.5">
             {([
               { key: 'calendar' as const, icon: Calendar, label: 'Calendar' },
               { key: 'list'     as const, icon: List,     label: 'List'     },
@@ -373,10 +378,10 @@ export function DeliveriesDefleetContent() {
               <button
                 key={key}
                 onClick={() => setViewMode(key)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap ${
                   viewMode === key
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                    ? 'bg-[#025940] text-white shadow-sm'
+                    : 'text-[#72A68E] dark:text-gray-400 hover:text-[#012619] dark:hover:text-white'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -461,49 +466,21 @@ export function DeliveriesDefleetContent() {
       ════════════════════════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          {
-            label: 'DELIVERIES',
-            value: deliveryCount,
-            bg:    'bg-[#025940]/8 dark:bg-[#025940]/20',
-            color: 'text-[#025940] dark:text-[#72A68E]',
-            icon:  Truck,
-            border: 'border-[#025940]/20 dark:border-[#025940]/40',
-          },
-          {
-            label: 'DEFLEET',
-            value: defleetCount,
-            bg:    'bg-red-50 dark:bg-red-900/20',
-            color: 'text-red-700 dark:text-red-300',
-            icon:  TruckIcon,
-            border: 'border-red-200 dark:border-red-800/40',
-          },
-          {
-            label: 'TODAY',
-            value: todayCount,
-            bg:    'bg-[#b3f243]/20 dark:bg-[#b3f243]/10',
-            color: 'text-[#012619] dark:text-[#b3f243]',
-            icon:  Calendar,
-            border: 'border-[#b3f243]/30 dark:border-[#b3f243]/20',
-          },
-          {
-            label: 'TOTAL',
-            value: totalCount,
-            bg:    'bg-[#72A68E]/15 dark:bg-[#72A68E]/10',
-            color: 'text-[#025940] dark:text-[#72A68E]',
-            icon:  Car,
-            border: 'border-[#72A68E]/25 dark:border-[#72A68E]/20',
-          },
-        ].map(({ label, value, bg, color, icon: Icon, border }) => (
+          { label: 'DELIVERIES', value: deliveryCount, icon: Truck,     tile: 'bg-[#012619]',                  iconColor: 'text-[#b3f243]' },
+          { label: 'DEFLEET',    value: defleetCount,   icon: TruckIcon, tile: 'bg-red-50 dark:bg-red-900/30',  iconColor: 'text-red-600 dark:text-red-400' },
+          { label: 'TODAY',      value: todayCount,     icon: Calendar,  tile: 'bg-[#012619]',                  iconColor: 'text-[#b3f243]' },
+          { label: 'TOTAL',      value: totalCount,     icon: Car,       tile: 'bg-[#012619]',                  iconColor: 'text-[#b3f243]' },
+        ].map(({ label, value, icon: Icon, tile, iconColor }) => (
           <div
             key={label}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl ${bg} border ${border}`}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-700 hover:border-[#72A68E] dark:hover:border-[#72A68E] transition-colors"
           >
-            <div className={`p-2 rounded-lg bg-white/60 dark:bg-black/20 flex-shrink-0`}>
-              <Icon className={`w-4 h-4 ${color}`} />
+            <div className={`w-9 h-9 rounded-lg ${tile} flex items-center justify-center flex-shrink-0`}>
+              <Icon className={`w-4 h-4 ${iconColor}`} />
             </div>
             <div>
-              <div className={`text-xl font-bold ${color} leading-none`}>{value}</div>
-              <div className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mt-0.5">
+              <div className="text-xl font-semibold tabular-nums text-[#012619] dark:text-white leading-none">{value}</div>
+              <div className="text-[10px] font-medium text-[#72A68E] uppercase tracking-wide mt-0.5">
                 {label}
               </div>
             </div>

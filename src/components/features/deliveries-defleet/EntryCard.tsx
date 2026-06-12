@@ -121,23 +121,13 @@ export function EntryCard({ entry, onEdit, onDelete, onMarkComplete }: EntryCard
 
   return (
     <>
-      <div className={`rounded-2xl border overflow-hidden transition-all ${
-        isCompleted
-          ? 'border-gray-100 dark:border-gray-800 opacity-75'
-          : isDelivery
-            ? 'border-[#C5D9D0] dark:border-[#025940]/40 bg-white dark:bg-gray-900'
-            : 'border-red-100 dark:border-red-900/40 bg-white dark:bg-gray-900'
-      }`}>
+      <div className={`rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden transition-all ${isCompleted ? 'opacity-75' : ''}`}>
 
-        {/* ── Header stripe ── */}
+        {/* ── Header stripe — solid forest / dark-red / grey ── */}
         <div
           className="flex items-center justify-between px-4 py-3"
           style={{
-            background: isCompleted
-              ? 'linear-gradient(135deg, #374151 0%, #4b5563 100%)'
-              : isDelivery
-                ? 'linear-gradient(135deg, #012619 0%, #025940 100%)'
-                : 'linear-gradient(135deg, #1c0505 0%, #7f1d1d 100%)',
+            background: isCompleted ? '#4b5563' : isDelivery ? '#012619' : '#7f1d1d',
           }}
         >
           <div className="flex items-center gap-2.5 min-w-0">
@@ -160,7 +150,7 @@ export function EntryCard({ entry, onEdit, onDelete, onMarkComplete }: EntryCard
             </div>
 
             <div className="min-w-0">
-              <p className={`text-base font-black text-white tracking-widest leading-none ${isCompleted ? 'line-through opacity-60' : ''}`}>
+              <p className={`text-base font-semibold text-white tracking-widest leading-none ${isCompleted ? 'line-through opacity-60' : ''}`}>
                 {entry.registration}
               </p>
               <p className={`text-xs mt-0.5 ${isCompleted ? 'text-white/30' : 'text-white/50'}`}>
@@ -292,7 +282,7 @@ export function EntryCard({ entry, onEdit, onDelete, onMarkComplete }: EntryCard
         )}
 
         {/* ── Action row ── */}
-        <div className="px-4 py-3 border-t border-gray-50 dark:border-gray-800 flex items-center gap-2">
+        <div className="px-4 py-3 border-t border-[#e2e8e5] dark:border-gray-800 flex items-center gap-2">
           {onMarkComplete && !isCompleted && (
             <button
               onClick={handleMarkComplete}
