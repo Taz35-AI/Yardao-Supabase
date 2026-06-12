@@ -1473,7 +1473,7 @@ useEffect(() => {
             left: isMobile ? 'auto' : '280px',
             width: '64px', height: '64px',
             borderRadius: '50%',
-            background: 'transparent', border: 'none',
+            background: '#012619', border: '2px solid #b3f243',
             cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             zIndex: 99999, padding: 0,
@@ -1481,11 +1481,7 @@ useEffect(() => {
             transition: 'transform 0.2s, bottom 0.35s cubic-bezier(0.34,1.56,0.64,1)',
           }}
         >
-          <img
-            src="/Check In Button/chatbot.png"
-            alt="AI Assistant"
-            style={{ width: '64px', height: '64px', objectFit: 'contain' }}
-          />
+          <Sparkles style={{ width: 30, height: 30, color: '#b3f243' }} />
         </button>
       )}
 
