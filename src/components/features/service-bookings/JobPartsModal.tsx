@@ -11,7 +11,7 @@
 'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { X, Package, Search, Plus, Trash2, Check } from 'lucide-react'
+import { X, Package, Search, Trash2, Check } from 'lucide-react'
 import { ServiceBooking } from '@/types/serviceBookings'
 import { StockPart, PartUsageRecord } from '@/types/stock'
 import { stockService } from '@/lib/services/stockService'
