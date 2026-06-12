@@ -1270,6 +1270,7 @@ export const en = {
       mileagePromptLabel: 'Odometer (mi)',
       mileagePromptPlaceholder: 'e.g. 84210',
       mileagePromptHint: 'Optional — leave blank to complete without a reading.',
+      reviewPartsBtn: 'Review / add parts used',
       mileageSaveComplete: 'Save & Complete',
       mileageSkipComplete: 'Complete without mileage',
       mileageCancel: 'Cancel',

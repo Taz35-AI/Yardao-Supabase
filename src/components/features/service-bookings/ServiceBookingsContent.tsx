@@ -20,6 +20,7 @@ import { WorkshopWeekGrid } from './booking-workspace/WorkshopWeekGrid'
 import { WorkshopGridFilters } from './booking-workspace/WorkshopGridFilters'
 import { ExternalBookingsTicker } from './booking-workspace/ExternalBookingsTicker'
 import { BookingDetailsModal } from './BookingDetailsModal'
+import { JobPartsModal } from './JobPartsModal'
 import { useServiceBookings, setServiceBookingsModalHandler } from '@/hooks/useServiceBookings'
 import { useMechanics } from '@/hooks/useMechanics'
 import { useBranches } from '@/hooks/useBranches'
@@ -36,7 +37,7 @@ import { Badge } from '@/components/ui/Badge'
 import {
   Calendar, Clock, Car, Wrench, RefreshCw, BarChart3,
   CheckCircle, AlertCircle, Building, LogIn, ChevronRight,
-  Plus, Search, Building2, ChevronLeft, X
+  Plus, Search, Building2, ChevronLeft, X, Package
 } from 'lucide-react'
 import { logger } from '@/lib/logger'
 import { useT, localizeWorkRequired } from '@/lib/i18n'
@@ -473,6 +474,10 @@ export function ServiceBookingsContent() {
   // 🛞 Internal-only odometer prompt shown before completing a workshop job.
   const [mileagePromptBooking, setMileagePromptBooking] = useState<ServiceBooking | null>(null)
   const [mileageInput, setMileageInput] = useState('')
+  // 🧩 Final parts review opened from the completion prompt (same JobPartsModal
+  // used live on the card) — lets staff confirm/add the job's parts before
+  // completing. Purely additive: never blocks completion.
+  const [showCompletionParts, setShowCompletionParts] = useState(false)
   // 🍴 Pending lunch-break selection awaiting confirmation. Set when the
   // user clicks/drags empty cells in the workshop sub-view; a confirm
   // dialog gates the actual write so a stray tap can't create one.
@@ -1939,6 +1944,18 @@ export function ServiceBookingsContent() {
                 />
                 <p className="text-[10px] text-[#8a9e94] mt-1.5">{t('serviceBookings.content.mileagePromptHint')}</p>
               </div>
+
+              {/* 🧩 Final parts review — confirm/add the parts used on this job
+                  before completing. Opens the same live parts modal. */}
+              <button
+                type="button"
+                onClick={() => setShowCompletionParts(true)}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold text-[#025940] dark:text-[#72A68E] border border-[#025940]/25 dark:border-[#72A68E]/30 hover:bg-[#025940]/8 dark:hover:bg-[#025940]/20 transition-colors"
+              >
+                <Package className="w-4 h-4" />
+                {t('serviceBookings.content.reviewPartsBtn')}
+              </button>
+
               <div className="flex flex-col gap-2 pt-1">
                 <Button
                   onClick={() => {
@@ -1967,6 +1984,16 @@ export function ServiceBookingsContent() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 🧩 Parts review launched from the completion prompt — layers above it
+          (z-100 > z-60) and returns to the prompt on close. */}
+      {mileagePromptBooking && (
+        <JobPartsModal
+          booking={mileagePromptBooking}
+          isOpen={showCompletionParts}
+          onClose={() => setShowCompletionParts(false)}
+        />
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════
