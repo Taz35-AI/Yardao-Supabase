@@ -14,12 +14,16 @@ interface BarcodeScannerProps {
   onClose: () => void
   onScan: (barcode: string) => void
   mode: 'in' | 'out'
+  /** Which method to open on. Defaults to 'manual' (handheld scanner) so the
+   *  existing stock-page behaviour is unchanged; callers can open straight to
+   *  'camera' (phone) instead. */
+  initialMode?: 'camera' | 'manual'
 }
 
-export function BarcodeScanner({ isOpen, onClose, onScan, mode }: BarcodeScannerProps) {
+export function BarcodeScanner({ isOpen, onClose, onScan, mode, initialMode = 'manual' }: BarcodeScannerProps) {
   const t = useT()
   // 🔥 CHANGED: Default to 'manual' instead of 'camera'
-  const [scanMethod, setScanMethod] = useState<'camera' | 'manual'>('manual')
+  const [scanMethod, setScanMethod] = useState<'camera' | 'manual'>(initialMode)
   const [manualInput, setManualInput] = useState('')
   const [scanning, setScanning] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -41,6 +45,11 @@ export function BarcodeScanner({ isOpen, onClose, onScan, mode }: BarcodeScanner
       stopCameraScanning()
     }
   }, [isOpen, scanMethod])
+
+  // Open straight onto the requested method each time it's shown.
+  useEffect(() => {
+    if (isOpen) setScanMethod(initialMode)
+  }, [isOpen, initialMode])
 
   // Auto-focus input for handheld scanner
   useEffect(() => {

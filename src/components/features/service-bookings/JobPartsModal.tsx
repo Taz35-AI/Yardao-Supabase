@@ -11,10 +11,11 @@
 'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { X, Package, Search, Trash2, Check } from 'lucide-react'
+import { X, Package, Search, Trash2, Check, Scan, Smartphone } from 'lucide-react'
 import { ServiceBooking } from '@/types/serviceBookings'
 import { StockPart, PartUsageRecord } from '@/types/stock'
 import { stockService } from '@/lib/services/stockService'
+import { BarcodeScanner } from '@/components/stock/BarcodeScanner'
 import { vehicleService, userProfileService } from '@/lib/firestore'
 import { useAuth } from '@/contexts/AuthContext'
 import { normalizeReg } from '@/lib/utils/registration'
@@ -50,6 +51,10 @@ export function JobPartsModal({ isOpen, onClose, booking, onChanged }: JobPartsM
   const [addQty, setAddQty] = useState('1')
   const [processing, setProcessing] = useState(false)
   const [removingId, setRemovingId] = useState<string | null>(null)
+  // Barcode scanning — an alternative to typing the search. 'manual' opens the
+  // handheld/USB scanner field; 'camera' opens the phone camera.
+  const [scannerOpen, setScannerOpen] = useState(false)
+  const [scannerMode, setScannerMode] = useState<'manual' | 'camera'>('manual')
 
   const isJobReal = !!booking.id && !booking.id.startsWith('garage-')
 
@@ -134,6 +139,35 @@ export function JobPartsModal({ isOpen, onClose, booking, onChanged }: JobPartsM
     [jobParts],
   )
 
+  const openScanner = (m: 'manual' | 'camera') => {
+    setScannerMode(m)
+    setScannerOpen(true)
+  }
+
+  // Resolve a scanned barcode to a stock part — same matching the stock page
+  // uses (exact → contains → reverse-contains on the part number) — then
+  // pre-select it so the user just confirms the quantity and adds.
+  const handleBarcodeScanned = (barcode: string) => {
+    const code = barcode.toUpperCase().trim()
+    if (!code) return
+    const found = stockParts.find(p => {
+      const pn = (p.partNumber || '').toUpperCase().trim()
+      if (!pn) return false
+      return pn === code || pn.includes(code) || code.includes(pn)
+    })
+    if (!found) {
+      toast.error(t('stock.jobParts.barcodeNotFound', { code: barcode }))
+      return
+    }
+    if (found.quantity <= 0) {
+      toast.error(t('stock.jobParts.outOfStock'))
+      return
+    }
+    setSelectedPart(found)
+    setAddQty('1')
+    setSearch('')
+  }
+
   const handleAdd = async () => {
     if (!organizationId || !user?.uid || !selectedPart?.id) return
     const qty = parseFloat(addQty)
@@ -198,6 +232,7 @@ export function JobPartsModal({ isOpen, onClose, booking, onChanged }: JobPartsM
   const vehicleName = [booking.make, booking.model].filter(Boolean).join(' ')
 
   return (
+    <>
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
       onClick={onClose}
@@ -323,6 +358,29 @@ export function JobPartsModal({ isOpen, onClose, booking, onChanged }: JobPartsM
                 )}
               </div>
             )}
+
+            {/* Scan as an alternative to typing — handheld scanner or phone
+                camera. Enhancement, not a replacement for search. */}
+            {!selectedPart && (
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick={() => openScanner('manual')}
+                  className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-[#025940]/25 dark:border-[#72A68E]/30 text-sm font-semibold text-[#025940] dark:text-[#72A68E] hover:bg-[#025940]/8 dark:hover:bg-[#025940]/20 transition-colors"
+                >
+                  <Scan className="w-4 h-4" />
+                  {t('stock.jobParts.scanner')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openScanner('camera')}
+                  className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-[#025940]/25 dark:border-[#72A68E]/30 text-sm font-semibold text-[#025940] dark:text-[#72A68E] hover:bg-[#025940]/8 dark:hover:bg-[#025940]/20 transition-colors"
+                >
+                  <Smartphone className="w-4 h-4" />
+                  {t('stock.jobParts.phone')}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Parts on this job */}
@@ -392,5 +450,21 @@ export function JobPartsModal({ isOpen, onClose, booking, onChanged }: JobPartsM
         </div>
       </div>
     </div>
+
+    {/* Barcode scanner — reuses the stock-page scanner, opened straight onto
+        the chosen method. Wrapped in a higher stacking context so it layers
+        above this modal (which is z-100). */}
+    {scannerOpen && (
+      <div className="relative z-[120]">
+        <BarcodeScanner
+          isOpen={scannerOpen}
+          onClose={() => setScannerOpen(false)}
+          onScan={handleBarcodeScanned}
+          mode="out"
+          initialMode={scannerMode}
+        />
+      </div>
+    )}
+    </>
   )
 }
