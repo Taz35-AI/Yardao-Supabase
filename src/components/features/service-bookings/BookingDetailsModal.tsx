@@ -8,7 +8,7 @@
 // editable inputs to keep the responsibilities clear.
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import {
   X,
   Clock,
@@ -21,12 +21,14 @@ import {
   Phone,
   Mail,
   Trash2,
+  Package,
 } from 'lucide-react'
 import type { ServiceBooking } from '@/types/serviceBookings'
 import type { Customer } from '@/types/customer'
 import { getBookingEndTime } from '@/utils/serviceBookings/slotHelpers'
 import { normalizePhone } from '@/lib/utils/phone'
 import { useT, localizeWorkType } from '@/lib/i18n'
+import { JobPartsModal } from './JobPartsModal'
 
 interface BookingDetailsModalProps {
   booking: ServiceBooking
@@ -110,6 +112,8 @@ export function BookingDetailsModal({
   customers,
 }: BookingDetailsModalProps) {
   const t = useT()
+  // 🧩 Live job-parts capture, reachable straight from the details view.
+  const [partsOpen, setPartsOpen] = useState(false)
   if (!isOpen) return null
 
   // Match the booking's customerPhone to a saved customer record so we
@@ -122,6 +126,9 @@ export function BookingDetailsModal({
   const customerPreferredNotes = matchedCustomer?.notes?.trim() || ''
 
   const isExternal = !!booking.isExternalProvider
+  // Parts only make sense for our own (internal, real) jobs — external garages
+  // supply their own parts, and synthetic garage rows aren't real bookings.
+  const showParts = !isExternal && !(booking as any).isGarageVehicle
   const works = formatWorkList(booking.workRequired).map(w => localizeWorkType(t, w))
   const status = statusLabel(booking.status, t)
   // 🕐 Multi-slot aware time display: shows the full range when the booking
@@ -170,6 +177,7 @@ export function BookingDetailsModal({
     : t('serviceBookings.action.markComplete')
 
   return (
+    <>
     <div
       className="fixed inset-0 bg-black/60 flex items-center justify-center p-2 sm:p-4 z-50"
       onClick={onClose}
@@ -388,6 +396,15 @@ export function BookingDetailsModal({
             <span />
           )}
           <div className="flex items-center gap-2 ml-auto flex-wrap">
+            {showParts && (
+              <button
+                onClick={() => setPartsOpen(true)}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-white dark:bg-gray-700 border border-[#025940]/40 hover:bg-[#025940]/10 text-[#025940] dark:text-[#72A68E] transition-colors"
+              >
+                <Package className="w-4 h-4" />
+                {t('stock.jobParts.buttonLabel')}
+              </button>
+            )}
             {onEdit && (
               <button
                 onClick={handleEditClick}
@@ -419,6 +436,16 @@ export function BookingDetailsModal({
         </div>
       </div>
     </div>
+
+    {/* 🧩 Live job-parts capture — layers above this modal (z-100 > z-50). */}
+    {showParts && (
+      <JobPartsModal
+        booking={booking}
+        isOpen={partsOpen}
+        onClose={() => setPartsOpen(false)}
+      />
+    )}
+    </>
   )
 }
 
