@@ -6,13 +6,14 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { FileText, Plus, Eye, Search, Trash2, Calendar, Building2, PoundSterling, X, Pencil } from 'lucide-react'
+import { FileText, Plus, Eye, Search, Trash2, Calendar, Building2, PoundSterling, X, Pencil, FileSpreadsheet } from 'lucide-react'
 import { stockService } from '@/lib/services/stockService'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { Invoice } from '@/types/stock'
 import { CreateInvoiceModal } from './CreateInvoiceModal'
 import { ViewInvoiceModal } from './ViewInvoiceModal'
+import { ExportInvoicesModal } from './ExportInvoicesModal'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
@@ -33,6 +34,7 @@ export function InvoicingTab() {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
   // When set, the create modal opens in EDIT mode for this invoice.
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null)
+  const [showExportModal, setShowExportModal] = useState(false)
 
   const openCreate = () => {
     setEditingInvoice(null)
@@ -219,6 +221,16 @@ export function InvoicingTab() {
             )}
           </div>
 
+          {/* Export to Excel */}
+          <button
+            onClick={() => setShowExportModal(true)}
+            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-[10px] sm:text-sm font-semibold bg-white dark:bg-gray-800 border border-[#025940]/40 dark:border-[#72A68E]/40 text-[#025940] dark:text-[#72A68E] hover:bg-[#025940]/8 dark:hover:bg-[#025940]/20 transition-colors whitespace-nowrap"
+            title={t('stock.export.title')}
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span>{t('stock.export.button')}</span>
+          </button>
+
           {/* Create Invoice Button - Hero CTA */}
           <button
             onClick={openCreate}
@@ -382,6 +394,13 @@ export function InvoicingTab() {
           setSelectedInvoice(null)
           openEdit(inv)
         }}
+      />
+
+      <ExportInvoicesModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        invoices={invoices}
+        organizationId={organizationId}
       />
     </div>
   )
