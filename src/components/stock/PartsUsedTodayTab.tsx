@@ -1,5 +1,7 @@
 // src/components/stock/PartsUsedTodayTab.tsx
 // 🔥 COMPACT REDESIGN: Accordion rows — all features preserved
+// ✅ STYLE RULES: no gradients/glow/scale effects; white cards + #e2e8e5 hairlines;
+//    forest green (#025940/#012619) replaces blue; status = dot + text, red only for critical
 // ✅ PRESERVED: All features - daily tracking, midnight reset, stock levels, grouping
 // ✅ NEW: Collapsible rows save ~60% vertical space, inline stock status, single-line header
 
@@ -135,11 +137,11 @@ export function PartsUsedTodayTab() {
 
         {/* Title + date */}
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#025940] to-[#012619] flex items-center justify-center flex-shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-[#012619] flex items-center justify-center flex-shrink-0">
             <Calendar className="w-4 h-4 text-[#b3f243]" />
           </div>
           <div>
-            <p className="text-sm font-bold text-gray-900 dark:text-white leading-none">{t('stock.usedToday.title')}</p>
+            <p className="text-sm font-semibold text-[#012619] dark:text-white leading-none">{t('stock.usedToday.title')}</p>
             <p className="text-[10px] text-[#72A68E] mt-0.5">
               {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}{t('stock.usedToday.resetsMidnight')}
             </p>
@@ -150,36 +152,36 @@ export function PartsUsedTodayTab() {
         <div className="flex items-center gap-2 flex-wrap">
 
           {/* Parts Used */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-            <div className="w-5 h-5 rounded-md bg-gradient-to-br from-[#025940] to-[#012619] flex items-center justify-center flex-shrink-0">
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-700">
+            <div className="w-5 h-5 rounded-md bg-[#012619] flex items-center justify-center flex-shrink-0">
               <Package className="w-3 h-3 text-[#b3f243]" />
             </div>
-            <span className="text-xs font-black text-gray-900 dark:text-white">{totalPartsUsed}</span>
-            <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide">{t('stock.usedToday.statParts')}</span>
+            <span className="text-xs font-semibold tabular-nums text-[#012619] dark:text-white">{totalPartsUsed}</span>
+            <span className="text-[10px] text-[#72A68E] font-medium uppercase tracking-wide">{t('stock.usedToday.statParts')}</span>
           </div>
 
           {/* Total Quantity */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-            <div className="w-5 h-5 rounded-md bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center flex-shrink-0">
-              <TrendingDown className="w-3 h-3 text-white" />
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-700">
+            <div className="w-5 h-5 rounded-md bg-[#012619] flex items-center justify-center flex-shrink-0">
+              <TrendingDown className="w-3 h-3 text-[#b3f243]" />
             </div>
-            <span className="text-xs font-black text-gray-900 dark:text-white">{totalQuantity}</span>
-            <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide">{t('stock.usedToday.statQty')}</span>
+            <span className="text-xs font-semibold tabular-nums text-[#012619] dark:text-white">{totalQuantity}</span>
+            <span className="text-[10px] text-[#72A68E] font-medium uppercase tracking-wide">{t('stock.usedToday.statQty')}</span>
           </div>
 
           {/* Total Value */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-            <div className="w-5 h-5 rounded-md bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center flex-shrink-0">
-              <PoundSterling className="w-3 h-3 text-white" />
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-700">
+            <div className="w-5 h-5 rounded-md bg-[#012619] flex items-center justify-center flex-shrink-0">
+              <PoundSterling className="w-3 h-3 text-[#b3f243]" />
             </div>
-            <span className="text-xs font-black text-gray-900 dark:text-white">£{totalValue.toFixed(0)}</span>
-            <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide">{t('stock.usedToday.statValue')}</span>
+            <span className="text-xs font-semibold tabular-nums text-[#012619] dark:text-white">£{totalValue.toFixed(0)}</span>
+            <span className="text-[10px] text-[#72A68E] font-medium uppercase tracking-wide">{t('stock.usedToday.statValue')}</span>
           </div>
 
           {/* Refresh */}
           <button
             onClick={loadUsageRecords}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-gradient-to-r from-[#025940] to-[#012619] text-[#b3f243] shadow-lg shadow-[#025940]/30 hover:shadow-xl hover:shadow-[#025940]/40 hover:scale-105 transition-all whitespace-nowrap"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#025940] text-white hover:bg-[#012619] transition-colors whitespace-nowrap"
             title={t('stock.usedToday.refresh')}
           >
             <RefreshCw className="w-3.5 h-3.5" />
@@ -189,20 +191,20 @@ export function PartsUsedTodayTab() {
       </div>
 
       {/* ── INFO BANNER ── */}
-      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border border-blue-200 dark:border-blue-800">
-        <AlertCircle className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#f6f8f7] dark:bg-gray-900/40 border border-[#e2e8e5] dark:border-gray-700">
+        <AlertCircle className="w-3.5 h-3.5 text-[#025940] dark:text-[#72A68E] flex-shrink-0" />
         <p className="text-xs text-gray-700 dark:text-gray-300">
-          <span className="font-bold">{t('stock.usedToday.autoResets')}</span> {t('stock.usedToday.prevDays')}
+          <span className="font-semibold">{t('stock.usedToday.autoResets')}</span> {t('stock.usedToday.prevDays')}
         </p>
       </div>
 
       {/* ── PARTS LIST ── */}
       {totalPartsUsed === 0 ? (
         <div className="py-12 text-center">
-          <div className="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Package className="w-8 h-8 text-gray-400" />
+          <div className="w-16 h-16 bg-[#f0f7f4] dark:bg-[#025940]/20 border border-[#e2e8e5] dark:border-gray-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Package className="w-8 h-8 text-[#72A68E]" />
           </div>
-          <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">{t('stock.usedToday.emptyTitle')}</h3>
+          <h3 className="text-base font-semibold text-[#012619] dark:text-white mb-1">{t('stock.usedToday.emptyTitle')}</h3>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {t('stock.usedToday.emptyBody')}
           </p>
@@ -225,11 +227,8 @@ export function PartsUsedTodayTab() {
               return (
                 <div
                   key={partId}
-                  className="group bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 border-l-4 border-l-[#025940] overflow-hidden transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 relative"
+                  className="group bg-white dark:bg-gray-800 rounded-xl border border-[#e2e8e5] dark:border-gray-700 border-l-4 border-l-[#72A68E] overflow-hidden transition-shadow hover:shadow-sm relative"
                 >
-                  {/* Gradient overlay on hover */}
-                  <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-[#025940]/0 via-[#72A68E]/0 to-[#b3f243]/0 group-hover:from-[#025940]/5 group-hover:via-[#72A68E]/5 group-hover:to-[#b3f243]/5 transition-all duration-300 pointer-events-none" />
-
                   {/* ── Clickable summary row ── */}
                   <button
                     onClick={() => toggleExpanded(partId)}
@@ -237,7 +236,7 @@ export function PartsUsedTodayTab() {
                   >
                     {/* Part name + number */}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-gray-900 dark:text-white truncate leading-none">
+                      <p className="text-sm font-semibold text-[#012619] dark:text-white truncate leading-none">
                         {group.partName}
                       </p>
                       <p className="text-[10px] text-[#72A68E] font-mono mt-0.5">{group.partNumber}</p>
@@ -245,12 +244,12 @@ export function PartsUsedTodayTab() {
 
                     {/* Stock badge — preserves critical/low/ok logic */}
                     {currentStock && (
-                      <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md flex-shrink-0 whitespace-nowrap ${
+                      <span className={`flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md flex-shrink-0 whitespace-nowrap ${
                         stockStatus === 'critical'
-                          ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                          ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400'
                           : stockStatus === 'low'
-                          ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-                          : 'bg-[#C5D9D0]/40 dark:bg-[#025940]/20 text-[#025940] dark:text-[#72A68E]'
+                          ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                          : 'bg-[#f0f7f4] dark:bg-[#025940]/20 text-[#025940] dark:text-[#72A68E]'
                       }`}>
                         <Layers className="w-3 h-3 flex-shrink-0" />
                         {currentStock.quantity} {currentStock.unit}
@@ -260,12 +259,12 @@ export function PartsUsedTodayTab() {
                     )}
 
                     {/* Qty used pill */}
-                    <span className="flex-shrink-0 px-2.5 py-1 rounded-lg bg-gradient-to-r from-[#025940] to-[#012619] text-[#b3f243] text-xs font-black shadow-md">
+                    <span className="flex-shrink-0 px-2.5 py-1 rounded-lg bg-[#f0f7f4] dark:bg-[#025940]/20 text-[#025940] dark:text-[#72A68E] text-xs font-semibold tabular-nums">
                       {group.totalQuantity} {group.unit}
                     </span>
 
                     {/* Cost */}
-                    <span className="flex-shrink-0 text-xs font-bold text-emerald-600 dark:text-emerald-400 min-w-[52px] text-right">
+                    <span className="flex-shrink-0 text-xs font-semibold tabular-nums text-[#012619] dark:text-white min-w-[52px] text-right">
                       £{group.totalCost.toFixed(2)}
                     </span>
 
@@ -282,7 +281,7 @@ export function PartsUsedTodayTab() {
                           className="flex items-start gap-3 px-3 py-2.5 hover:bg-[#025940]/5 dark:hover:bg-[#025940]/10 transition-colors"
                         >
                           {/* Reg plate */}
-                          <span className="flex-shrink-0 px-2 py-0.5 rounded-md bg-[#012619] text-[#b3f243] text-xs font-black font-mono tracking-wide">
+                          <span className="flex-shrink-0 px-2 py-0.5 rounded-md bg-[#012619] text-[#b3f243] text-xs font-semibold font-mono tracking-wide">
                             {record.vehicleRegistration}
                           </span>
 
@@ -298,7 +297,7 @@ export function PartsUsedTodayTab() {
                               </span>
                             </div>
                             {record.notes && (
-                              <div className="mt-1.5 px-2.5 py-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                              <div className="mt-1.5 px-2.5 py-1.5 bg-[#f6f8f7] dark:bg-gray-900/40 border border-[#e2e8e5] dark:border-gray-700 rounded-lg">
                                 <p className="text-xs text-gray-700 dark:text-gray-300">
                                   💬 {record.notes}
                                 </p>
@@ -308,7 +307,7 @@ export function PartsUsedTodayTab() {
 
                           {/* Qty + cost */}
                           <div className="text-right flex-shrink-0">
-                            <p className="text-xs font-black text-gray-900 dark:text-white">
+                            <p className="text-xs font-semibold tabular-nums text-[#012619] dark:text-white">
                               {record.quantityUsed} {record.unit}
                             </p>
                             <p className="text-[10px] text-gray-500 dark:text-gray-400">

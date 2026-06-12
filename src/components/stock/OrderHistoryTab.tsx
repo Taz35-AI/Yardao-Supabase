@@ -1,7 +1,8 @@
 // src/components/stock/OrderHistoryTab.tsx
-// 🔥 PREMIUM REDESIGN: Ultra-modern, enterprise-level UI matching StockTab
+// 🔥 PREMIUM REDESIGN: calm, flat, brand-first UI matching StockTab (visual only)
 // ✅ PRESERVED: Every single feature - individual delete, delete all, filtering, sorting
-// ✅ NEW: 70% smaller summary cards, glassmorphism, gradient borders, hover effects
+// ✅ STYLE RULES: no gradients/glow/scale effects; white cards + #e2e8e5 hairlines;
+//    status = dots; solid #025940 primary buttons; red outline for destructive
 
 'use client'
 
@@ -129,45 +130,45 @@ export function OrderHistoryTab() {
       {/* 🔥 ULTRA COMPACT STATS - Horizontal Mini Pills (70% smaller on mobile) */}
       <div className="flex items-center gap-2 flex-wrap">
         {/* Total Orders */}
-        <div className="group flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-[#025940] dark:hover:border-[#72A68E] hover:shadow-md transition-all cursor-pointer">
-          <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-md sm:rounded-lg bg-gradient-to-br from-[#025940] to-[#012619] flex items-center justify-center flex-shrink-0">
+        <div className="group flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-700 hover:border-[#72A68E] dark:hover:border-[#72A68E] transition-colors cursor-pointer">
+          <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-md sm:rounded-lg bg-[#012619] flex items-center justify-center flex-shrink-0">
             <Package className="w-3 h-3 sm:w-4 sm:h-4 text-[#b3f243]" />
           </div>
           <div>
-            <p className="text-[9px] sm:text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide leading-tight">{t('stock.orders.statOrders')}</p>
-            <p className="text-sm sm:text-lg font-black text-gray-900 dark:text-white leading-tight">{totalOrders}</p>
+            <p className="text-[9px] sm:text-xs text-[#72A68E] dark:text-gray-400 font-medium uppercase tracking-wide leading-tight">{t('stock.orders.statOrders')}</p>
+            <p className="text-sm sm:text-lg font-semibold tabular-nums text-[#012619] dark:text-white leading-tight">{totalOrders}</p>
           </div>
         </div>
 
         {/* Total Value */}
-        <div className="group flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-[#025940] dark:hover:border-[#72A68E] hover:shadow-md transition-all cursor-pointer">
-          <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-md sm:rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center flex-shrink-0">
-            <PoundSterling className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
+        <div className="group flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-700 hover:border-[#72A68E] dark:hover:border-[#72A68E] transition-colors cursor-pointer">
+          <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-md sm:rounded-lg bg-[#012619] flex items-center justify-center flex-shrink-0">
+            <PoundSterling className="w-3 h-3 sm:w-4 sm:h-4 text-[#b3f243]" />
           </div>
           <div>
-            <p className="text-[9px] sm:text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide leading-tight">{t('stock.orders.statValue')}</p>
-            <p className="text-sm sm:text-lg font-black text-gray-900 dark:text-white leading-tight">£{totalValue.toFixed(0)}</p>
+            <p className="text-[9px] sm:text-xs text-[#72A68E] dark:text-gray-400 font-medium uppercase tracking-wide leading-tight">{t('stock.orders.statValue')}</p>
+            <p className="text-sm sm:text-lg font-semibold tabular-nums text-[#012619] dark:text-white leading-tight">£{totalValue.toFixed(0)}</p>
           </div>
         </div>
 
         {/* Total Items */}
-        <div className="group flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-[#025940] dark:hover:border-[#72A68E] hover:shadow-md transition-all cursor-pointer">
-          <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-md sm:rounded-lg bg-gradient-to-br from-[#72A68E] to-[#72A68E] flex items-center justify-center flex-shrink-0">
-            <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
+        <div className="group flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-700 hover:border-[#72A68E] dark:hover:border-[#72A68E] transition-colors cursor-pointer">
+          <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-md sm:rounded-lg bg-[#012619] flex items-center justify-center flex-shrink-0">
+            <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4 text-[#b3f243]" />
           </div>
           <div>
-            <p className="text-[9px] sm:text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide leading-tight">{t('stock.orders.statItems')}</p>
-            <p className="text-sm sm:text-lg font-black text-gray-900 dark:text-white leading-tight">{Math.round(totalItems)}</p>
+            <p className="text-[9px] sm:text-xs text-[#72A68E] dark:text-gray-400 font-medium uppercase tracking-wide leading-tight">{t('stock.orders.statItems')}</p>
+            <p className="text-sm sm:text-lg font-semibold tabular-nums text-[#012619] dark:text-white leading-tight">{Math.round(totalItems)}</p>
           </div>
         </div>
       </div>
 
       {/* 🔥 PREMIUM ACTION BAR - Glass Effect */}
-      <div className="sticky top-0 z-30 bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl py-3 -mx-2 px-2 sm:-mx-4 sm:px-4 lg:-mx-8 lg:px-8 border-b border-gray-200/60 dark:border-gray-700/60 shadow-sm">
+      <div className="sticky top-0 z-30 bg-[#f6f8f7] dark:bg-gray-900 py-3 -mx-2 px-2 sm:-mx-4 sm:px-4 lg:-mx-8 lg:px-8 border-b border-[#e2e8e5] dark:border-gray-700/60">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-[#025940] dark:text-[#72A68E]" />
-            <span className="text-sm sm:text-base font-bold text-gray-900 dark:text-white">
+            <span className="text-sm sm:text-base font-semibold text-[#012619] dark:text-white">
               {t('stock.orders.last3Months')}
             </span>
             <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
@@ -179,7 +180,7 @@ export function OrderHistoryTab() {
           <button
             onClick={() => setShowDeleteAllModal(true)}
             disabled={orders.length === 0}
-            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-[10px] sm:text-sm font-bold bg-gradient-to-r from-red-600 to-red-700 text-white shadow-lg shadow-red-500/30 transition-all hover:shadow-xl hover:shadow-red-500/40 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 whitespace-nowrap"
+            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-[10px] sm:text-sm font-semibold bg-white dark:bg-gray-800 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
           >
             <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span className="hidden sm:inline">{t('stock.orders.deleteAllHistory')}</span>
@@ -191,10 +192,10 @@ export function OrderHistoryTab() {
       {/* 🔥 PREMIUM ORDER CARDS - Gradient borders, hover effects */}
       {orders.length === 0 ? (
         <div className="py-12 text-center">
-          <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <Package className="w-10 h-10 text-gray-400" />
+          <div className="w-20 h-20 bg-[#f0f7f4] dark:bg-[#025940]/20 border border-[#e2e8e5] dark:border-[#025940]/30 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <Package className="w-10 h-10 text-[#72A68E]" />
           </div>
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+          <h3 className="text-xl font-semibold text-[#012619] dark:text-white mb-2">
             {t('stock.orders.emptyTitle')}
           </h3>
           <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -206,11 +207,9 @@ export function OrderHistoryTab() {
           {orders.map((order) => (
             <div
               key={order.id}
-              className="group bg-white dark:bg-gray-800 rounded-xl border-l-4 border-l-[#025940] border-gray-200 dark:border-gray-700 transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 relative overflow-hidden"
+              className="group bg-white dark:bg-gray-800 rounded-xl border border-[#e2e8e5] dark:border-gray-700 border-l-4 border-l-[#72A68E] transition-shadow duration-200 hover:shadow-sm relative overflow-hidden"
             >
-              {/* Gradient border on hover */}
-              <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-[#025940]/0 via-[#72A68E]/0 to-[#b3f243]/0 group-hover:from-[#025940]/10 group-hover:via-[#72A68E]/10 group-hover:to-[#b3f243]/10 transition-all duration-300 pointer-events-none" />
-              
+
               {/* Main Row */}
               <div className="relative flex items-center p-3 sm:p-4 gap-3 flex-wrap sm:flex-nowrap">
                 {/* Date */}
@@ -224,7 +223,7 @@ export function OrderHistoryTab() {
                 {/* Part Info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <span className="text-sm font-bold text-gray-900 dark:text-white truncate">
+                    <span className="text-sm font-semibold text-[#012619] dark:text-white truncate">
                       {order.partName}
                     </span>
                     <span className="px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-lg text-[10px] sm:text-xs font-mono text-gray-700 dark:text-gray-300 flex-shrink-0">
@@ -249,7 +248,7 @@ export function OrderHistoryTab() {
 
                 {/* Quantity Badge */}
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <div className="px-3 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-[#025940] to-[#012619] text-[#b3f243] shadow-md">
+                  <div className="px-3 py-1.5 rounded-xl text-xs font-semibold tabular-nums bg-[#f0f7f4] dark:bg-[#025940]/20 text-[#025940] dark:text-[#72A68E]">
                     {order.unit === 'pieces' ? Math.round(order.quantityOrdered) : order.quantityOrdered.toFixed(1)} {order.unit}
                   </div>
                 </div>
@@ -259,18 +258,21 @@ export function OrderHistoryTab() {
                   <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
                     £{order.netPrice.toFixed(2)} {t('stock.orders.each')}
                   </p>
-                  <p className="text-sm sm:text-lg font-black text-[#025940] dark:text-[#72A68E]">
+                  <p className="text-sm sm:text-lg font-semibold tabular-nums text-[#025940] dark:text-[#72A68E]">
                     £{order.totalCost.toFixed(2)}
                   </p>
                 </div>
 
                 {/* Type Badge */}
                 <div className="flex-shrink-0">
-                  <span className={`inline-flex px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-semibold ${
-                    order.orderType === 'initial' 
-                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                      : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                  <span className={`inline-flex items-center gap-1.5 text-[10px] sm:text-xs font-medium ${
+                    order.orderType === 'initial'
+                      ? 'text-gray-600 dark:text-gray-400'
+                      : 'text-[#025940] dark:text-[#72A68E]'
                   }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${
+                      order.orderType === 'initial' ? 'bg-gray-400' : 'bg-[#025940] dark:bg-[#72A68E]'
+                    }`}></span>
                     {order.orderType === 'initial' ? t('stock.orders.typeInitial') : t('stock.orders.typeRestock')}
                   </span>
                 </div>
@@ -299,11 +301,11 @@ export function OrderHistoryTab() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md border border-red-200 dark:border-red-800 animate-in zoom-in-95 duration-200">
             <div className="p-6">
-              <div className="w-16 h-16 bg-gradient-to-br from-red-500 to-red-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg shadow-red-500/30">
+              <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <AlertTriangle className="w-8 h-8 text-white" />
               </div>
-              
-              <h3 className="text-2xl font-bold text-center text-gray-900 dark:text-white mb-2">
+
+              <h3 className="text-2xl font-semibold text-center text-[#012619] dark:text-white mb-2">
                 {t('stock.orders.delAllTitle')}
               </h3>
 
@@ -315,14 +317,14 @@ export function OrderHistoryTab() {
                 <button
                   onClick={() => setShowDeleteAllModal(false)}
                   disabled={deleting}
-                  className="flex-1 px-4 py-3 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-xl font-semibold transition-all hover:scale-105 disabled:hover:scale-100"
+                  className="flex-1 px-4 py-3 bg-white dark:bg-gray-700 text-[#012619] dark:text-gray-200 border border-[#e2e8e5] dark:border-gray-600 hover:bg-[#f6f8f7] dark:hover:bg-gray-600 rounded-xl font-semibold transition-colors disabled:opacity-50"
                 >
                   {t('stock.btn.cancel')}
                 </button>
                 <button
                   onClick={handleDeleteAllHistory}
                   disabled={deleting}
-                  className="flex-1 px-4 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-xl font-semibold transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2 shadow-lg shadow-red-500/30"
+                  className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {deleting ? (
                     <>
