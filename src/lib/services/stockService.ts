@@ -449,6 +449,25 @@ export const stockService = {
     logger.log('✅ Part usage reversed + stock restored')
   },
 
+  /**
+   * Clear a part's one-off vehicle link. Called when a part that was ordered
+   * for a specific registration is used on that vehicle — the earmark is
+   * fulfilled, so it becomes ordinary stock again (any leftover quantity).
+   */
+  async clearPartLink(partId: string): Promise<void> {
+    if (!partId) return
+    const { error } = await supabase
+      .from(STOCK_TABLE)
+      .update({
+        linked_registration: null,
+        linked_vehicle_id: null,
+        is_one_off: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', partId)
+    if (error) throw error
+  },
+
   // ==================== INVOICES ====================
 
   /**

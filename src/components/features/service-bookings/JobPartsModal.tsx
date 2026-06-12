@@ -11,7 +11,7 @@
 'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { X, Package, Search, Trash2, Check, Scan, Smartphone } from 'lucide-react'
+import { X, Package, Search, Trash2, Check, Scan, Smartphone, Link2, Plus } from 'lucide-react'
 import { ServiceBooking } from '@/types/serviceBookings'
 import { StockPart, PartUsageRecord } from '@/types/stock'
 import { stockService } from '@/lib/services/stockService'
@@ -139,6 +139,18 @@ export function JobPartsModal({ isOpen, onClose, booking, onChanged }: JobPartsM
     [jobParts],
   )
 
+  // Parts ordered specifically for THIS vehicle (one-off link). Matched by
+  // linked registration or linked fleet id; only those still in stock.
+  const linkKey = normalizeReg(booking.registration)
+  const isLinkedToThis = (p: StockPart): boolean =>
+    (!!p.linkedRegistration && normalizeReg(p.linkedRegistration) === linkKey) ||
+    (!!p.linkedVehicleId && !!vehicleId && p.linkedVehicleId === vehicleId)
+  const linkedParts = useMemo(
+    () => stockParts.filter(p => (p.quantity || 0) > 0 && isLinkedToThis(p)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stockParts, linkKey, vehicleId],
+  )
+
   const openScanner = (m: 'manual' | 'camera') => {
     setScannerMode(m)
     setScannerOpen(true)
@@ -180,6 +192,11 @@ export function JobPartsModal({ isOpen, onClose, booking, onChanged }: JobPartsM
       return
     }
 
+    // Was this a part earmarked for this vehicle? If so, using it here fulfils
+    // the link, so we clear it afterwards.
+    const wasLinked = isLinkedToThis(selectedPart)
+    const usedPartId = selectedPart.id
+
     setProcessing(true)
     try {
       await stockService.removePartQuantity(
@@ -193,6 +210,10 @@ export function JobPartsModal({ isOpen, onClose, booking, onChanged }: JobPartsM
         undefined,
         booking.id, // ← stamp the job link
       )
+      // Fulfil the one-off link — the earmark is spent once used on this reg.
+      if (wasLinked && usedPartId) {
+        try { await stockService.clearPartLink(usedPartId) } catch (e) { logger.error('clearPartLink failed:', e) }
+      }
       await refresh()
       setSelectedPart(null)
       setSearch('')
@@ -266,6 +287,43 @@ export function JobPartsModal({ isOpen, onClose, booking, onChanged }: JobPartsM
 
         {/* ── Body ── */}
         <div className="p-5 space-y-4 overflow-y-auto">
+          {/* Parts ordered specifically for this vehicle (one-off link). Tapping
+              one selects it; using it clears the link afterwards. */}
+          {linkedParts.length > 0 && (
+            <div className="rounded-xl border border-[#b3f243]/50 bg-[#b3f243]/10 dark:bg-[#b3f243]/5 p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Link2 className="w-3.5 h-3.5 text-[#025940] dark:text-[#b3f243]" />
+                <span className="text-xs font-semibold text-[#025940] dark:text-[#b3f243] uppercase tracking-wide">
+                  {t('stock.jobParts.linkedTitle')}
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {linkedParts.map(part => (
+                  <button
+                    key={part.id}
+                    type="button"
+                    onClick={() => { setSelectedPart(part); setAddQty('1'); setSearch('') }}
+                    className="w-full flex items-center gap-2 p-2 rounded-lg bg-white dark:bg-gray-800 border border-[#b3f243]/40 hover:border-[#025940] dark:hover:border-[#72A68E] transition-colors text-left"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-[#012619] dark:text-white truncate">{part.partName}</p>
+                      <p className="text-[11px] font-mono text-[#72A68E]">
+                        {part.partNumber} · {t('stock.jobParts.inStock', {
+                          qty: part.unit === 'liters' ? part.quantity.toFixed(1) : Math.round(part.quantity),
+                          unit: part.unit,
+                        })}
+                      </p>
+                    </div>
+                    <span className="flex items-center gap-1 text-xs font-semibold text-[#025940] dark:text-[#72A68E] flex-shrink-0">
+                      <Plus className="w-3.5 h-3.5" />
+                      {t('stock.jobParts.add')}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Add-a-part search */}
           <div>
             <label className="block text-xs font-semibold text-[#72A68E] uppercase tracking-wide mb-2">

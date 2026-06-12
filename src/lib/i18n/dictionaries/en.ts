@@ -2071,6 +2071,7 @@ export const en = {
       scanner: 'Scanner',
       phone: 'Phone',
       barcodeNotFound: 'No part matches barcode {code}',
+      linkedTitle: 'Ordered for this vehicle',
       noMatches: 'No matching parts in stock',
       inStock: '{qty} {unit} in stock',
       outOfStock: 'Out of stock',
