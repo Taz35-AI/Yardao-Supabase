@@ -83,6 +83,13 @@ export interface ServiceBooking {
   // jobs only (optional). Feeds the per-vehicle Service History. External /
   // garage completions never set this — they show "Not recorded".
   mileage?: number
+
+  // 🧾 Invoicing (migration 0040). `invoiceId` links the invoice raised from
+  // this job (null/undefined = none). `noInvoiceNeeded` marks cash / close-
+  // customer jobs that deliberately won't be invoiced, so they don't show as
+  // "Not invoiced". A completed job with neither set is flagged for invoicing.
+  invoiceId?: string | null
+  noInvoiceNeeded?: boolean
 }
 
 export interface TimeSlot {

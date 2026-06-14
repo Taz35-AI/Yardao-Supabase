@@ -22,13 +22,18 @@ import {
   Mail,
   Trash2,
   Package,
+  Receipt,
+  Ban,
 } from 'lucide-react'
 import type { ServiceBooking } from '@/types/serviceBookings'
 import type { Customer } from '@/types/customer'
+import type { Invoice } from '@/types/stock'
 import { getBookingEndTime } from '@/utils/serviceBookings/slotHelpers'
 import { normalizePhone } from '@/lib/utils/phone'
 import { useT, localizeWorkType } from '@/lib/i18n'
+import { useServiceBookings } from '@/hooks/useServiceBookings'
 import { JobPartsModal } from './JobPartsModal'
+import { CreateInvoiceModal } from '@/components/stock/CreateInvoiceModal'
 
 interface BookingDetailsModalProps {
   booking: ServiceBooking
@@ -112,8 +117,15 @@ export function BookingDetailsModal({
   customers,
 }: BookingDetailsModalProps) {
   const t = useT()
+  const { raiseInvoiceForBooking, updateBooking } = useServiceBookings()
   // 🧩 Live job-parts capture, reachable straight from the details view.
   const [partsOpen, setPartsOpen] = useState(false)
+  // 🧾 When set, the invoice editor is layered on top for review after the
+  // draft is raised from this job.
+  const [invoiceDraft, setInvoiceDraft] = useState<Invoice | null>(null)
+  const [raising, setRaising] = useState(false)
+  const [savingNoInvoice, setSavingNoInvoice] = useState(false)
+  const [invoiceError, setInvoiceError] = useState<string | null>(null)
   if (!isOpen) return null
 
   // Match the booking's customerPhone to a saved customer record so we
@@ -176,6 +188,42 @@ export function BookingDetailsModal({
     ? t('serviceBookings.action.returnFromGarage')
     : t('serviceBookings.action.markComplete')
 
+  // 🧾 Invoice state for this job. Only our own completed jobs can be invoiced
+  // (external garages bill us; synthetic garage rows aren't real bookings).
+  const isInvoiced = !!booking.invoiceId
+  const noInvoiceNeeded = !!booking.noInvoiceNeeded
+  const canInvoice =
+    booking.status === 'completed' && !isInvoiced && !noInvoiceNeeded &&
+    !isExternal && !(booking as any).isGarageVehicle
+
+  const handleRaiseInvoice = async () => {
+    if (raising) return
+    setRaising(true)
+    setInvoiceError(null)
+    try {
+      const inv = await raiseInvoiceForBooking(booking)
+      setInvoiceDraft(inv)
+    } catch {
+      // Leave the modal open so the user can retry, with a visible reason.
+      setInvoiceError(t('serviceBookings.invoice.error'))
+    } finally {
+      setRaising(false)
+    }
+  }
+
+  const handleNoInvoice = async () => {
+    if (savingNoInvoice) return
+    setSavingNoInvoice(true)
+    setInvoiceError(null)
+    try {
+      await updateBooking(booking.id, { noInvoiceNeeded: true })
+      onClose()
+    } catch {
+      setInvoiceError(t('serviceBookings.invoice.error'))
+      setSavingNoInvoice(false)
+    }
+  }
+
   return (
     <>
     <div
@@ -197,6 +245,21 @@ export function BookingDetailsModal({
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${status.classes}`}>
                   {status.text}
                 </span>
+                {booking.status === 'completed' && (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${
+                    isInvoiced
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                      : noInvoiceNeeded
+                        ? 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200'
+                        : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
+                  }`}>
+                    {isInvoiced
+                      ? t('serviceBookings.invoice.invoiced')
+                      : noInvoiceNeeded
+                        ? t('serviceBookings.invoice.noInvoiceNeeded')
+                        : t('serviceBookings.invoice.notInvoiced')}
+                  </span>
+                )}
               </div>
               <h2 className="text-xl sm:text-2xl font-black truncate">
                 {vehicleName || t('serviceBookings.details.customVehicle')}
@@ -396,6 +459,9 @@ export function BookingDetailsModal({
             <span />
           )}
           <div className="flex items-center gap-2 ml-auto flex-wrap">
+            {invoiceError && (
+              <span className="text-xs font-medium text-red-600 dark:text-red-400 mr-1">{invoiceError}</span>
+            )}
             {showParts && (
               <button
                 onClick={() => setPartsOpen(true)}
@@ -426,6 +492,26 @@ export function BookingDetailsModal({
                 {completeLabel}
               </button>
             )}
+            {canInvoice && (
+              <button
+                onClick={handleRaiseInvoice}
+                disabled={raising}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-[#025940] hover:bg-[#012619] text-white transition-colors shadow-sm disabled:opacity-60"
+              >
+                <Receipt className="w-4 h-4" />
+                {t('serviceBookings.invoice.raiseInvoice')}
+              </button>
+            )}
+            {canInvoice && (
+              <button
+                onClick={handleNoInvoice}
+                disabled={savingNoInvoice}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition-colors disabled:opacity-60"
+              >
+                <Ban className="w-4 h-4" />
+                {t('serviceBookings.invoice.noInvoiceNeeded')}
+              </button>
+            )}
             <button
               onClick={onClose}
               className="px-4 py-2 text-sm font-semibold rounded-lg bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white transition-colors"
@@ -443,6 +529,17 @@ export function BookingDetailsModal({
         booking={booking}
         isOpen={partsOpen}
         onClose={() => setPartsOpen(false)}
+      />
+    )}
+
+    {/* 🧾 Invoice editor — layered above (z-100 > z-50). Opened by "Raise
+        invoice"; created as a draft already linked to this job. */}
+    {invoiceDraft && (
+      <CreateInvoiceModal
+        isOpen={!!invoiceDraft}
+        editInvoice={invoiceDraft}
+        onClose={() => { setInvoiceDraft(null); onClose() }}
+        onSuccess={() => { setInvoiceDraft(null); onClose() }}
       />
     )}
     </>

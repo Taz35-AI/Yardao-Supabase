@@ -786,7 +786,11 @@ export function ServiceBookingsContent() {
                 resolve(true)
               } catch (err) {
                 logger.error('Error creating booking:', err)
-                showError(t('serviceBookings.content.createError'))
+                showError(
+                  (err as { code?: string })?.code === '23505'
+                    ? t('serviceBookings.content.errDuplicateSlot')
+                    : t('serviceBookings.content.createError'),
+                )
                 resolve(false)
               }
             },
@@ -821,7 +825,11 @@ export function ServiceBookingsContent() {
       return true
     } catch (err) {
       logger.error('Error creating booking:', err)
-      showError(t('serviceBookings.content.createError'))
+      showError(
+        (err as { code?: string })?.code === '23505'
+          ? t('serviceBookings.content.errDuplicateSlot')
+          : t('serviceBookings.content.createError'),
+      )
       return false
     }
   }
@@ -919,7 +927,11 @@ export function ServiceBookingsContent() {
                 resolve(true)
               } catch (err) {
                 logger.error('Error updating booking:', err)
-                showError(t('serviceBookings.content.updateError'))
+                showError(
+                  (err as { code?: string })?.code === '23505'
+                    ? t('serviceBookings.content.errDuplicateSlot')
+                    : t('serviceBookings.content.updateError'),
+                )
                 resolve(false)
               }
             },
@@ -951,7 +963,11 @@ export function ServiceBookingsContent() {
       return true
     } catch (err) {
       logger.error('Error updating booking:', err)
-      showError(t('serviceBookings.content.updateError'))
+      showError(
+        (err as { code?: string })?.code === '23505'
+          ? t('serviceBookings.content.errDuplicateSlot')
+          : t('serviceBookings.content.updateError'),
+      )
       return false
     }
   }
@@ -1227,6 +1243,12 @@ export function ServiceBookingsContent() {
   const scheduledBookings = mergedBookings.filter(b => b.status === 'scheduled').length
   const checkedInToGarageBookings = mergedBookings.filter(b => b.status === 'checked_in_to_garage').length
   const completedBookings = mergedBookings.filter(b => b.status === 'completed').length
+  // 🧾 Completed jobs awaiting an invoice (clean-slate: pre-existing completed
+  // jobs were marked no_invoice_needed by migration 0040, so only jobs
+  // completed from now on surface here).
+  const notInvoicedBookings = mergedBookings.filter(
+    b => b.status === 'completed' && !b.invoiceId && !b.noInvoiceNeeded,
+  ).length
   const externalBookings = mergedBookings.filter(b => b.isExternalProvider).length
 
   // Upcoming bookings (future, not completed/cancelled) for the right-panel mini list
@@ -1507,22 +1529,25 @@ export function ServiceBookingsContent() {
       {/* ══════════════════════════════════════════════════════════════════════
           STATS BAR: 4 stat cards — hidden on mobile to maximise vertical space
       ══════════════════════════════════════════════════════════════════════ */}
-      <div className="hidden sm:grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="hidden sm:grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {[
           { label: t('serviceBookings.content.statsTotal'),      value: totalBookings,             bg: 'bg-[#025940]/8 dark:bg-[#025940]/20',   color: 'text-[#025940] dark:text-[#72A68E]', img: '/total.svg'  },
           { label: t('serviceBookings.content.statsScheduled'),  value: scheduledBookings,         bg: 'bg-[#72A68E]/15 dark:bg-[#72A68E]/10',  color: 'text-[#025940] dark:text-[#72A68E]', img: '/appointments.svg' },
           { label: t('serviceBookings.content.statsCompleted'),  value: completedBookings,         bg: 'bg-[#b3f243]/20 dark:bg-[#b3f243]/10',  color: 'text-[#012619] dark:text-[#b3f243]', img: '/completed.svg' },
           { label: t('serviceBookings.content.statsAtGarage'),  value: checkedInToGarageBookings, bg: 'bg-[#025940]/5 dark:bg-[#025940]/15',   color: 'text-[#025940] dark:text-[#72A68E]', img: '/external.svg'    },
+          { label: t('serviceBookings.invoice.notInvoiced'),   value: notInvoicedBookings,       bg: 'bg-amber-100/70 dark:bg-amber-900/20',  color: 'text-amber-700 dark:text-amber-300', img: ''                },
         ].map(({ label, value, bg, color, img }) => (
           <div
             key={label}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl ${bg} border border-[#025940]/20 dark:border-[#025940]/40`}
           >
-            <img
-              src={img}
-              alt={label}
-              className="w-8 h-8 object-contain flex-shrink-0"
-            />
+            {img && (
+              <img
+                src={img}
+                alt={label}
+                className="w-8 h-8 object-contain flex-shrink-0"
+              />
+            )}
             <div>
               <div className={`text-xl font-bold ${color} leading-none`}>{value}</div>
               <div className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mt-0.5">

@@ -275,6 +275,11 @@ function BookingCard({
                 {t('serviceBookings.today.motDue')}
               </span>
             )}
+            {!isExternal && booking.status === 'completed' && !booking.invoiceId && !booking.noInvoiceNeeded && (
+              <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                {t('serviceBookings.invoice.notInvoiced')}
+              </span>
+            )}
             {/* 👤 Mechanic — inline quick-assign. Only renders when the org
                 has at least one mechanic; synthetic garage entries skip this
                 because they're not real bookings yet. */}

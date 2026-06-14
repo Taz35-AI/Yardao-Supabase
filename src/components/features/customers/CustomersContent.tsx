@@ -7,7 +7,8 @@
 import React, { useMemo, useState } from 'react'
 import {
   Users, Plus, Search,
-  X, AlertCircle,
+  X, AlertCircle, Building2, Car,
+  History, Pencil, Trash2,
 } from 'lucide-react'
 import { CustomerHistoryModal } from './CustomerHistoryModal'
 import { useCustomers } from '@/hooks/useCustomers'
@@ -39,6 +40,11 @@ const blankForm: Omit<EditState, 'mode'> = {
   notes: '',
 }
 
+// How many registration plates to show inline before collapsing the rest
+// into a "+N more" toggle. Customers above this count are treated as trade/
+// fleet accounts (company avatar + a total-vehicle tag).
+const VEHICLE_CHIP_CAP = 3
+
 // 'YYYY-MM-DD' → 'DD/MM/YYYY' (UK), or '—' when missing/malformed.
 function formatUkDate(iso?: string | null): string {
   if (!iso) return '—'
@@ -60,6 +66,18 @@ function splitForEdit(c: Customer): { firstName: string; lastName: string } {
   return { firstName: parts[0], lastName: parts.slice(1).join(' ') }
 }
 
+// Up to two uppercase initials for the avatar. Prefers the structured
+// first/last name, falling back to the combined `name` for legacy records.
+function customerInitials(firstName: string, lastName: string, name: string): string {
+  const first = firstName.trim()
+  const last = lastName.trim()
+  if (first || last) return `${first.charAt(0)}${last.charAt(0)}`.toUpperCase()
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return `${parts[0].charAt(0)}${parts[1].charAt(0)}`.toUpperCase()
+}
+
 export function CustomersContent() {
   const { customers, loading, error, createCustomer, updateCustomer, deleteCustomer, clearError } =
     useCustomers()
@@ -71,6 +89,16 @@ export function CustomersContent() {
   const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  // Per-row toggle: which customers have their full plate list expanded.
+  const [expandedRegs, setExpandedRegs] = useState<Set<string>>(new Set())
+
+  const toggleRegs = (id: string) =>
+    setExpandedRegs((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
 
   // Search by name, phone (digits-only), email, or vehicle registration.
   // Reg match is normalised (UPPER, no spaces) so "ca24 aod" finds a
@@ -248,10 +276,8 @@ export function CustomersContent() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-gray-900/40 text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 <tr>
-                  <th className="text-left font-semibold px-3 py-2">{t('customers.col.firstName')}</th>
-                  <th className="text-left font-semibold px-3 py-2">{t('customers.col.surname')}</th>
-                  <th className="text-left font-semibold px-3 py-2">{t('customers.col.phone')}</th>
-                  <th className="text-left font-semibold px-3 py-2">{t('customers.col.email')}</th>
+                  <th className="text-left font-semibold px-3 py-2">{t('customers.col.customer')}</th>
+                  <th className="text-center font-semibold px-3 py-2 whitespace-nowrap">{t('customers.col.bookings')}</th>
                   <th className="text-left font-semibold px-3 py-2 whitespace-nowrap">{t('customers.col.lastService')}</th>
                   <th className="text-left font-semibold px-3 py-2">{t('customers.col.vehicles')}</th>
                   <th className="text-right font-semibold px-3 py-2"><span className="sr-only">{t('customers.col.actions')}</span></th>
@@ -262,67 +288,146 @@ export function CustomersContent() {
                   const { firstName, lastName } = c.firstName || c.lastName
                     ? { firstName: c.firstName || '', lastName: c.lastName || '' }
                     : splitForEdit(c)
-                  const regsText = c.registrations && c.registrations.length > 0
-                    ? c.registrations.join(', ')
-                    : null
+                  const fullName =
+                    (c.name || '').trim() ||
+                    [firstName, lastName].filter(Boolean).join(' ') ||
+                    '—'
+                  const regs = c.registrations ?? []
+                  const regCount = regs.length
+                  const isTrade = regCount > VEHICLE_CHIP_CAP
+                  const manuallyExpanded = expandedRegs.has(c.id)
+                  // Auto-reveal hidden plates when the search term matches one,
+                  // so a reg search never hides its own match behind "+N more".
+                  const regQuery = normalizeReg(search)
+                  const matchesHiddenReg =
+                    !!regQuery && regs.some((r) => normalizeReg(r).includes(regQuery))
+                  const showAllRegs = manuallyExpanded || matchesHiddenReg
+                  const shownRegs = showAllRegs ? regs : regs.slice(0, VEHICLE_CHIP_CAP)
+                  const hiddenCount = regCount - shownRegs.length
                   return (
                     <tr
                       key={c.id}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors align-top"
+                      className="hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors align-middle"
                     >
-                      <td className="px-3 py-2.5 font-semibold text-gray-900 dark:text-white whitespace-nowrap">{firstName || '—'}</td>
-                      <td className="px-3 py-2.5 font-semibold text-gray-900 dark:text-white whitespace-nowrap">{lastName || '—'}</td>
-                      <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                        {c.phone ? (
-                          <a href={`tel:${c.phone}`} className="hover:text-[#025940] dark:hover:text-[#72A68E]">
-                            {c.phone}
-                          </a>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300">
-                        {c.email ? (
-                          <a
-                            href={`mailto:${c.email}`}
-                            className="hover:text-[#025940] dark:hover:text-[#72A68E] truncate inline-block max-w-[18rem] align-bottom"
+                      {/* Customer — avatar + name + tap-to-call / tap-to-email */}
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div
+                            className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold ${
+                              isTrade
+                                ? 'bg-[#eaf1ec] dark:bg-[#0f3a2c] text-[#0f6e56] dark:text-[#72A68E]'
+                                : 'bg-[#e7f0ec] dark:bg-[#0f3a2c] text-[#025940] dark:text-[#72A68E]'
+                            }`}
                           >
-                            {c.email}
-                          </a>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
+                            {isTrade
+                              ? <Building2 className="w-4 h-4" />
+                              : customerInitials(firstName, lastName, c.name)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="font-semibold text-gray-900 dark:text-white truncate">
+                                {fullName}
+                              </span>
+                              {isTrade && (
+                                <span
+                                  className="flex-shrink-0 inline-flex items-center gap-0.5 text-[11px] font-semibold text-[#0f6e56] dark:text-[#72A68E] bg-[#eaf6ef] dark:bg-[#0f3a2c] border border-[#d6e8df] dark:border-[#1f4a3a] rounded-md px-1"
+                                  title={t('customers.col.vehicles')}
+                                >
+                                  <Car className="w-3 h-3" />{regCount}
+                                </span>
+                              )}
+                            </div>
+                            {c.phone && (
+                              <a
+                                href={`tel:${c.phone}`}
+                                className="block text-[12px] text-gray-500 dark:text-gray-400 hover:text-[#025940] dark:hover:text-[#72A68E] truncate"
+                              >
+                                {c.phone}
+                              </a>
+                            )}
+                            {c.email && (
+                              <a
+                                href={`mailto:${c.email}`}
+                                className="block text-[12px] text-gray-500 dark:text-gray-400 hover:text-[#025940] dark:hover:text-[#72A68E] truncate"
+                              >
+                                {c.email}
+                              </a>
+                            )}
+                          </div>
+                        </div>
                       </td>
+                      {/* Bookings */}
+                      <td className="px-3 py-2.5 text-center">
+                        <span
+                          className="inline-block min-w-[1.75rem] text-xs font-bold bg-[#e7f0ec] dark:bg-[#0f3a2c] text-[#025940] dark:text-[#72A68E] rounded-full px-2 py-0.5"
+                          title={t('customers.bookingCountBadge', { count: c.bookingCount || 0 })}
+                        >
+                          {c.bookingCount || 0}
+                        </span>
+                      </td>
+                      {/* Last service */}
                       <td className="px-3 py-2.5 text-gray-700 dark:text-gray-300 whitespace-nowrap tabular-nums">
                         {formatUkDate(c.lastBookingDate)}
                       </td>
+                      {/* Vehicles — plate chips that collapse to a "+N more" toggle */}
                       <td className="px-3 py-2.5 text-gray-800 dark:text-gray-200">
-                        {regsText
-                          ? <span className="font-mono text-[12px]">{regsText}</span>
-                          : <span className="text-gray-400">—</span>}
+                        {regCount === 0 ? (
+                          <span className="text-gray-400">—</span>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-1">
+                            {shownRegs.map((reg) => (
+                              <span
+                                key={reg}
+                                className="font-mono text-[11px] bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-600 rounded-md px-1.5 py-0.5 whitespace-nowrap"
+                              >
+                                {reg}
+                              </span>
+                            ))}
+                            {hiddenCount > 0 && (
+                              <button
+                                onClick={() => toggleRegs(c.id)}
+                                className="text-[11px] font-semibold text-[#025940] dark:text-[#72A68E] bg-[#e7f0ec] dark:bg-[#0f3a2c] hover:bg-[#d7e8e0] dark:hover:bg-[#15543f] rounded-md px-2 py-0.5 transition-colors"
+                              >
+                                {t('customers.moreVehicles', { count: hiddenCount })}
+                              </button>
+                            )}
+                            {manuallyExpanded && regCount > VEHICLE_CHIP_CAP && (
+                              <button
+                                onClick={() => toggleRegs(c.id)}
+                                className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 hover:text-[#025940] dark:hover:text-[#72A68E] rounded-md px-2 py-0.5 transition-colors"
+                              >
+                                {t('customers.showLess')}
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </td>
+                      {/* Actions */}
                       <td className="px-3 py-2 text-right whitespace-nowrap">
-                        <div className="inline-flex items-center gap-1">
+                        <div className="inline-flex items-center gap-1.5">
                           <button
                             onClick={() => setHistoryCustomer(c)}
-                            className="p-1.5 rounded-lg text-gray-500 hover:text-[#025940] dark:hover:text-[#72A68E] hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                            className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:text-[#025940] dark:hover:text-[#72A68E] hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                             title={t('customers.history.viewTitle')}
+                            aria-label={t('customers.history.viewTitle')}
                           >
-                            <img src="/history.svg" alt="" className="w-4 h-4 object-contain" />
+                            <History className="w-[18px] h-[18px]" />
                           </button>
                           <button
                             onClick={() => openEdit(c)}
-                            className="p-1.5 rounded-lg text-gray-500 hover:text-[#025940] dark:hover:text-[#72A68E] hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                            className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:text-[#025940] dark:hover:text-[#72A68E] hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                             title={t('customers.editTitle')}
+                            aria-label={t('customers.editTitle')}
                           >
-                            <img src="/edit.svg" alt="" className="w-4 h-4 object-contain" />
+                            <Pencil className="w-[18px] h-[18px]" />
                           </button>
                           <button
                             onClick={() => setPendingDelete(c)}
-                            className="p-1.5 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                            className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                             title={t('customers.deleteTitle')}
+                            aria-label={t('customers.deleteTitle')}
                           >
-                            <img src="/delete.svg" alt="" className="w-4 h-4 object-contain" />
+                            <Trash2 className="w-[18px] h-[18px]" />
                           </button>
                         </div>
                       </td>

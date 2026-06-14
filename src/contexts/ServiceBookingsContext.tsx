@@ -38,6 +38,8 @@ import { userProfileService } from '@/lib/firestore'
 import { toCamel } from '@/lib/dbMap'
 import { logger } from '@/lib/logger'
 import { activityLogService } from '@/lib/services/activityLogService'
+import { DEFAULT_LABOUR_RATE, type Invoice } from '@/types/stock'
+import { buildInvoiceDraft } from '@/utils/serviceBookings/invoiceFromBooking'
 
 import type { ServiceBooking } from '@/types/serviceBookings'
 
@@ -143,6 +145,7 @@ export interface ServiceBookingsContextValue {
   deleteBooking: (bookingId: string) => Promise<void>
   checkInToGarage: (booking: ServiceBooking) => Promise<void>
   markAsCompleted: (booking: ServiceBooking, mileage?: number) => Promise<void>
+  raiseInvoiceForBooking: (booking: ServiceBooking) => Promise<Invoice>
   refreshBookings: () => Promise<void>
 }
 
@@ -201,6 +204,8 @@ function bookingToRow(obj: Record<string, any>): Record<string, any> {
     lastModifiedByName: 'last_modified_by_name',
     cancelledBy: 'cancelled_by',
     cancelledByName: 'cancelled_by_name',
+    invoiceId: 'invoice_id',
+    noInvoiceNeeded: 'no_invoice_needed',
   }
   const out: Record<string, any> = {}
   for (const [k, v] of Object.entries(obj)) {
@@ -1107,6 +1112,41 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // 🧾 Build a draft invoice from a completed job: parts logged on the job
+  // (part_usage, migration 0039) + labour from the booked work/time. Created
+  // as 'draft' and linked back via service_bookings.invoice_id so the job shows
+  // as invoiced. `on delete set null` (migration 0040) means deleting the
+  // invoice later auto-unlinks and re-flags the job. Returns the invoice so the
+  // caller can open it for review.
+  const raiseInvoiceForBooking = async (booking: ServiceBooking): Promise<Invoice> => {
+    if (!user || !organizationId) throw new Error('Not authenticated')
+    const { stockService } = await import('@/lib/services/stockService')
+    const usage = await stockService.getUsageByBooking(organizationId, booking.id)
+    const invoiceNumber = await stockService.generateInvoiceNumber(organizationId)
+    const draft = buildInvoiceDraft({
+      booking,
+      usage,
+      organizationId,
+      createdBy: user.uid,
+      createdByName: user.displayName || user.email || 'Unknown User',
+      invoiceNumber,
+      invoiceDate: nowIso().slice(0, 10),
+      labourRate: DEFAULT_LABOUR_RATE,
+    })
+    const created = await stockService.createInvoice(draft)
+
+    // Link job → invoice (optimistic, then DB). The realtime refetch reconciles.
+    setBookings(prev => prev.map(b => (b.id === booking.id ? { ...b, invoiceId: created.id } : b)))
+    const { error: linkError } = await supabase
+      .from(SERVICE_BOOKINGS_TABLE)
+      .update({ invoice_id: created.id, updated_at: nowIso() })
+      .eq('id', booking.id)
+    if (linkError) {
+      logger.error('Invoice created but linking it to the booking failed:', linkError)
+    }
+    return created
+  }
+
   const value: ServiceBookingsContextValue = {
     bookings,
     loading,
@@ -1117,6 +1157,7 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
     deleteBooking,
     checkInToGarage,
     markAsCompleted,
+    raiseInvoiceForBooking,
     refreshBookings,
   }
 
