@@ -110,45 +110,45 @@ export function LandingPage() {
     // phone .mp4. Scoped to .app-screen; uses the app's palette. ──────────────
     const appMock = document.createElement('style')
     appMock.textContent = `
-.device-phone__video.app-screen{position:absolute;inset:0;display:flex;flex-direction:column;background:#f3f6f4;color:#012619;border-radius:34px;overflow:hidden;transform:scale(1.015);font-family:inherit;text-align:left}
-.app-screen .app-status{display:flex;justify-content:space-between;align-items:center;padding:9px 16px 2px;font-size:9px;font-weight:700}
+.device-phone__video.app-screen{position:absolute;inset:0;display:flex;flex-direction:column;background:#eef2f0;color:#012619;border-radius:34px;overflow:hidden;transform:scale(1.015);font-family:inherit;text-align:left}
+.app-screen .app-status{flex-shrink:0;display:flex;justify-content:space-between;align-items:center;padding:9px 16px 4px;font-size:9px;font-weight:700}
 .app-screen .app-status__r{display:flex;align-items:center;gap:3px}
 .app-screen .app-status__r i{width:3px;height:3px;border-radius:50%;background:#012619}
 .app-screen .app-status__r b{width:15px;height:7px;border:1px solid #012619;border-radius:2px;margin-left:2px}
-.app-screen .app-hero{padding:6px 12px 8px}
-.app-screen .app-hero__row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-.app-screen .app-hero__title{margin:0;font-size:19px;font-weight:800;letter-spacing:-.3px;color:#012619}
-.app-screen .app-hero__avatar{width:26px;height:26px;border-radius:50%;background:#012619;color:#b3f243;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center}
-.app-screen .app-hero__search{display:flex;align-items:center;gap:6px;background:#fff;border:1px solid #d7e0db;border-radius:10px;padding:8px 10px;font-size:10px;color:#8a9e94}
+.app-screen .app-scroll{flex:1;overflow:hidden;padding:0 10px}
+.app-screen .app-hero{position:relative;background:radial-gradient(circle at 88% 0%,rgba(179,242,67,.12),transparent 46%),#012619;border-radius:18px;padding:14px 13px;color:#fff;overflow:hidden}
+.app-screen .app-hero__title{margin:0 0 4px;font-size:17px;font-weight:800;line-height:1.15;letter-spacing:-.3px}
+.app-screen .app-hero__sub{margin:0 0 10px;font-size:9px;line-height:1.35;color:#a9c6b9}
+.app-screen .app-hero__search{display:flex;align-items:center;gap:6px;background:#fff;border-radius:11px;padding:9px 11px;font-size:9.5px;color:#8a9e94}
 .app-screen .app-hero__search svg{width:13px;height:13px;fill:none;stroke:#72A68E;stroke-width:2;stroke-linecap:round;flex-shrink:0}
-.app-screen .app-pills{display:flex;gap:5px;padding:0 12px 8px;overflow:hidden}
-.app-screen .app-pill{display:inline-flex;align-items:center;gap:4px;flex-shrink:0;background:#fff;border:1px solid #c8d5ce;border-radius:999px;padding:4px 7px;font-size:9px;font-weight:700;color:#3a5a44}
-.app-screen .app-pill i{width:5px;height:5px;border-radius:50%}
-.app-screen .app-pill b{font-size:8px;font-weight:800;background:#e8f0eb;color:#025940;border-radius:999px;padding:1px 4px;min-width:13px;text-align:center}
-.app-screen .app-pill--total i{background:#025940}
-.app-screen .app-pill--ready i{background:#16a34a}
-.app-screen .app-pill--pending i{background:#d97706}
-.app-screen .app-pill--repairs i{background:#dc2626}
-.app-screen .app-list{flex:1;display:flex;flex-direction:column;gap:6px;padding:0 12px 6px;overflow:hidden}
-.app-screen .app-veh{background:#fff;border:1px solid #e2e8e5;border-left:3px solid #72A68E;border-radius:12px;padding:8px 10px}
-.app-screen .app-veh--ready{border-left-color:#16a34a}
-.app-screen .app-veh--pending{border-left-color:#d97706}
-.app-screen .app-veh--repairs{border-left-color:#dc2626}
-.app-screen .app-veh__top{display:flex;align-items:center;justify-content:space-between;margin-bottom:3px}
-.app-screen .app-veh__reg{font-size:13px;font-weight:800;color:#012619;letter-spacing:.3px}
-.app-screen .app-stag{font-size:8px;font-weight:800;padding:2px 7px;border-radius:999px}
-.app-screen .app-stag--ready{background:#dcfce7;color:#15803d}
-.app-screen .app-stag--pending{background:#fef3c7;color:#b45309}
-.app-screen .app-stag--repairs{background:#fee2e2;color:#b91c1c}
-.app-screen .app-veh__mk{font-size:10px;color:#5a6b62;margin-bottom:5px}
-.app-screen .app-veh__meta{display:flex;align-items:center;justify-content:space-between}
-.app-screen .app-veh__cond{font-size:8px;font-weight:700;padding:2px 6px;border-radius:999px}
-.app-screen .app-veh__mi{font-size:9px;color:#8a9e94;font-weight:600}
-.app-screen .app-nav{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:8px 6px;background:#fff;border-top:1px solid #e2e8e5}
-.app-screen .app-nav__i{display:flex;flex-direction:column;align-items:center;gap:3px;color:#9aa8a2;font-size:8px;font-weight:700}
-.app-screen .app-nav__i svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.app-screen .app-hero__btns{display:flex;gap:6px;margin-top:10px}
+.app-screen .app-hbtn{display:inline-flex;align-items:center;gap:4px;flex:1;justify-content:center;border:1px solid rgba(255,255,255,.22);border-radius:9px;padding:6px 3px;font-size:8px;font-weight:700;color:#eaf3ee;white-space:nowrap}
+.app-screen .app-hbtn svg{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.app-screen .app-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.app-screen .app-scard{background:#fff;border:1px solid #e4eae7;border-radius:14px;padding:10px 11px;box-shadow:0 1px 2px rgba(1,38,25,.04)}
+.app-screen .app-scard__h{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;color:#012619}
+.app-screen .app-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.app-screen .app-chev{margin-left:auto;color:#b9c6bf;font-size:13px;line-height:1}
+.app-screen .app-scard strong{display:block;margin-top:5px;font-size:24px;font-weight:800;line-height:1;color:#012619}
+.app-screen .app-vsec{margin-top:12px}
+.app-screen .app-vsec__h{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;color:#012619;margin-bottom:7px}
+.app-screen .app-vsec__h b{margin-left:auto;font-size:9px;font-weight:700;color:#8a9e94}
+.app-screen .app-vcard{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #e4eae7;border-left:3px solid #16a34a;border-radius:13px;padding:9px 10px}
+.app-screen .app-vplate{flex-shrink:0;background:#fff;border:1.5px solid #cfd9d3;border-radius:5px;padding:4px 6px;font-size:9px;font-weight:800;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.5px;color:#012619}
+.app-screen .app-vcard__b{min-width:0}
+.app-screen .app-vcard__b strong{display:block;font-size:11px;font-weight:700;color:#012619}
+.app-screen .app-vcard__b span{font-size:9px;color:#8a9e94}
+.app-screen .app-vmore{text-align:center;font-size:9.5px;font-weight:700;color:#025940;margin-top:9px}
+.app-screen .app-fab{position:absolute;right:14px;bottom:64px;width:40px;height:40px;border-radius:50%;background:#025940;border:2px solid #b3f243;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 18px rgba(1,38,25,.32)}
+.app-screen .app-fab svg{width:20px;height:20px;fill:#b3f243;stroke:none}
+.app-screen .app-nav{flex-shrink:0;display:grid;grid-template-columns:repeat(5,1fr);align-items:end;gap:2px;padding:7px 4px 9px;background:#fff;border-top:1px solid #e4eae7}
+.app-screen .app-nav__i{display:flex;flex-direction:column;align-items:center;gap:3px;color:#9aa8a2;font-size:7.5px;font-weight:700}
+.app-screen .app-nav__i svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .app-screen .app-nav__i em{font-style:normal}
 .app-screen .app-nav__i.is-on{color:#025940}
+.app-screen .app-nav__i--add{color:#025940}
+.app-screen .app-nav__add{width:34px;height:34px;border-radius:50%;background:#84cc16;display:flex;align-items:center;justify-content:center;margin-top:-12px;box-shadow:0 6px 14px rgba(132,204,22,.4)}
+.app-screen .app-nav__add svg{width:18px;height:18px;stroke:#012619;stroke-width:2.5}
 `
     document.head.appendChild(appMock)
     cleanups.push(() => appMock.remove())
