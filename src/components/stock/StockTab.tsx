@@ -15,7 +15,7 @@ import {
   Plus, Minus, AlertTriangle, Package, Search, Trash2, 
   Edit2, History, X, PoundSterling, Boxes, Wrench, 
   ChevronDown, ChevronUp, Layers, Check, ArrowUpDown, Scan,
-  Upload, Download, Info, MoreVertical
+  Upload, Download, Info, MoreVertical, Eye, EyeOff
 } from 'lucide-react'
 import { stockService } from '@/lib/services/stockService'
 import { vehicleService } from '@/lib/firestore'
@@ -57,6 +57,8 @@ export function StockTab() {
   
   // UI state
   const [showLowOnly, setShowLowOnly] = useState(false)
+  // Hide zero-stock parts from the list by default; toggle to reveal them.
+  const [hideOutOfStock, setHideOutOfStock] = useState(true)
   const [showGrouped, setShowGrouped] = useState(true) // ✅ DEFAULT TO GROUPED VIEW
   const [sortBy, setSortBy] = useState<SortKey>('quantity')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
@@ -427,7 +429,9 @@ export function StockTab() {
       })
       
       const matchesLow = !showLowOnly || part.quantity < part.restockTarget
-      return matchesSearch && matchesLow
+      // Out-of-stock (qty 0) hidden by default; the toggle reveals them.
+      const matchesStock = !hideOutOfStock || part.quantity > 0
+      return matchesSearch && matchesLow && matchesStock
     })
     .sort((a, b) => {
       const mult = sortDir === 'asc' ? 1 : -1
@@ -571,6 +575,20 @@ export function StockTab() {
           >
             <Layers className="w-3.5 h-3.5" />
             {showGrouped ? t('stock.tab.showAll') : t('stock.tab.group')}
+          </button>
+
+          {/* Out-of-stock visibility toggle — zero-stock parts hidden by default */}
+          <button
+            onClick={() => setHideOutOfStock(v => !v)}
+            className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${
+              hideOutOfStock
+                ? 'bg-white dark:bg-gray-800 text-[#72A68E] dark:text-gray-400 border-[#e2e8e5] dark:border-gray-700 hover:border-[#72A68E] dark:hover:border-[#72A68E]'
+                : 'bg-[#025940] dark:bg-[#025940] border-transparent text-white'
+            }`}
+            title={hideOutOfStock ? t('stock.tab.showOutOfStock') : t('stock.tab.hideOutOfStock')}
+          >
+            {hideOutOfStock ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">{hideOutOfStock ? t('stock.tab.showOutOfStock') : t('stock.tab.hideOutOfStock')}</span>
           </button>
 
           {/* Scan Buttons Group */}

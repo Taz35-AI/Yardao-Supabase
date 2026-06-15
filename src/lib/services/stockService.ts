@@ -224,6 +224,19 @@ export const stockService = {
     const { error: usageError } = await supabase.from(USAGE_TABLE).insert(toSnake(usageRecord))
     if (usageError) throw usageError
 
+    // One-off parts are ordered for a single vehicle and spent once fitted. When
+    // such a part hits zero, remove it from stock so it doesn't linger as a dead
+    // "out of stock" row. The usage row above survives the delete (part_usage
+    // .part_id is ON DELETE SET NULL and carries name/number/price snapshots),
+    // so the job + invoice keep the part. Restockable parts stay at 0 as normal.
+    const isOneOff = !!part.isOneOff || !!part.linkedRegistration || !!part.linkedVehicleId
+    if (newQuantity === 0 && isOneOff) {
+      const { error: deleteError } = await supabase.from(STOCK_TABLE).delete().eq('id', partId)
+      if (deleteError) throw deleteError
+      logger.log('One-off part fully used - removed from stock')
+      return
+    }
+
     logger.log('✅ Part usage logged successfully')
   },
 

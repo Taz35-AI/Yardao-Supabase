@@ -5,7 +5,7 @@
 
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { FileText, Plus, Eye, Search, Trash2, Calendar, Building2, PoundSterling, X, Pencil, FileSpreadsheet } from 'lucide-react'
 import { stockService } from '@/lib/services/stockService'
 import { useAuth } from '@/contexts/AuthContext'
@@ -18,6 +18,16 @@ import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
 
+type PeriodKey = 'today' | '3d' | '7d' | 'all' | 'custom'
+
+const PERIODS: { id: PeriodKey; labelKey: string }[] = [
+  { id: 'today', labelKey: 'stock.invoicing.periodToday' },
+  { id: '3d', labelKey: 'stock.invoicing.period3d' },
+  { id: '7d', labelKey: 'stock.invoicing.period7d' },
+  { id: 'all', labelKey: 'stock.invoicing.periodAll' },
+  { id: 'custom', labelKey: 'stock.invoicing.periodCustom' },
+]
+
 export function InvoicingTab() {
   const t = useT()
   const { user } = useAuth()
@@ -27,6 +37,10 @@ export function InvoicingTab() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  // 📅 Period filter for the list + stats (current day / 3d / 7d / all / custom).
+  const [periodKey, setPeriodKey] = useState<PeriodKey>('all')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
   
   // Modals
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -114,7 +128,37 @@ export function InvoicingTab() {
     }
   }
 
-  const filteredInvoices = invoices.filter(inv =>
+  // Period filter → inclusive YYYY-MM-DD bounds (null = all time). invoiceDate
+  // is a YYYY-MM-DD string, so plain string comparison is correct.
+  const dateBounds = useMemo<{ from: string; to: string } | null>(() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0)
+    const ymd = (x: Date) =>
+      `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
+    const todayStr = ymd(d)
+    if (periodKey === 'all') return null
+    if (periodKey === 'today') return { from: todayStr, to: todayStr }
+    if (periodKey === 'custom') {
+      if (!customFrom && !customTo) return null
+      const from = customFrom || '0000-01-01'
+      const to = customTo || todayStr
+      return from <= to ? { from, to } : { from: to, to: from }
+    }
+    const back = periodKey === '3d' ? 2 : 6 // inclusive of today
+    const fromD = new Date(d); fromD.setDate(fromD.getDate() - back)
+    return { from: ymd(fromD), to: todayStr }
+  }, [periodKey, customFrom, customTo])
+
+  // Invoices within the selected period — drives the stat pills. Search narrows
+  // the list below but leaves the period summary intact.
+  const periodInvoices = useMemo(() => {
+    if (!dateBounds) return invoices
+    return invoices.filter(inv => {
+      const d = inv.invoiceDate || ''
+      return d >= dateBounds.from && d <= dateBounds.to
+    })
+  }, [invoices, dateBounds])
+
+  const filteredInvoices = periodInvoices.filter(inv =>
     inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
     inv.vehicleRegistration.toLowerCase().includes(searchTerm.toLowerCase()) ||
     inv.toCompany.toLowerCase().includes(searchTerm.toLowerCase())
@@ -122,12 +166,12 @@ export function InvoicingTab() {
 
   const isAdmin = userProfile?.role === 'admin'
 
-  // Calculate summary stats
-  const totalInvoices = invoices.length
-  const totalValue = invoices.reduce((sum, inv) => sum + inv.total, 0)
-  const paidCount = invoices.filter(inv => inv.status === 'paid').length
-  const issuedCount = invoices.filter(inv => inv.status === 'issued').length
-  const draftCount = invoices.filter(inv => inv.status === 'draft').length
+  // Summary stats — over the selected period so the pills match what's shown.
+  const totalInvoices = periodInvoices.length
+  const totalValue = periodInvoices.reduce((sum, inv) => sum + inv.total, 0)
+  const paidCount = periodInvoices.filter(inv => inv.status === 'paid').length
+  const issuedCount = periodInvoices.filter(inv => inv.status === 'issued').length
+  const draftCount = periodInvoices.filter(inv => inv.status === 'draft').length
 
   if (loading) {
     return (
@@ -196,6 +240,42 @@ export function InvoicingTab() {
             <p className="text-sm sm:text-lg font-black text-gray-900 dark:text-gray-100 leading-tight">{draftCount}</p>
           </div>
         </div>
+      </div>
+
+      {/* 📅 Period filter — narrows the list AND the stat pills to a date window */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {PERIODS.map(p => (
+          <button
+            key={p.id}
+            onClick={() => setPeriodKey(p.id)}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${
+              periodKey === p.id
+                ? 'bg-[#025940] text-white border-[#025940]'
+                : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#72A68E]'
+            }`}
+          >
+            {t(p.labelKey)}
+          </button>
+        ))}
+        {periodKey === 'custom' && (
+          <div className="flex items-center gap-1.5 ml-1">
+            <input
+              type="date"
+              value={customFrom}
+              onChange={(e) => setCustomFrom(e.target.value)}
+              aria-label={t('stock.invoicing.periodFrom')}
+              className="text-xs px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-[#025940] focus:ring-1 focus:ring-[#025940]/30 outline-none"
+            />
+            <span className="text-xs text-gray-400">–</span>
+            <input
+              type="date"
+              value={customTo}
+              onChange={(e) => setCustomTo(e.target.value)}
+              aria-label={t('stock.invoicing.periodTo')}
+              className="text-xs px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-[#025940] focus:ring-1 focus:ring-[#025940]/30 outline-none"
+            />
+          </div>
+        )}
       </div>
 
       {/* 🔥 PREMIUM ACTION BAR - Glass Effect */}
