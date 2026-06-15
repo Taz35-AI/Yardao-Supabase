@@ -150,6 +150,19 @@ export function LandingPage() {
 .app-screen .app-nav__i--add{color:#025940}
 .app-screen .app-nav__add{width:34px;height:34px;border-radius:50%;background:#84cc16;display:flex;align-items:center;justify-content:center;margin-top:-12px;box-shadow:0 6px 14px rgba(132,204,22,.4)}
 .app-screen .app-nav__add svg{width:18px;height:18px;stroke:#012619;stroke-width:2.5}
+.yard-map{width:100%;background:#0c2c20;border-radius:14px;padding:12px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)}
+.yard-map .ym-grid{display:grid;grid-template-columns:repeat(9,1fr);gap:3px}
+.yard-map .ym-head{display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;letter-spacing:.04em;color:#7fd1ab;padding:2px 0 4px}
+.yard-map .ym-cell{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:34px;border-radius:6px;font-size:8.5px;font-weight:800;line-height:1.1;letter-spacing:.01em;padding:3px 2px;color:#fff;overflow:hidden}
+.yard-map .ym-cell small{display:block;font-size:7px;font-weight:600;opacity:.85;margin-top:1px}
+.yard-map .ym--empty{background:rgba(255,255,255,.06);color:#5d7d70;font-weight:600}
+.yard-map .ym--orange{background:#f59e0b}
+.yard-map .ym--blue{background:#3b82f6}
+.yard-map .ym--gold{background:#ca8a04}
+.yard-map .ym--yellow{background:#facc15;color:#3a2e05}
+.yard-map .ym--grey{background:#94a3b8;color:#1f2937}
+.yard-map .ym--red{background:#991b1b}
+.yard-map .ym-area{grid-column:7 / 10;grid-row:5 / 7;display:flex;align-items:center;justify-content:center;text-align:center;background:#bef264;color:#28400a;border-radius:8px;font-size:10px;font-weight:800;line-height:1.2;padding:6px}
 `
     document.head.appendChild(appMock)
     cleanups.push(() => appMock.remove())
