@@ -528,35 +528,51 @@ export const stockService = {
    * Generate next invoice number
    */
   async generateInvoiceNumber(organizationId: string): Promise<string> {
+    // Next number = (highest existing INV-#### for this org) + 1. We scan ALL
+    // numbers and take the max rather than ordering by created_at — created_at
+    // order doesn't track the numeric sequence (edits, deletions, same-second
+    // timestamps), which produced duplicates and a 409 unique-constraint error
+    // on (organization_id, invoice_number).
     const { data, error } = await supabase
       .from(INVOICE_TABLE)
       .select('invoice_number')
       .eq('organization_id', organizationId)
-      .order('created_at', { ascending: false })
     if (error) throw error
-    const lastInvoice = (data ?? [])[0]
-
-    if (!lastInvoice) {
-      return 'INV-0001'
+    let max = 0
+    for (const row of data ?? []) {
+      const n = parseInt(String((row as any).invoice_number || '').split('-')[1] || '', 10)
+      if (!Number.isNaN(n) && n > max) max = n
     }
-
-    const lastNumber = lastInvoice.invoice_number
-    const numPart = parseInt(lastNumber.split('-')[1]) + 1
-    return `INV-${numPart.toString().padStart(4, '0')}`
+    return `INV-${String(max + 1).padStart(4, '0')}`
   },
 
   /**
    * Create invoice
    */
   async createInvoice(invoice: Omit<Invoice, 'id' | 'createdAt'>): Promise<Invoice> {
-    const invoiceData = {
-      ...invoice,
-      createdAt: new Date().toISOString(),
-    }
+    // Self-heal invoice-number collisions: if two invoices are raised close
+    // together (or the number was stale) the insert hits the unique
+    // (organization_id, invoice_number) constraint — Postgres 23505, surfaced
+    // to the client as a 409. Regenerate from the current max and retry.
+    let invoiceNumber = invoice.invoiceNumber
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const invoiceData = {
+        ...invoice,
+        invoiceNumber,
+        createdAt: new Date().toISOString(),
+      }
+      const { data, error } = await supabase.from(INVOICE_TABLE).insert(toSnake(invoiceData)).select().single()
+      if (!error) return toCamel<Invoice>(data) as Invoice
 
-    const { data, error } = await supabase.from(INVOICE_TABLE).insert(toSnake(invoiceData)).select().single()
-    if (error) throw error
-    return toCamel<Invoice>(data) as Invoice
+      const isDuplicate =
+        (error as any).code === '23505' ||
+        /duplicate key|unique constraint/i.test(error.message || '')
+      if (!isDuplicate || !invoice.organizationId || attempt === 5) throw error
+
+      invoiceNumber = await this.generateInvoiceNumber(invoice.organizationId)
+    }
+    // Unreachable — the loop either returns or throws.
+    throw new Error('Could not allocate a unique invoice number')
   },
 
   /**
