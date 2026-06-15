@@ -21,6 +21,13 @@ import { toCamel, toCamelList } from '@/lib/dbMap'
 import { wireResyncTriggers, onReconnectRefetch } from '@/lib/realtime/resync'
 import { normalizeDelta, applyDeltas, type RealtimeRowPayload } from '@/lib/realtime/deltas'
 
+// Legacy marketing landing — replaced by the new <LandingPage/>. Parked
+// (unreachable) for quick rollback; delete once the new landing is signed off.
+// Module-scoped so the animation effects below can skip their setState loops
+// when the legacy landing isn't shown (those re-renders were stomping the new
+// landing's carousel state and adding scroll jank).
+const SHOW_LEGACY_LANDING: boolean = false
+
 const carImages = [
   '/cars/car (1).png', '/cars/car (2).png', '/cars/car (3).png',
   '/cars/car (4).png', '/cars/car (5).png', '/cars/car (6).png',
@@ -70,12 +77,14 @@ export default function HomePage() {
   const [scrolled, setScrolled] = useState(false)
 
   useEffect(() => {
+    if (!SHOW_LEGACY_LANDING) return
     const onScroll = () => setScrolled(window.scrollY > 20)
     window.addEventListener('scroll', onScroll)
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
   useEffect(() => {
+    if (!SHOW_LEGACY_LANDING) return
     const laneConfigs = [
       { speed: 22, startDelay: -5 }, { speed: 18, startDelay: -12 },
       { speed: 28, startDelay: -3 }, { speed: 24, startDelay: -18 },
@@ -99,6 +108,7 @@ export default function HomePage() {
   }, [])
 
   useEffect(() => {
+    if (!SHOW_LEGACY_LANDING) return
     if (!user) {
       const convo = zaoConversations[currentPrompt]
       let i = 0
@@ -131,9 +141,6 @@ export default function HomePage() {
     return <LandingPage />
   }
 
-  // Legacy marketing landing — replaced by the new <LandingPage/>. Parked
-  // (unreachable) for quick rollback; delete once the new landing is signed off.
-  const SHOW_LEGACY_LANDING: boolean = false
   if (SHOW_LEGACY_LANDING) {
     return (
       <div className="min-h-screen bg-[#012619] relative overflow-hidden">

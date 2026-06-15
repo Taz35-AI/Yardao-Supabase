@@ -16,7 +16,7 @@
 //    depends on JS wiring.
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { LANDING_HTML } from './landingMarkup'
 
 const REVEAL_SELECTOR =
@@ -495,4 +495,8 @@ export function LandingPage() {
   return <div ref={rootRef} dangerouslySetInnerHTML={{ __html: LANDING_HTML }} />
 }
 
-export default LandingPage
+// memo: the parent (HomePage) re-renders frequently (typing animation, scroll
+// state). LandingPage takes no props, so memo keeps its element referentially
+// stable — React never reconciles the dangerouslySetInnerHTML subtree, so the
+// carousel's runtime class toggles aren't stomped back to the baked default.
+export default memo(LandingPage)
