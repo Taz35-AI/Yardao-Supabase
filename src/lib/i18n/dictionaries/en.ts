@@ -1987,6 +1987,12 @@ export const en = {
       remainingAfter: 'Remaining After',
       notesOptional: 'Notes (Optional)',
       notesPlaceholder: 'Any additional notes...',
+      // Job picker (which booking this removal is for)
+      whichJob: 'Which job is this for?',
+      noJob: 'No specific job (general stock)',
+      loadingJobs: 'Loading jobs...',
+      noJobsForReg: 'No open jobs for this reg - it will be logged as general stock.',
+      jobGeneric: 'Service',
       removing: 'Removing...',
       removePart: 'Remove Part',
     },
@@ -2110,6 +2116,11 @@ export const en = {
       addFail: 'Failed to add part',
       removeFail: 'Failed to remove part',
       loadFail: 'Failed to load job parts',
+      // Stock-page parts not yet on a job (explicit "add to job" fallback)
+      fromStockTitle: 'Found on the Stock page',
+      addToJob: 'Add to this job',
+      adoptedToJob: 'Added {name} to this job',
+      adoptFail: 'Could not add the part to this job',
       migrationNeeded: 'Database update needed — run migration 0039 first',
     },
     export: {

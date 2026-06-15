@@ -15,6 +15,10 @@ import { Vehicle } from '@/types'
 import { logger } from '@/lib/logger'
 import { normalizeReg, isRegUsable } from '@/lib/utils/registration'
 import { useT } from '@/lib/i18n'
+import { supabase } from '@/lib/supabaseClient'
+import { toCamelList } from '@/lib/dbMap'
+import { ServiceBooking } from '@/types/serviceBookings'
+import { localizeWorkRequired } from '@/lib/i18n/serviceBookingLabels'
 
 interface RemovePartModalProps {
   isOpen: boolean
@@ -38,6 +42,11 @@ export function RemovePartModal({ isOpen, onClose, onSuccess, part }: RemovePart
   const [customReg, setCustomReg] = useState<string>('')
   const [quantity, setQuantity] = useState(1)
   const [notes, setNotes] = useState('')
+  // 🧩 Which job (service booking) this removal is for, so the part lands on the
+  // right job + invoice instead of being orphaned. null = general stock.
+  const [jobs, setJobs] = useState<ServiceBooking[]>([])
+  const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null)
+  const [loadingJobs, setLoadingJobs] = useState(false)
 
   // ── Fetch user/org ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -126,6 +135,50 @@ export function RemovePartModal({ isOpen, onClose, onSuccess, part }: RemovePart
     }
   }, [isOpen])
 
+  // ── Load open jobs for the chosen vehicle/reg ─────────────────────────────
+  // Once a reg is picked, list its recent/active bookings so the removal can be
+  // stamped with the exact job (explicit choice — no date-window guessing).
+  useEffect(() => {
+    const reg = selectedVehicle ? selectedVehicle.registration : customReg
+    if (!isOpen || !organizationId || !isRegUsable(reg)) {
+      setJobs([])
+      setSelectedBookingId(null)
+      return
+    }
+    let cancelled = false
+    const loadJobs = async () => {
+      setLoadingJobs(true)
+      try {
+        const regKey = normalizeReg(reg)
+        const since = new Date(); since.setDate(since.getDate() - 21)
+        const sinceStr = since.toISOString().split('T')[0]
+        const { data, error } = await supabase
+          .from('service_bookings')
+          .select('*')
+          .eq('organization_id', organizationId)
+          .gte('date', sinceStr)
+          .neq('status', 'cancelled')
+        if (error) throw error
+        if (cancelled) return
+        const list = toCamelList<ServiceBooking>(data)
+          .filter(b => normalizeReg(b.registration) === regKey)
+          .sort((a, b) => (b.date + (b.timeSlot || '')).localeCompare(a.date + (a.timeSlot || '')))
+        setJobs(list)
+        // One open job → pre-select it; otherwise default to "general stock"
+        // so staff choose deliberately.
+        setSelectedBookingId(list.length === 1 ? list[0].id : null)
+      } catch (e) {
+        logger.error('Error loading jobs for registration:', e)
+        if (!cancelled) { setJobs([]); setSelectedBookingId(null) }
+      } finally {
+        if (!cancelled) setLoadingJobs(false)
+      }
+    }
+    loadJobs()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, organizationId, selectedVehicle, customReg])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -165,7 +218,9 @@ export function RemovePartModal({ isOpen, onClose, onSuccess, part }: RemovePart
         user.uid,
         userDisplayName,
         organizationId,
-        notes
+        notes,
+        // 🧩 Stamp the chosen job so the part shows on that job + its invoice.
+        selectedBookingId || undefined,
       )
 
       logger.log('Part removed successfully')
@@ -378,6 +433,65 @@ export function RemovePartModal({ isOpen, onClose, onSuccess, part }: RemovePart
               </p>
             )}
           </div>
+
+          {/* Which job is this for? Appears once a vehicle/reg is chosen, so the
+              removal is stamped with the exact booking instead of orphaned. */}
+          {(selectedVehicle || customReg) && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                {t('stock.remove.whichJob')}
+              </label>
+              {loadingJobs ? (
+                <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 py-2">
+                  <div className="w-4 h-4 border-2 border-gray-300 border-t-[#025940] rounded-full animate-spin" />
+                  {t('stock.remove.loadingJobs')}
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedBookingId(null)}
+                    className={`w-full flex items-center gap-3 p-2.5 rounded-lg border text-left transition-colors ${
+                      selectedBookingId === null
+                        ? 'border-[#025940] bg-[#025940]/8 dark:bg-[#025940]/20'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                    }`}
+                  >
+                    <span className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${selectedBookingId === null ? 'border-[#025940] bg-[#025940]' : 'border-gray-300 dark:border-gray-600'}`} />
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">{t('stock.remove.noJob')}</span>
+                  </button>
+                  {jobs.map(job => {
+                    const sel = selectedBookingId === job.id
+                    const dateLabel = new Date(job.date + 'T00:00:00').toLocaleDateString()
+                    const work = localizeWorkRequired(t, job.workRequired, t('stock.remove.jobGeneric'))
+                    return (
+                      <button
+                        key={job.id}
+                        type="button"
+                        onClick={() => setSelectedBookingId(job.id)}
+                        className={`w-full flex items-center gap-3 p-2.5 rounded-lg border text-left transition-colors ${
+                          sel
+                            ? 'border-[#025940] bg-[#025940]/8 dark:bg-[#025940]/20'
+                            : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                        }`}
+                      >
+                        <span className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${sel ? 'border-[#025940] bg-[#025940]' : 'border-gray-300 dark:border-gray-600'}`} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{dateLabel} · {work}</p>
+                          <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                            {job.timeSlot}{job.status ? ` · ${job.status.replace(/_/g, ' ')}` : ''}
+                          </p>
+                        </div>
+                      </button>
+                    )
+                  })}
+                  {jobs.length === 0 && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{t('stock.remove.noJobsForReg')}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ── Quantity ── */}
           <div className="grid grid-cols-2 gap-4">

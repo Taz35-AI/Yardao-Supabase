@@ -407,6 +407,47 @@ export const stockService = {
   },
 
   /**
+   * Stock-page part usage for one vehicle that isn't linked to any job yet
+   * (service_booking_id IS NULL) — e.g. oil removed on the Stock page without
+   * picking a job. Surfaced in the live job-parts modal so staff can attach it
+   * to the job explicitly. Matched by the canonical reg key; recent first.
+   */
+  async getUnlinkedUsageByRegistration(
+    organizationId: string,
+    registration: string,
+  ): Promise<PartUsageRecord[]> {
+    const regKey = normalizeReg(registration)
+    if (!organizationId || !regKey) return []
+    // Keep the list relevant — only usage from the last ~30 days.
+    const since = new Date(); since.setDate(since.getDate() - 30)
+    const { data, error } = await supabase
+      .from(USAGE_TABLE)
+      .select('*')
+      .eq('organization_id', organizationId)
+      .eq('vehicle_registration_key', regKey)
+      .is('service_booking_id', null)
+      .gte('used_at', since.toISOString())
+    if (error) throw error
+    return toCamelList<PartUsageRecord>(data).sort((a, b) =>
+      (b.usedAt ?? '').localeCompare(a.usedAt ?? ''),
+    )
+  },
+
+  /**
+   * Attach one existing usage row to a job (stamps service_booking_id). Used by
+   * the "Add to this job" action when staff adopt a Stock-page removal into the
+   * job they're working on, and by the Stock page's job picker. Idempotent.
+   */
+  async linkUsageToBooking(usageId: string, serviceBookingId: string): Promise<void> {
+    if (!usageId || !serviceBookingId) return
+    const { error } = await supabase
+      .from(USAGE_TABLE)
+      .update({ service_booking_id: serviceBookingId })
+      .eq('id', usageId)
+    if (error) throw error
+  },
+
+  /**
    * Undo a part-usage row (e.g. a mis-added part on a job). Restores the
    * quantity back onto the part's stock and deletes the usage row so it can
    * never be invoiced. The mirror image of removePartQuantity — used by the

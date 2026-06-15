@@ -42,6 +42,10 @@ export function JobPartsModal({ isOpen, onClose, booking, onChanged }: JobPartsM
   // Parts already recorded against this job + the live stock list to add from.
   const [jobParts, setJobParts] = useState<PartUsageRecord[]>([])
   const [stockParts, setStockParts] = useState<StockPart[]>([])
+  // Stock-page removals for this vehicle not yet linked to any job — surfaced
+  // with an explicit "Add to this job" button (see getUnlinkedUsageByRegistration).
+  const [unlinkedParts, setUnlinkedParts] = useState<PartUsageRecord[]>([])
+  const [linkingId, setLinkingId] = useState<string | null>(null)
   // Fleet vehicle id for this booking's reg ('' = custom / non-fleet, matched
   // by registration key instead — same path as the parts scan-out).
   const [vehicleId, setVehicleId] = useState('')
@@ -73,15 +77,19 @@ export function JobPartsModal({ isOpen, onClose, booking, onChanged }: JobPartsM
         setOrganizationId(orgId)
         setUserName(profile?.displayName || 'Unknown')
 
-        const [parts, stock, vehicles] = await Promise.all([
+        const [parts, stock, vehicles, unlinked] = await Promise.all([
           isJobReal ? stockService.getUsageByBooking(orgId, booking.id) : Promise.resolve([]),
           stockService.getParts(orgId),
           booking.isCustomVehicle ? Promise.resolve([]) : vehicleService.getVehicles(orgId),
+          isJobReal && booking.registration
+            ? stockService.getUnlinkedUsageByRegistration(orgId, booking.registration)
+            : Promise.resolve([]),
         ])
         if (cancelled) return
 
         setJobParts(parts)
         setStockParts(stock)
+        setUnlinkedParts(unlinked)
 
         // Resolve the fleet vehicle id by normalised registration so the usage
         // row links to the fleet record too (not just the booking).
@@ -112,12 +120,16 @@ export function JobPartsModal({ isOpen, onClose, booking, onChanged }: JobPartsM
 
   const refresh = async () => {
     if (!organizationId) return
-    const [parts, stock] = await Promise.all([
+    const [parts, stock, unlinked] = await Promise.all([
       stockService.getUsageByBooking(organizationId, booking.id),
       stockService.getParts(organizationId),
+      isJobReal && booking.registration
+        ? stockService.getUnlinkedUsageByRegistration(organizationId, booking.registration)
+        : Promise.resolve([]),
     ])
     setJobParts(parts)
     setStockParts(stock)
+    setUnlinkedParts(unlinked)
     onChanged?.()
   }
 
@@ -245,6 +257,24 @@ export function JobPartsModal({ isOpen, onClose, booking, onChanged }: JobPartsM
       toast.error(t('stock.jobParts.removeFail'))
     } finally {
       setRemovingId(null)
+    }
+  }
+
+  // Adopt a Stock-page removal (no job link) onto THIS job — explicit, chosen
+  // by the user. Stamps the usage row with this booking id so it moves into the
+  // "on this job" list and onto the invoice.
+  const handleLinkUnlinked = async (usage: PartUsageRecord) => {
+    if (!usage.id) return
+    setLinkingId(usage.id)
+    try {
+      await stockService.linkUsageToBooking(usage.id, booking.id)
+      await refresh()
+      toast.success(t('stock.jobParts.adoptedToJob', { name: usage.partName }))
+    } catch (error) {
+      logger.error('Error adding stock-page part to job:', error)
+      toast.error(t('stock.jobParts.adoptFail'))
+    } finally {
+      setLinkingId(null)
     }
   }
 
@@ -440,6 +470,45 @@ export function JobPartsModal({ isOpen, onClose, booking, onChanged }: JobPartsM
               </div>
             )}
           </div>
+
+          {/* Recorded on the Stock page for this vehicle but not on any job yet.
+              Staff attach them to this job explicitly — no date-window guessing. */}
+          {isJobReal && unlinkedParts.length > 0 && (
+            <div className="rounded-xl border border-amber-300/60 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/15 p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Package className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
+                <span className="text-xs font-semibold text-amber-800 dark:text-amber-300 uppercase tracking-wide">
+                  {t('stock.jobParts.fromStockTitle')}
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {unlinkedParts.map(part => (
+                  <div
+                    key={part.id}
+                    className="flex items-center gap-2 p-2 rounded-lg bg-white dark:bg-gray-800 border border-amber-200/70 dark:border-amber-800/40"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-[#012619] dark:text-white truncate">{part.partName}</p>
+                      <p className="text-[11px] font-mono text-[#72A68E]">{part.partNumber}</p>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 text-xs font-semibold tabular-nums flex-shrink-0">
+                      {part.unit === 'liters' ? `${part.quantityUsed.toFixed(1)}L` : `×${part.quantityUsed}`}
+                    </span>
+                    <button
+                      onClick={() => handleLinkUnlinked(part)}
+                      disabled={linkingId === part.id}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-[#025940] text-white hover:bg-[#012619] transition-colors disabled:opacity-50 flex-shrink-0"
+                    >
+                      {linkingId === part.id
+                        ? <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                        : <Plus className="w-3.5 h-3.5" />}
+                      {t('stock.jobParts.addToJob')}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Parts on this job */}
           <div>
