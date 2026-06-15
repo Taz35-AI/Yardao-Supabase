@@ -58,7 +58,9 @@ export interface ReportRow {
   Model: string
   'Labour time (hrs)': number
   'Labour cost (£)': number
+  'Labour descriptions': string
   'Parts cost (£)': number
+  'Parts descriptions': string
   'Discount (£)': number
   'Net (£)': number
   'VAT (£)': number
@@ -106,6 +108,16 @@ export function buildInvoiceReportRows(
       const arr = byReg.get(normalizeReg(inv.vehicleRegistration || '')) || []
       const matched = arr.find(b => b.date && b.date <= inv.invoiceDate) || arr[0]
 
+      // Detail breakdowns — each line item's description, comma-separated.
+      const labourDescriptions = (inv.labour || [])
+        .map(l => (l.description || '').trim())
+        .filter(Boolean)
+        .join(', ')
+      const partsDescriptions = (inv.parts || [])
+        .map(p => (p.partName || '').trim())
+        .filter(Boolean)
+        .join(', ')
+
       return {
         Date: ddmmyyyy(inv.invoiceDate),
         Garage: inv.fromCompany || '',
@@ -115,7 +127,9 @@ export function buildInvoiceReportRows(
         Model: inv.vehicleModel || '',
         'Labour time (hrs)': labourHrs,
         'Labour cost (£)': labourCost,
+        'Labour descriptions': labourDescriptions,
         'Parts cost (£)': partsCost,
+        'Parts descriptions': partsDescriptions,
         'Discount (£)': discount,
         'Net (£)': net,
         'VAT (£)': vat,
@@ -137,7 +151,9 @@ export async function downloadInvoiceReport(rows: ReportRow[], filename: string)
     { wch: 14 }, // Model
     { wch: 13 }, // Labour time
     { wch: 13 }, // Labour cost
+    { wch: 40 }, // Labour descriptions
     { wch: 13 }, // Parts cost
+    { wch: 40 }, // Parts descriptions
     { wch: 12 }, // Discount
     { wch: 12 }, // Net
     { wch: 12 }, // VAT
