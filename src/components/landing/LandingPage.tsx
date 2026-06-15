@@ -106,6 +106,48 @@ export function LandingPage() {
     document.head.appendChild(overrides)
     cleanups.push(() => overrides.remove())
 
+    // ── App-mock styles: the code-built mobile Yard dashboard that replaced the
+    // phone .mp4. Scoped to .app-screen; uses the app's palette. ──────────────
+    const appMock = document.createElement('style')
+    appMock.textContent = `
+.device-phone__video.app-screen{position:absolute;inset:0;display:flex;flex-direction:column;background:#eef3f1;color:#012619;border-radius:34px;overflow:hidden;transform:scale(1.015);font-family:inherit;text-align:left}
+.app-screen .app-status{display:flex;justify-content:space-between;align-items:center;padding:9px 16px 2px;font-size:9px;font-weight:700}
+.app-screen .app-status__r{display:flex;align-items:center;gap:3px}
+.app-screen .app-status__r i{width:3px;height:3px;border-radius:50%;background:#012619}
+.app-screen .app-status__r b{width:15px;height:7px;border:1px solid #012619;border-radius:2px;margin-left:2px}
+.app-screen .app-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:4px 10px 0;padding:9px 12px;background:#012619;border-radius:16px}
+.app-screen .app-top__brand{display:flex;align-items:center;gap:6px;color:#fff;font-weight:800;font-size:13px}
+.app-screen .app-top__dot{width:14px;height:14px;border-radius:5px;background:#b3f243}
+.app-screen .app-top__search{font-size:9px;color:#9fc3b4;background:rgba(255,255,255,.08);border-radius:8px;padding:5px 8px;white-space:nowrap}
+.app-screen .app-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding:10px}
+.app-screen .app-stat{background:#fff;border:1px solid #e2e8e5;border-radius:12px;padding:7px 4px;text-align:center}
+.app-screen .app-stat strong{display:block;font-size:16px;font-weight:800;line-height:1.1}
+.app-screen .app-stat span{font-size:8px;color:#72A68E;text-transform:uppercase;letter-spacing:.3px;font-weight:700}
+.app-screen .app-stat--ok strong{color:#047857}
+.app-screen .app-stat--warn strong{color:#b45309}
+.app-screen .app-list{flex:1;display:flex;flex-direction:column;gap:6px;padding:0 10px 6px;overflow:hidden}
+.app-screen .app-row{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #e2e8e5;border-left:3px solid #72A68E;border-radius:12px;padding:7px 9px}
+.app-screen .app-row--ready{border-left-color:#16a34a}
+.app-screen .app-row--garage{border-left-color:#7c3aed}
+.app-screen .app-row--mot{border-left-color:#d97706}
+.app-screen .app-row--prog{border-left-color:#2563eb}
+.app-screen .app-plate{flex-shrink:0;background:#f6d33a;color:#0a0a0a;font-weight:800;font-size:9px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.5px;padding:4px 5px;border-radius:4px}
+.app-screen .app-row__v{flex:1;min-width:0;line-height:1.18}
+.app-screen .app-row__v strong{display:block;font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.app-screen .app-row__v span{font-size:9px;color:#72A68E}
+.app-screen .app-tag{flex-shrink:0;font-size:8px;font-weight:800;padding:3px 7px;border-radius:999px;white-space:nowrap}
+.app-screen .app-tag--ready{background:#dcfce7;color:#047857}
+.app-screen .app-tag--garage{background:#ede9fe;color:#7c3aed}
+.app-screen .app-tag--mot{background:#fef3c7;color:#b45309}
+.app-screen .app-tag--prog{background:#dbeafe;color:#2563eb}
+.app-screen .app-nav{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:8px 6px;background:#fff;border-top:1px solid #e2e8e5}
+.app-screen .app-nav__i{display:flex;flex-direction:column;align-items:center;gap:3px;color:#9aa8a2;font-size:8px;font-weight:700}
+.app-screen .app-nav__i svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.app-screen .app-nav__i.is-on{color:#025940}
+`
+    document.head.appendChild(appMock)
+    cleanups.push(() => appMock.remove())
+
     // ── 3. is-loaded (reveals the WHOLE hero) + scrolled header state ────────
     // Synchronous on <html> (which is never replaced) — a rAF here was getting
     // cancelled in the React lifecycle, leaving the hero stuck at opacity:0.
