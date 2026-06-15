@@ -114,7 +114,7 @@ export function LandingPage() {
 .app-screen .app-status{flex-shrink:0;display:flex;justify-content:space-between;align-items:center;padding:9px 16px 4px;font-size:9px;font-weight:700}
 .app-screen .app-status__r{display:flex;align-items:center;gap:3px}
 .app-screen .app-status__r i{width:3px;height:3px;border-radius:50%;background:#012619}
-.app-screen .app-status__r b{width:15px;height:7px;border:1px solid #012619;border-radius:2px;margin-left:2px}
+.app-screen .app-status__r b{width:15px;height:7px;border:1px solid #012619;border-radius:2px;margin-left:2px;background:linear-gradient(to right,#012619 0 50%,transparent 50% 100%)}
 .app-screen .app-scroll{flex:1;overflow:hidden;padding:0 10px}
 .app-screen .app-hero{position:relative;background:radial-gradient(circle at 88% 0%,rgba(179,242,67,.12),transparent 46%),#012619;border-radius:18px;padding:14px 13px;color:#fff;overflow:hidden}
 .app-screen .app-hero__title{margin:0 0 4px;font-size:17px;font-weight:800;line-height:1.15;letter-spacing:-.3px}
@@ -133,6 +133,7 @@ export function LandingPage() {
 .app-screen .app-vsec{margin-top:12px}
 .app-screen .app-vsec__h{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;color:#012619;margin-bottom:7px}
 .app-screen .app-vsec__h b{margin-left:auto;font-size:9px;font-weight:700;color:#8a9e94}
+.app-screen .app-vlist{display:flex;flex-direction:column;gap:6px}
 .app-screen .app-vcard{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #e4eae7;border-left:3px solid #16a34a;border-radius:13px;padding:9px 10px}
 .app-screen .app-vplate{flex-shrink:0;background:#fff;border:1.5px solid #cfd9d3;border-radius:5px;padding:4px 6px;font-size:9px;font-weight:800;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.5px;color:#012619}
 .app-screen .app-vcard__b{min-width:0}
