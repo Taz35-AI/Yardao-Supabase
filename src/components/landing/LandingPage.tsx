@@ -24,12 +24,12 @@ const REVEAL_SELECTOR =
 
 const ZAO_COMMANDS = [
   {
-    command: 'Book HN74 for tyres on Friday',
+    command: 'Book HN74 ABC for tyres on Friday',
     status: 'Booking confirmed',
-    metricTitle: 'HN74ABC',
+    metricTitle: 'HN74 ABC',
     metricValue: 'Booked',
     metricMeta: 'Friday 10:00',
-    confirm: "Booked. HN74ABC - Tyres x4 at Joe's Garage, Friday 10:00. Dashboard updated.",
+    confirm: "Booked. HN74 ABC - Tyres x4 at Joe's Garage, Friday 10:00. Dashboard updated.",
   },
   {
     command: 'Show vehicles waiting for MOT this week',
@@ -40,12 +40,12 @@ const ZAO_COMMANDS = [
     confirm: 'Found 3 MOTs due this week. Priority vehicles highlighted on the dashboard.',
   },
   {
-    command: "Move BX24 from Joe's to bodyshop",
+    command: "Move BX24 XYZ from Joe's to bodyshop",
     status: 'Vehicle moved',
-    metricTitle: 'BX24',
+    metricTitle: 'BX24 XYZ',
     metricValue: 'Bodyshop',
     metricMeta: 'Status updated',
-    confirm: "Moved BX24 from Joe's Garage to bodyshop. Stock location is now up to date.",
+    confirm: "Moved BX24 XYZ from Joe's Garage to bodyshop. Stock location is now up to date.",
   },
 ]
 
