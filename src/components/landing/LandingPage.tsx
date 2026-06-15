@@ -150,19 +150,150 @@ export function LandingPage() {
 .app-screen .app-nav__i--add{color:#025940}
 .app-screen .app-nav__add{width:34px;height:34px;border-radius:50%;background:#84cc16;display:flex;align-items:center;justify-content:center;margin-top:-12px;box-shadow:0 6px 14px rgba(132,204,22,.4)}
 .app-screen .app-nav__add svg{width:18px;height:18px;stroke:#012619;stroke-width:2.5}
-.yard-map{width:100%;background:#0c2c20;border-radius:14px;padding:12px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)}
-.yard-map .ym-grid{display:grid;grid-template-columns:repeat(9,1fr);gap:3px}
-.yard-map .ym-head{display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;letter-spacing:.04em;color:#7fd1ab;padding:2px 0 4px}
-.yard-map .ym-cell{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:34px;border-radius:6px;font-size:8.5px;font-weight:800;line-height:1.1;letter-spacing:.01em;padding:3px 2px;color:#fff;overflow:hidden}
-.yard-map .ym-cell small{display:block;font-size:7px;font-weight:600;opacity:.85;margin-top:1px}
-.yard-map .ym--empty{background:rgba(255,255,255,.06);color:#5d7d70;font-weight:600}
-.yard-map .ym--orange{background:#f59e0b}
-.yard-map .ym--blue{background:#3b82f6}
-.yard-map .ym--gold{background:#ca8a04}
-.yard-map .ym--yellow{background:#facc15;color:#3a2e05}
-.yard-map .ym--grey{background:#94a3b8;color:#1f2937}
-.yard-map .ym--red{background:#991b1b}
-.yard-map .ym-area{grid-column:7 / 10;grid-row:5 / 7;display:flex;align-items:center;justify-content:center;text-align:center;background:#bef264;color:#28400a;border-radius:8px;font-size:10px;font-weight:800;line-height:1.2;padding:6px}
+/* ── Feature-tour module panels: faithful LIGHT app cards (dummy data) ── */
+.lp-frame{display:flex;justify-content:center;width:100%}
+.lp-app{width:100%;max-width:392px;background:#f3f6f4;border:1px solid #dfe6e2;border-radius:14px;padding:11px;box-shadow:0 16px 40px rgba(1,20,15,.4);color:#0f1f18;font-size:11px;line-height:1.3;text-align:left}
+.lp-app *,.lp-inv *{box-sizing:border-box}
+.lp-plate{display:inline-block;background:linear-gradient(180deg,#fff,#f4f4f4 52%,#e3e3e3);border:1px solid #012619;border-radius:4px;padding:2px 7px;font-family:'DM Mono',ui-monospace,monospace;font-size:10.5px;font-weight:800;letter-spacing:.08em;color:#012619;box-shadow:0 1px 1.5px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.9);white-space:nowrap}
+.lp-head{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+.lp-htxt{display:flex;flex-direction:column;min-width:0}
+.lp-title{font-size:14px;font-weight:850;color:#012619;letter-spacing:-.01em}
+.lp-sub{font-size:9.5px;color:#72A68E;font-weight:600}
+.lp-views{display:flex;gap:3px;margin-left:auto}
+.lp-views i{display:flex;width:22px;height:22px;align-items:center;justify-content:center;border-radius:6px;background:#fff;border:1px solid #e2e8e5;color:#8a9e94}
+.lp-views i svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.lp-views i.is-on{background:#012619;color:#b3f243;border-color:#012619}
+.lp-cta{display:inline-flex;align-items:center;gap:3px;margin-left:auto;background:#b3f243;color:#012619;font-weight:850;font-size:10px;padding:6px 10px;border-radius:8px;white-space:nowrap}
+.lp-cta svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.lp-headic{display:flex;width:28px;height:28px;align-items:center;justify-content:center;border-radius:8px;background:#012619;color:#b3f243;flex-shrink:0}
+.lp-headic svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.lp-srch{display:flex;align-items:center;gap:6px;background:#fff;border:1px solid #e2e8e5;border-radius:9px;padding:7px 9px;margin-bottom:9px}
+.lp-srch svg{width:13px;height:13px;fill:none;stroke:#8a9e94;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.lp-srch span{color:#9aaba2;font-size:10px}
+.lp-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:9px}
+.lp-m{display:flex;flex-direction:column;gap:3px;background:#fff;border:1px solid #e2e8e5;border-radius:9px;padding:6px 7px;font-size:8.5px;font-weight:800;color:#5b6f66;text-transform:uppercase;letter-spacing:.02em}
+.lp-m b{width:7px;height:7px;border-radius:50%}
+.lp-m em{font-style:normal;font-size:15px;font-weight:850;color:#012619;text-transform:none}
+.lp-vlist,.lp-blist,.lp-clist,.lp-dlist{display:flex;flex-direction:column;gap:6px}
+.lp-vrow{position:relative;display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #eef2f0;border-radius:10px;padding:7px 9px 7px 12px;overflow:hidden}
+.lp-bar,.lp-bbar,.lp-dbar{position:absolute;left:0;top:0;bottom:0;width:3px}
+.lp-vrow--ready .lp-bar{background:#16a34a}
+.lp-vrow--pending .lp-bar{background:#d97706}
+.lp-vrow--repairs .lp-bar{background:#dc2626}
+.lp-vmeta{display:flex;flex-direction:column;flex:1;min-width:0}
+.lp-vmeta strong{font-size:11px;font-weight:800;color:#012619}
+.lp-vmeta span{font-size:9px;color:#8a9e94;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lp-st{display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:850;padding:3px 8px;border-radius:999px;white-space:nowrap}
+.lp-st i{width:5px;height:5px;border-radius:50%}
+.lp-st--ready{background:#ecfdf3;color:#15803d}.lp-st--ready i{background:#16a34a}
+.lp-st--pending{background:#fffbeb;color:#b45309}.lp-st--pending i{background:#d97706}
+.lp-st--repairs{background:#fef2f2;color:#b91c1c}.lp-st--repairs i{background:#dc2626}
+.lp-tabs{display:inline-flex;gap:3px;background:#eef2f0;border-radius:9px;padding:3px;margin-bottom:9px}
+.lp-tabs span{font-size:9.5px;font-weight:800;color:#7c8d85;padding:4px 11px;border-radius:7px}
+.lp-tabs span.is-on{background:#fff;color:#025940;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.lp-dayline{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:800;color:#374b42;margin-bottom:8px}
+.lp-today{background:#b3f243;color:#012619;font-size:8px;font-weight:850;padding:2px 6px;border-radius:6px;letter-spacing:.06em}
+.lp-brow,.lp-drow{position:relative;display:flex;gap:8px;background:#fff;border:1px solid #eef2f0;border-radius:10px;padding:7px 9px 7px 12px;overflow:hidden}
+.lp-brow--sched .lp-bbar{background:#38bdf8}
+.lp-brow--ext .lp-bbar{background:#72A68E}
+.lp-brow--prog .lp-bbar{background:#f59e0b}
+.lp-brow--done .lp-bbar{background:#34d399}
+.lp-time{font-size:12px;font-weight:850;color:#012619;min-width:34px;display:flex;align-items:center}
+.lp-bmeta,.lp-dmeta{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}
+.lp-btop{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.lp-yplate{display:inline-block;background:#fde047;border:1px solid #eab308;border-radius:4px;padding:1.5px 6px;font-family:'DM Mono',ui-monospace,monospace;font-size:10px;font-weight:800;letter-spacing:.05em;color:#1f2937;white-space:nowrap}
+.lp-bmeta>strong{font-size:11px;font-weight:800;color:#1f2c27}
+.lp-bst,.lp-dtype{font-size:8px;font-weight:850;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:999px;white-space:nowrap}
+.lp-bst--sched{background:#e0f2fe;color:#0369a1}
+.lp-bst--ext{background:rgba(114,166,142,.22);color:#025940}
+.lp-bst--prog{background:#fef3c7;color:#b45309}
+.lp-bst--done{background:#d1fae5;color:#047857}
+.lp-btags{display:flex;gap:4px;flex-wrap:wrap}
+.lp-tag{font-size:8.5px;font-weight:800;padding:2px 6px;border-radius:6px}
+.lp-tag--bay1{background:#e0f2fe;color:#0369a1}
+.lp-tag--bay2{background:#fef3c7;color:#b45309}
+.lp-tag--garage{background:#eef2f0;color:#025940}
+.lp-pills{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px}
+.lp-p{flex:1;display:flex;align-items:center;gap:5px;background:#fff;border:1px solid #e2e8e5;border-radius:9px;padding:5px 6px;min-width:0}
+.lp-pi{display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;color:#b3f243;font-size:11px;flex-shrink:0}
+.lp-pi svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.lp-p>span{display:flex;flex-direction:column;font-size:7.5px;color:#8a9e94;font-weight:800;text-transform:uppercase;letter-spacing:.02em;min-width:0}
+.lp-p em{font-style:normal;font-size:13px;font-weight:850;color:#012619;text-transform:none}
+.lp-p--amber .lp-pi{background:#fffbeb;color:#d97706}
+.lp-p--red .lp-pi{background:#fef2f2;color:#dc2626}
+.lp-cats{display:flex;flex-direction:column;gap:6px}
+.lp-cat{background:#fff;border:1px solid #e2e8e5;border-left:3px solid #72A68E;border-radius:10px;overflow:hidden}
+.lp-cat--out{border-left-color:#ef4444}
+.lp-cat--low{border-left-color:#f59e0b}
+.lp-cat--ok{border-left-color:#72A68E}
+.lp-cathead{display:flex;align-items:center;gap:8px;padding:8px 9px}
+.lp-catic{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;background:#f0f7f4;font-size:15px;flex-shrink:0}
+.lp-catmeta{display:flex;flex-direction:column;flex:1;min-width:0}
+.lp-catmeta strong{font-size:11.5px;font-weight:800;color:#012619}
+.lp-catmeta span{font-size:9px;color:#8a9e94}
+.lp-cpill{font-size:8px;font-weight:850;padding:2px 7px;border-radius:999px;text-transform:uppercase;letter-spacing:.03em}
+.lp-cpill--out{background:#fef2f2;color:#b91c1c}
+.lp-cpill--low{background:#fffbeb;color:#b45309}
+.lp-cpill--ok{background:#ecfdf3;color:#15803d}
+.lp-chev{color:#b5c3bc;font-size:10px}
+.lp-lines{display:flex;flex-direction:column;border-top:1px solid #eef2f0}
+.lp-line{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;font-size:10px;color:#3a4b44}
+.lp-line+.lp-line{border-top:1px solid #f1f5f3}
+.lp-q{font-size:9px;font-weight:850;padding:2px 7px;border-radius:6px;font-family:'DM Mono',ui-monospace,monospace}
+.lp-q--out{background:#fef2f2;color:#b91c1c}
+.lp-q--low{background:#fffbeb;color:#b45309}
+.lp-q--ok{background:#f0f7f4;color:#025940}
+.lp-inv{width:100%;max-width:360px;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 16px 40px rgba(1,20,15,.45);color:#1f2c27;font-size:10px;text-align:left}
+.lp-inv__bar{height:5px;background:#025940}
+.lp-inv__head{display:flex;align-items:flex-start;justify-content:space-between;padding:11px 13px 8px}
+.lp-inv__ttl{display:block;font-size:18px;font-weight:850;color:#025940;letter-spacing:.02em}
+.lp-inv__no{display:block;font-size:10px;font-weight:800;color:#1f2c27;margin-top:2px}
+.lp-inv__dt{display:block;font-size:9px;color:#8a9e94}
+.lp-inv__status{background:#dbeafe;color:#1d4ed8;font-size:8.5px;font-weight:850;padding:3px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em}
+.lp-inv__parties{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 13px 9px}
+.lp-inv__parties>div{display:flex;flex-direction:column;font-size:9px;color:#42514a;font-weight:600}
+.lp-inv__parties b{font-size:7.5px;font-weight:850;letter-spacing:.08em;color:#9aaba2;margin-bottom:2px}
+.lp-inv__parties span{font-size:8px;color:#8a9e94;font-weight:500}
+.lp-inv__veh{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 13px 9px;padding:8px 10px;background:#f0f7ff;border:1px solid #bfdbfe;border-radius:8px}
+.lp-inv__veh .l{display:flex;flex-direction:column;gap:3px}
+.lp-inv__veh b{font-size:7.5px;font-weight:850;letter-spacing:.08em;color:#3b82f6}
+.lp-inv__veh .r{display:flex;flex-direction:column;align-items:flex-end}
+.lp-inv__veh .r strong{font-size:10px;font-weight:800;color:#1f2c27}
+.lp-inv__veh .r span{font-size:8.5px;color:#8a9e94}
+.lp-inv__tbl{width:calc(100% - 26px);margin:0 13px;border-collapse:collapse;font-size:9px}
+.lp-inv__tbl th{text-align:left;background:#f5f7fa;color:#7c8d85;font-size:7.5px;font-weight:850;text-transform:uppercase;letter-spacing:.04em;padding:5px 7px}
+.lp-inv__tbl th:last-child,.lp-inv__tbl td:last-child{text-align:right}
+.lp-inv__tbl th:nth-child(2),.lp-inv__tbl td:nth-child(2){text-align:center;width:34px}
+.lp-inv__tbl td{padding:5px 7px;border-bottom:1px solid #f1f5f3;color:#3a4b44}
+.lp-inv__tot{display:flex;flex-direction:column;gap:3px;align-items:flex-end;padding:9px 13px 4px}
+.lp-inv__tot>div{display:flex;justify-content:space-between;gap:20px;width:154px;font-size:9px;color:#5b6f66}
+.lp-inv__tot>div span:last-child{font-weight:700;color:#1f2c27}
+.lp-inv__tot .g{border-top:1.5px solid #025940;margin-top:3px;padding-top:5px}
+.lp-inv__tot .g span{font-size:13px;font-weight:850;color:#025940}
+.lp-inv__foot{text-align:center;font-style:italic;font-size:8.5px;color:#9aaba2;padding:8px;border-top:1px solid #f1f5f3;margin-top:6px}
+.lp-crow{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #eef2f0;border-radius:10px;padding:7px 9px}
+.lp-cmeta{display:flex;flex-direction:column;flex:1;min-width:0}
+.lp-cmeta strong{font-size:11px;font-weight:800;color:#012619}
+.lp-cmeta span{font-size:9px;color:#8a9e94}
+.lp-cflags{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.lp-badge{font-size:8px;font-weight:850;padding:2px 7px;border-radius:6px;white-space:nowrap}
+.lp-badge--exp{background:#dc2626;color:#fff}
+.lp-badge--warn{background:#f97316;color:#fff}
+.lp-badge--soon{background:#facc15;color:#3a2e05}
+.lp-ins{font-size:8px;font-weight:800;padding:2px 7px;border-radius:999px;white-space:nowrap}
+.lp-ins--yes{background:#e6f4ec;color:#0d6b2e}
+.lp-ins--no{background:#fff0ee;color:#bf1d19}
+.lp-week{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:9px}
+.lp-week b{font-size:7.5px;font-weight:800;color:#8a9e94;text-align:center;text-transform:uppercase}
+.lp-week span{display:flex;align-items:center;justify-content:center;height:24px;border-radius:6px;background:#fff;border:1px solid #eef2f0;font-size:9.5px;font-weight:700;color:#42514a}
+.lp-week span.lp-wk--today{background:#012619;color:#fff;border-color:#012619}
+.lp-week span.lp-wk--in{box-shadow:inset 0 -3px 0 #025940}
+.lp-week span.lp-wk--out{box-shadow:inset 0 -3px 0 #dc2626}
+.lp-drow--in .lp-dbar{background:#025940}
+.lp-drow--out .lp-dbar{background:#dc2626}
+.lp-dmeta>span{font-size:9px;color:#8a9e94}
+.lp-dtype--in{background:rgba(2,89,64,.12);color:#025940}
+.lp-dtype--out{background:#fef2f2;color:#b91c1c}
 `
     document.head.appendChild(appMock)
     cleanups.push(() => appMock.remove())
@@ -225,67 +356,71 @@ export function LandingPage() {
     }
 
     // ── 6. Feature tour carousel ────────────────────────────────────────────
-    const tourCarousel = q<HTMLElement>('.feature-tour')
-    const tourGrid = q<HTMLElement>('.feature-tour__grid')
-    const tourSteps = qa<HTMLElement>('.tour-step')
-    const tourPanels = qa<HTMLElement>('.tour-panel')
-    const tourTabs = qa<HTMLElement>('.tour-tab')
-    const tourPrev = q<HTMLElement>('.tour-arrow--prev')
-    const tourNext = q<HTMLElement>('.tour-arrow--next')
-    const tourProgress = q<HTMLElement>('.tour-progress')
-    let activeTour = 0
+    // Delegated on `document` and reading the live DOM each call. The landing
+    // markup is injected via dangerouslySetInnerHTML; under StrictMode/HMR React
+    // can re-create those nodes, so captured node refs go stale and listeners
+    // bound to them stop firing. Delegation + fresh queries survive that.
+    const tourStepEls = () => qa<HTMLElement>('.tour-step')
+    const currentTour = () => {
+      const i = tourStepEls().findIndex(s => s.classList.contains('is-active'))
+      return i < 0 ? 0 : i
+    }
     const setTour = (target: number | string) => {
-      if (!tourSteps.length) return
+      const steps = tourStepEls()
+      const panels = qa<HTMLElement>('.tour-panel')
+      if (!steps.length) return
       const targetIndex =
         typeof target === 'number'
           ? target
-          : tourSteps.findIndex(s => s.dataset.tourStep === target)
-      const nextIndex = (targetIndex + tourSteps.length) % tourSteps.length
-      const stepId = tourSteps[nextIndex].dataset.tourStep
-      activeTour = nextIndex
-      tourSteps.forEach((s, i) => {
+          : steps.findIndex(s => s.dataset.tourStep === target)
+      const nextIndex = (targetIndex + steps.length) % steps.length
+      const stepId = steps[nextIndex].dataset.tourStep
+      steps.forEach((s, i) => {
         s.classList.toggle('is-active', i === nextIndex)
         s.setAttribute('aria-hidden', String(i !== nextIndex))
       })
-      tourPanels.forEach(p => {
+      panels.forEach(p => {
         const isActive = p.dataset.tourPanel === stepId
         p.classList.toggle('is-active', isActive)
         p.setAttribute('aria-hidden', String(!isActive))
       })
-      tourTabs.forEach((tab, i) => {
+      qa<HTMLElement>('.tour-tab').forEach(tab => {
         const isActive = tab.dataset.tourTarget === stepId
         tab.classList.toggle('is-active', isActive)
         tab.setAttribute('aria-selected', String(isActive))
         tab.tabIndex = isActive ? 0 : -1
-        if (isActive && i === nextIndex) {
-          tab.scrollIntoView({ inline: 'center', block: 'nearest', behavior: prefersReducedMotion ? 'auto' : 'smooth' })
-        }
       })
-      if (tourProgress) {
-        tourProgress.textContent = `${String(nextIndex + 1).padStart(2, '0')} / ${String(tourSteps.length).padStart(2, '0')}`
+      const prog = q<HTMLElement>('.tour-progress')
+      if (prog) prog.textContent = `${String(nextIndex + 1).padStart(2, '0')} / ${String(steps.length).padStart(2, '0')}`
+    }
+    on(document, 'click', ((e: Event) => {
+      const t = e.target as HTMLElement
+      if (!t?.closest) return
+      if (t.closest('.tour-arrow--next')) setTour(currentTour() + 1)
+      else if (t.closest('.tour-arrow--prev')) setTour(currentTour() - 1)
+      else {
+        const tab = t.closest<HTMLElement>('.tour-tab')
+        if (tab) setTour(tab.dataset.tourTarget ?? 0)
       }
-    }
-    const stepTour = (dir: number) => setTour(activeTour + dir)
-    tourTabs.forEach(tab => on(tab, 'click', () => setTour(tab.dataset.tourTarget ?? 0)))
-    if (tourPrev) on(tourPrev, 'click', () => stepTour(-1))
-    if (tourNext) on(tourNext, 'click', () => stepTour(1))
-    if (tourCarousel) {
-      on(tourCarousel, 'keydown', ((e: KeyboardEvent) => {
-        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
-        e.preventDefault()
-        stepTour(e.key === 'ArrowRight' ? 1 : -1)
-      }) as EventListener)
-    }
-    if (tourGrid) {
-      let sx = 0, sy = 0
-      on(tourGrid, 'pointerdown', ((e: PointerEvent) => { sx = e.clientX; sy = e.clientY }) as EventListener)
-      on(tourGrid, 'pointerup', ((e: PointerEvent) => {
-        const dx = e.clientX - sx, dy = e.clientY - sy
-        if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy) * 1.2) return
-        stepTour(dx < 0 ? 1 : -1)
-      }) as EventListener)
-    }
-    if (tourSteps.length && tourPanels.length) setTour(0)
+    }) as EventListener)
+    on(document, 'keydown', ((e: KeyboardEvent) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      const t = e.target as HTMLElement
+      if (!t?.closest?.('.feature-tour')) return
+      e.preventDefault()
+      setTour(currentTour() + (e.key === 'ArrowRight' ? 1 : -1))
+    }) as EventListener)
+    let sx = 0, sy = 0
+    on(document, 'pointerdown', ((e: PointerEvent) => {
+      if ((e.target as HTMLElement)?.closest?.('.feature-tour__grid')) { sx = e.clientX; sy = e.clientY }
+    }) as EventListener)
+    on(document, 'pointerup', ((e: PointerEvent) => {
+      if (!(e.target as HTMLElement)?.closest?.('.feature-tour__grid')) return
+      const dx = e.clientX - sx, dy = e.clientY - sy
+      if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy) * 1.2) return
+      setTour(currentTour() + (dx < 0 ? 1 : -1))
+    }) as EventListener)
+    setTour(0)
 
     // ── 7. Reviews carousel ─────────────────────────────────────────────────
     const reviewCarousel = q<HTMLElement>('.review-carousel')
