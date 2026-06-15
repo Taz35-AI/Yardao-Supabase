@@ -698,10 +698,12 @@ export function ServiceBookingsContent() {
     setShowBookingModal(true)
   }
 
-  // Mini-calendar click in today view → select date (don't open modal)
+  // Mini-calendar click in today view → select date (don't open modal).
+  // Default to the Workshop schedule for whichever day you land on (today OR a
+  // future date), so planning ahead opens the same workshop grid as the current day.
   const handleMiniCalendarDateSelect = (date: Date) => {
     setSelectedDate(date)
-    setTodayViewFilter('today')
+    setTodayViewFilter('workshop')
     // Switch to today view if not already
     if (viewMode !== 'today') setViewMode('today')
   }
@@ -1328,7 +1330,7 @@ export function ServiceBookingsContent() {
                     now.setHours(0, 0, 0, 0)
                     setSelectedDate(now)
                     setMiniCalendarFocusDate(new Date(now.getFullYear(), now.getMonth(), 1))
-                    setTodayViewFilter('today')
+                    setTodayViewFilter('workshop')
                   }
                 }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap ${
@@ -1468,7 +1470,7 @@ export function ServiceBookingsContent() {
                     now.setHours(0, 0, 0, 0)
                     setSelectedDate(now)
                     setMiniCalendarFocusDate(new Date(now.getFullYear(), now.getMonth(), 1))
-                    setTodayViewFilter('today')
+                    setTodayViewFilter('workshop')
                   }
                 }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap ${
@@ -1787,7 +1789,7 @@ export function ServiceBookingsContent() {
               onDateSelect={(date) => {
                 setSelectedDate(date)
                 setViewMode('today')
-                setTodayViewFilter('today')
+                setTodayViewFilter('workshop')
               }}
               focusDate={miniCalendarFocusDate}
             />
