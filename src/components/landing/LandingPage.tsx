@@ -97,7 +97,12 @@ export function LandingPage() {
       'body{height:auto!important;min-height:100dvh!important;overflow:visible!important;overscroll-behavior:auto!important}' +
       // Stacking fix: the fixed .nav is nested in .hero; lift the hero's context
       // so the nav (Sign in / Start free) always sits above later sections.
-      '.site-shell .hero{z-index:100!important}.site-shell .nav{z-index:1000!important}'
+      '.site-shell .hero{z-index:100!important}.site-shell .nav{z-index:1000!important}' +
+      // Perf: kill the continuous animations in the marquee + phone-mockup
+      // sections (the moving bar + floating/parallax) — they repaint on every
+      // scroll frame and made scrolling stutter. The video keeps playing (it's
+      // not a CSS animation).
+      '.yardao-marquee,.yardao-marquee *,.mobile-preview,.mobile-preview *{animation:none!important}'
     document.head.appendChild(overrides)
     cleanups.push(() => overrides.remove())
 
@@ -281,20 +286,8 @@ export function LandingPage() {
         heroMedia.style.setProperty('--tilt-y', '0deg')
       }) as EventListener)
     }
-    const mobileStage = q<HTMLElement>('.mobile-preview__stage')
-    if (mobileStage && !prefersReducedMotion) {
-      on(mobileStage, 'pointermove', ((e: PointerEvent) => {
-        const r = mobileStage.getBoundingClientRect()
-        const x = (e.clientX - r.left) / r.width - 0.5
-        const y = (e.clientY - r.top) / r.height - 0.5
-        mobileStage.style.setProperty('--mobile-parallax-x', `${x * 10}px`)
-        mobileStage.style.setProperty('--mobile-parallax-y', `${y * 12}px`)
-      }) as EventListener)
-      on(mobileStage, 'pointerleave', (() => {
-        mobileStage.style.setProperty('--mobile-parallax-x', '0px')
-        mobileStage.style.setProperty('--mobile-parallax-y', '0px')
-      }) as EventListener)
-    }
+    // Mobile-preview parallax intentionally removed for scroll performance
+    // (no animations in the phone-mockup section, per request).
 
     return () => {
       timers.forEach(t => window.clearInterval(t))
