@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/contexts/AuthContext'
 import { useT } from '@/lib/i18n'
 import { LegalFooter } from '@/components/legal/LegalFooter'
+import LandingPage from '@/components/landing/LandingPage'
 import {
   ArrowRight, Car, Clock, AlertTriangle, CheckCircle, Search, Plus,
   Calendar, Building, Eye, Truck, Shield, X, ChevronLeft, ChevronRight,
@@ -127,6 +128,13 @@ export default function HomePage() {
   }, [currentPrompt, user])
 
   if (!user) {
+    return <LandingPage />
+  }
+
+  // Legacy marketing landing — replaced by the new <LandingPage/>. Parked
+  // (unreachable) for quick rollback; delete once the new landing is signed off.
+  const SHOW_LEGACY_LANDING: boolean = false
+  if (SHOW_LEGACY_LANDING) {
     return (
       <div className="min-h-screen bg-[#012619] relative overflow-hidden">
 
