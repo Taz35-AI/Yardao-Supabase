@@ -294,6 +294,8 @@ export function LandingPage() {
 .lp-dmeta>span{font-size:9px;color:#8a9e94}
 .lp-dtype--in{background:rgba(2,89,64,.12);color:#025940}
 .lp-dtype--out{background:#fef2f2;color:#b91c1c}
+/* Review photos: cover the circular avatar, hiding the placeholder CSS face */
+.review-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit;z-index:1}
 `
     document.head.appendChild(appMock)
     cleanups.push(() => appMock.remove())
