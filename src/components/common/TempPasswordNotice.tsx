@@ -67,7 +67,7 @@ export function TempPasswordNotice() {
         <div className="flex flex-col items-center gap-3 px-6 pt-7 pb-4 bg-[#012619]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/logo-yardao.png"
+            src="/yardao-logo.png"
             alt="Yardao"
             className="h-11 w-auto object-contain"
           />

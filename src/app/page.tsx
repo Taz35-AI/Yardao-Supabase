@@ -184,7 +184,7 @@ export default function HomePage() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between h-16 items-center">
               <Link href="/" className="flex items-center">
-                <img src="/logo-yardao.png" alt="Yardao" className="h-14 sm:h-16 w-auto object-contain" />
+                <img src="/yardao-logo.png" alt="Yardao" className="h-14 sm:h-16 w-auto object-contain" />
               </Link>
               <div className="hidden sm:flex items-center gap-3">
                 <Link href="/login">
@@ -1126,7 +1126,7 @@ export default function HomePage() {
           <div className="max-w-3xl mx-auto px-4 text-center relative">
             <div className="relative inline-block mb-8">
               <div className="absolute inset-0 bg-[#b3f243]/25 rounded-3xl blur-2xl" />
-              <img src="/logo-yardao.png" alt="Yardao" className="relative h-28 sm:h-40 w-auto object-contain" />
+              <img src="/yardao-logo.png" alt="Yardao" className="relative h-28 sm:h-40 w-auto object-contain" />
             </div>
             <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white mb-5 leading-tight tracking-tight">
               Your yard deserves<br />
@@ -1351,7 +1351,7 @@ function AuthenticatedHome({ user }: { user: any }) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <Link href="/dashboard" className="flex items-center">
-              <img src="/logo-yardao.png" alt="Yardao" className="h-14 sm:h-16 w-auto object-contain" />
+              <img src="/yardao-logo.png" alt="Yardao" className="h-14 sm:h-16 w-auto object-contain" />
             </Link>
             <div className="flex items-center">
               <span className="text-[#C5D9D0] mr-4 hidden sm:block text-sm">{user.email}</span>

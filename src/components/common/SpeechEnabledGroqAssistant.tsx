@@ -1481,7 +1481,7 @@ useEffect(() => {
             transition: 'transform 0.2s, bottom 0.35s cubic-bezier(0.34,1.56,0.64,1)',
           }}
         >
-          <Sparkles style={{ width: 30, height: 30, color: '#b3f243' }} />
+          <Sparkles style={{ width: 30, height: 30, color: '#fdaf0d' }} />
         </button>
       )}
 

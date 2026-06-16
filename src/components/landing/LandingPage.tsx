@@ -72,21 +72,11 @@ export function LandingPage() {
     const q = <T extends Element>(sel: string) => root.querySelector<T>(sel)
     const qa = <T extends Element>(sel: string) => Array.from(root.querySelectorAll<T>(sel))
 
-    // ── 1. Her stylesheet (served in place at /test/styles.css) ──────────────
-    const link = document.createElement('link')
-    link.rel = 'stylesheet'
-    link.href = '/test/styles.css'
-    root.style.visibility = 'hidden'
-    const reveal = () => { root.style.visibility = '' }
-    const revealFallback = window.setTimeout(reveal, 500)
-    link.addEventListener('load', reveal)
-    document.head.appendChild(link)
+    // ── 1. Stylesheet ────────────────────────────────────────────────────────
+    // /test/styles.css is now rendered as a <link rel="stylesheet" precedence>
+    // in the JSX below, so React 19 hoists it into <head> and it ships in the
+    // initial HTML (better LCP, no JS-injection flash, no manual hide gate).
     cleanups.push(() => {
-      window.clearTimeout(revealFallback)
-      link.removeEventListener('load', reveal)
-      link.remove()
-      // Leave is-loaded on <html>: once styles.css is removed there's nothing it
-      // can affect, and not touching it avoids any add/remove churn.
       docEl.classList.remove('is-scrolled')
     })
 
@@ -494,7 +484,32 @@ export function LandingPage() {
     }
   }, [])
 
-  return <div ref={rootRef} dangerouslySetInnerHTML={{ __html: LANDING_HTML }} />
+  return (
+    <>
+      {/* React 19 hoists this stylesheet to <head> and ships it in the initial
+          HTML (replaces the old JS-injection + visibility gate). */}
+      <link rel="stylesheet" href="/test/styles.css" precedence="default" />
+      {/* Structured data for richer search results */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'SoftwareApplication',
+            name: 'Yardao',
+            applicationCategory: 'BusinessApplication',
+            operatingSystem: 'Web, iOS, Android',
+            description:
+              'Vehicle yard management for UK fleets, bodyshops and garages — real-time yard view, service bookings, stock, invoicing and MOT/insurance compliance.',
+            url: 'https://yardao.com',
+            offers: { '@type': 'Offer', price: '0', priceCurrency: 'GBP' },
+            publisher: { '@type': 'Organization', name: 'Yardao', url: 'https://yardao.com' },
+          }),
+        }}
+      />
+      <div ref={rootRef} dangerouslySetInnerHTML={{ __html: LANDING_HTML }} />
+    </>
+  )
 }
 
 // memo: the parent (HomePage) re-renders frequently (typing animation, scroll
