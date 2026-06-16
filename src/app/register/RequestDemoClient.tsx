@@ -14,22 +14,50 @@ import { logger } from '@/lib/logger'
 const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
 
+// Branded Yardao email shell — email-client-safe (tables + inline styles), with
+// the logo loaded from an absolute URL so it renders in every client. Wraps any
+// inner `content` HTML. The leading marker lets a future centralised wrapper
+// detect already-branded emails and avoid double-wrapping.
+export function yardaoEmailShell(content: string): string {
+  return `<!--yardao-branded-->
+<div style="margin:0;padding:24px 12px;background:#eef2f0;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;background:#ffffff;border:1px solid #e2e8e5;border-radius:14px;overflow:hidden;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+        <tr><td style="padding:26px 28px 18px;text-align:center;">
+          <img src="https://yardao.com/yardao-logo.png" alt="Yardao" height="40" style="height:40px;display:inline-block;border:0;outline:none;text-decoration:none;" />
+        </td></tr>
+        <tr><td style="height:3px;background:#ff9f12;font-size:0;line-height:3px;">&nbsp;</td></tr>
+        <tr><td style="padding:28px;">${content}</td></tr>
+        <tr><td style="padding:18px 28px;background:#f6f8f7;border-top:1px solid #e2e8e5;color:#8a9e94;font-size:12px;line-height:1.6;">
+          <strong style="color:#025940;">Yardao</strong> — Vehicle yard management<br />
+          <a href="https://yardao.com" style="color:#025940;text-decoration:none;">yardao.com</a> &middot; <a href="mailto:support@yardao.com" style="color:#025940;text-decoration:none;">support@yardao.com</a>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</div>`
+}
+
 function buildDemoEmailHtml(d: Record<string, string | null>): string {
   const row = (label: string, value: string | null) =>
     value
-      ? `<tr><td style="padding:5px 14px 5px 0;color:#6b7280;white-space:nowrap;vertical-align:top">${label}</td><td style="padding:5px 0;font-weight:600;color:#0f1f18">${esc(String(value))}</td></tr>`
+      ? `<tr>
+          <td style="padding:9px 0;color:#8a9e94;font-size:13px;width:140px;vertical-align:top;border-bottom:1px solid #f1f5f3;">${label}</td>
+          <td style="padding:9px 0;color:#0f1f18;font-size:14px;font-weight:600;border-bottom:1px solid #f1f5f3;">${esc(String(value))}</td>
+        </tr>`
       : ''
-  return `
-    <div style="font-family:Inter,Arial,sans-serif;max-width:560px;color:#0f1f18">
-      <h2 style="margin:0 0 2px;color:#025940">New demo request</h2>
-      <p style="margin:0 0 16px;color:#6b7280;font-size:14px">Someone just requested a Yardao demo.</p>
-      <table style="border-collapse:collapse;font-size:14px;width:100%">
-        ${row('Name', d.full_name)}
-        ${row('Work email', d.work_email)}
-        ${row('Phone', d.phone)}
-        ${row('Organization', d.organization_name)}
-      </table>
-    </div>`
+  const content = `
+    <h1 style="margin:0 0 6px;color:#025940;font-size:22px;font-weight:800;">New demo request</h1>
+    <p style="margin:0 0 20px;color:#6b7280;font-size:14px;line-height:1.5;">Someone just requested a Yardao demo — details below.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;">
+      ${row('Name', d.full_name)}
+      ${row('Work email', d.work_email)}
+      ${row('Phone', d.phone)}
+      ${row('Organization', d.organization_name)}
+    </table>
+    <p style="margin:22px 0 0;font-size:13px;color:#8a9e94;">Get in touch using the contact details above.</p>`
+  return yardaoEmailShell(content)
 }
 
 export default function RequestDemoPage() {

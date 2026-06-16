@@ -36,7 +36,8 @@ export function ConditionalProviders({ children }: ConditionalProvidersProps) {
     '/login',
     '/register',
     '/forgot-password',
-    '/reset-password'
+    '/reset-password',
+    '/reset-password-required'
   ]
 
   const isAuthPage = authPages.includes(cleanPathname)

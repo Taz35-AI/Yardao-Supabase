@@ -1,86 +1,24 @@
 'use client'
 
+import './reset-password-required.css'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { supabase } from '@/lib/supabaseClient'
-import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
-import { ThemeToggle } from '@/components/ThemeToggle'
-import { Lock, AlertCircle } from 'lucide-react'
-
-// Car PNG images for animated background
-const carImages = [
-  '/cars/car (1).png',
-  '/cars/car (2).png',
-  '/cars/car (3).png',
-  '/cars/car (4).png',
-  '/cars/car (5).png',
-  '/cars/car (6).png'
-]
-
-interface Vehicle {
-  id: string
-  imageSrc: string
-  lane: number
-  y: number
-  duration: number
-  delay: number
-  size: number
-}
 
 export default function ResetPasswordRequiredPage() {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { user, loading: authLoading, refreshProfile } = useAuth()
   const router = useRouter()
 
-  // Animated vehicles state
-  const [vehicles, setVehicles] = useState<Vehicle[]>([])
-
-  // Initialize animated vehicles
-  useEffect(() => {
-    const lanes = 6
-    const vehiclesPerLane = 2 // 2 cars per lane for fuller look
-    
-    const newVehicles: Vehicle[] = []
-    
-    // Predefined speeds and delays for natural, asymmetric flow
-    const laneConfigs = [
-      { speed: 22, startDelay: -5 },   // Lane 1
-      { speed: 18, startDelay: -12 },  // Lane 2
-      { speed: 28, startDelay: -3 },   // Lane 3
-      { speed: 24, startDelay: -18 },  // Lane 4
-      { speed: 20, startDelay: -8 },   // Lane 5
-      { speed: 26, startDelay: -15 }   // Lane 6
-    ]
-    
-    for (let lane = 0; lane < lanes; lane++) {
-      const config = laneConfigs[lane]
-      
-      for (let i = 0; i < vehiclesPerLane; i++) {
-        newVehicles.push({
-          id: `${lane}-${i}`,
-          imageSrc: carImages[Math.floor(Math.random() * carImages.length)],
-          lane: lane,
-          y: (lane * (100 / lanes)) + (100 / lanes / 2),
-          duration: config.speed, // Each lane has unique speed
-          delay: config.startDelay - (i * (config.speed / 2)), // Cars spaced half the duration apart
-          size: 100 + Math.random() * 50 // Varied sizes (100-150px)
-        })
-      }
-    }
-    setVehicles(newVehicles)
-  }, [])
-
   useEffect(() => {
     // Only redirect once auth is fully RESOLVED — never on the transient null
-    // that occurs while the session is still loading right after login. (This
-    // was the "flash the reset page, then bounce to /login" bug.)
+    // that occurs while the session is still loading right after login.
     if (!authLoading && !user) {
       router.push('/login')
     }
@@ -89,36 +27,26 @@ export default function ResetPasswordRequiredPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-
     if (!user) return
 
     if (newPassword.length < 6) {
       setError('Password must be at least 6 characters')
       return
     }
-
     if (newPassword !== confirmPassword) {
       setError('Passwords do not match')
       return
     }
 
     setLoading(true)
-
     try {
-      // Update password
       const { error: pwErr } = await supabase.auth.updateUser({ password: newPassword })
       if (pwErr) throw pwErr
 
-      // Update user profile to remove password reset requirement
-      await userProfileService.updateProfile(user.uid, {
-        requiresPasswordReset: false
-      })
-
-      // Refresh the cached profile so the global PasswordResetGuard sees the
-      // cleared flag — without this it would immediately bounce us back here.
+      await userProfileService.updateProfile(user.uid, { requiresPasswordReset: false })
+      // Refresh the cached profile so PasswordResetGuard sees the cleared flag.
       await refreshProfile()
 
-      // Redirect to dashboard
       router.push('/dashboard')
     } catch (error: any) {
       if (error.code === 'auth/weak-password') {
@@ -126,153 +54,136 @@ export default function ResetPasswordRequiredPage() {
       } else if (error.code === 'auth/requires-recent-login') {
         setError('Please log out and log back in before changing your password.')
       } else {
-        setError(error.message)
+        setError(error.message || 'Could not set your password. Please try again.')
       }
     } finally {
       setLoading(false)
     }
   }
 
-  // While auth is still resolving, show a neutral loading screen — never a blank
-  // flash and never a premature redirect.
+  // While auth is still resolving, show a neutral branded loader.
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-white dark:bg-slate-950 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-[#025940] border-t-transparent rounded-full animate-spin" />
-      </div>
+      <main className="login-shell" aria-busy="true" style={{ placeItems: 'center' }}>
+        <span style={{ width: 40, height: 40, border: '3px solid rgba(214,255,47,.25)', borderTopColor: '#d6ff2f', borderRadius: '999px', display: 'inline-block', animation: 'spin .8s linear infinite' }} />
+      </main>
     )
   }
 
-  if (!user) {
-    return null
-  }
+  if (!user) return null
 
   return (
-    <div className="min-h-screen bg-white dark:bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Animated Fleet Background */}
-      <div className="absolute inset-0 overflow-hidden opacity-20 dark:opacity-25 pointer-events-none">
-        {/* Road lanes */}
-        {[...Array(6)].map((_, i) => (
-          <div
-            key={`lane-${i}`}
-            className="absolute left-0 right-0 border-t border-dashed border-slate-300 dark:border-slate-700 opacity-30"
-            style={{
-              top: `${(i + 1) * (100 / 7)}%`
-            }}
-          />
-        ))}
-
-        {/* Animated Vehicles */}
-        {vehicles.map((vehicle) => {
-          return (
-            <div
-              key={vehicle.id}
-              className="absolute transition-transform hover:scale-110"
-              style={{
-                top: `${vehicle.y}%`,
-                width: `${vehicle.size}px`,
-                height: 'auto',
-                animationName: 'driveRight',
-                animationDuration: `${vehicle.duration}s`,
-                animationTimingFunction: 'linear',
-                animationIterationCount: 'infinite',
-                animationDelay: `${vehicle.delay}s`,
-                transform: 'translateY(-50%)',
-                left: '-200px'
-              }}
-            >
-              <img 
-                src={vehicle.imageSrc} 
-                alt="Vehicle"
-                className="w-full h-auto object-contain opacity-70 dark:opacity-80"
-                style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' }}
-              />
-            </div>
-          )
-        })}
+    <main className="login-shell login-shell--recovery" aria-labelledby="page-title">
+      <div className="ambient-grid" aria-hidden="true"></div>
+      <div className="light-beam" aria-hidden="true"></div>
+      <div className="sparkles" aria-hidden="true">
+        <span></span><span></span><span></span><span></span>
       </div>
 
-      {/* Theme Toggle */}
-      <div className="absolute top-4 right-4 z-10">
-        <ThemeToggle />
-      </div>
+      <section className="brand-stage" aria-label="Yardao brand">
+        <div className="favicon-orbit" aria-hidden="true">
+          <div className="orbital-ring"></div>
+          <img src="/yardao-logo.png" alt="Yardao" />
+        </div>
 
-      <div className="w-full max-w-md relative z-10">
-        <Card className="border-[#72A68E] bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm">
-          <CardHeader className="text-center">
-            <div className="w-16 h-16 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Lock className="w-8 h-8 text-orange-600 dark:text-orange-400" />
+        <div className="brand-copy">
+          <p className="eyebrow eyebrow--recovery">Account security</p>
+          <h1 id="page-title">Set a new password</h1>
+          <p>One quick step to secure your account — choose a new password and you&apos;re straight into your yard.</p>
+        </div>
+      </section>
+
+      <section className="auth-panel" aria-label="Set a new password">
+        <div className="panel-glow" aria-hidden="true"></div>
+
+        <div className="panel-header">
+          <span className="reset-tile" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
+              <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
+              <circle cx="12" cy="15.5" r="1.2" fill="currentColor" stroke="none" />
+            </svg>
+          </span>
+          <div>
+            <p>Password reset required</p>
+            <h2>
+              <span className="desktop-title">Set a new password</span>
+              <span className="mobile-title">New password</span>
+            </h2>
+          </div>
+        </div>
+
+        <form className="login-form" onSubmit={handleSubmit} noValidate>
+          <div className="rpr-notice">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M11 12h1v4h1" /></svg>
+            <div>
+              <strong>Welcome to Yardao!</strong>
+              <span>Set a new password to secure your account. This is a one-time step.</span>
             </div>
-            <CardTitle className="text-2xl font-bold text-[#012619] dark:text-white">
-              Password Reset Required
-            </CardTitle>
-            <CardDescription className="text-[#025940] dark:text-slate-400">
-              Your administrator requires you to set a new password before continuing
-            </CardDescription>
-          </CardHeader>
-          
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="bg-[#72A68E]/10 dark:bg-blue-900/20 border border-[#72A68E] dark:border-blue-800 rounded-lg p-4 mb-4">
-                <div className="flex items-start">
-                  <AlertCircle className="w-5 h-5 text-[#025940] dark:text-blue-400 mr-2 flex-shrink-0 mt-0.5" />
-                  <div className="text-sm text-[#012619] dark:text-blue-300">
-                    <p className="font-medium mb-1">Welcome to YARDAO!</p>
-                    <p>Please set a new password to secure your account. This is a one-time requirement.</p>
-                  </div>
-                </div>
-              </div>
+          </div>
 
-              <Input
-                label="New Password"
-                type="password"
+          <div className="field">
+            <label htmlFor="newPassword">New password</label>
+            <span className="password-wrap">
+              <input
+                id="newPassword"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                placeholder="Enter your new password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Enter your new password"
-                required
-                autoComplete="new-password"
-                helperText="Must be at least 6 characters"
-                className="border-[#72A68E] focus:border-[#025940] focus:ring-[#025940] dark:bg-slate-800 dark:border-slate-700 dark:focus:border-teal-500"
-              />
-              
-              <Input
-                label="Confirm New Password"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirm your new password"
-                required
-                autoComplete="new-password"
-                className="border-[#72A68E] focus:border-[#025940] focus:ring-[#025940] dark:bg-slate-800 dark:border-slate-700 dark:focus:border-teal-500"
-              />
-              
-              {error && (
-                <div className="p-4 bg-red-50/50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg">
-                  <div className="flex items-center">
-                    <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 mr-2" />
-                    <span className="text-red-700 dark:text-red-300 font-medium">{error}</span>
-                  </div>
-                </div>
-              )}
-              
-              <Button
-                type="submit"
                 disabled={loading}
-                className="w-full bg-[#025940] hover:bg-[#012619] text-white dark:bg-gradient-to-r dark:from-blue-600 dark:to-teal-600 dark:hover:from-blue-700 dark:hover:to-teal-700"
+                required
+              />
+              <button
+                className="icon-button"
+                type="button"
+                onClick={() => setShowPassword((s) => !s)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
-                {loading ? 'Setting password...' : 'Set New Password'}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
+                {showPassword ? (
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.1 12s3.6-6.5 9.9-6.5S21.9 12 21.9 12s-3.6 6.5-9.9 6.5S2.1 12 2.1 12Z" /><circle cx="12" cy="12" r="3" /><path d="M3 3l18 18" /></svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.1 12s3.6-6.5 9.9-6.5S21.9 12 21.9 12s-3.6 6.5-9.9 6.5S2.1 12 2.1 12Z" /><circle cx="12" cy="12" r="3" /></svg>
+                )}
+              </button>
+            </span>
+            <p className="hint">Must be at least 6 characters</p>
+          </div>
 
-      <style jsx>{`
-        @keyframes driveRight {
-          0% { left: -200px; }
-          100% { left: calc(100% + 200px); }
-        }
-      `}</style>
-    </div>
+          <div className="field">
+            <label htmlFor="confirmPassword">Confirm new password</label>
+            <input
+              id="confirmPassword"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="new-password"
+              placeholder="Confirm your new password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              disabled={loading}
+              required
+            />
+          </div>
+
+          <button className={`submit-button ${loading ? 'is-loading' : ''}`} type="submit" disabled={loading}>
+            <span className="button-text">Set new password</span>
+            <span className="button-loader" aria-hidden="true"></span>
+          </button>
+
+          {(error || loading) && (
+            <p className="form-status" role="status" aria-live="polite"
+              style={{ color: error ? '#ffb1a8' : 'rgba(225, 255, 172, 0.9)' }}>
+              {error || 'Setting your password…'}
+            </p>
+          )}
+        </form>
+
+        <div className="panel-footer">
+          <a href="/login">Back to sign in</a>
+          <span aria-hidden="true"></span>
+          <a href="/">Back to home</a>
+        </div>
+      </section>
+    </main>
   )
 }
