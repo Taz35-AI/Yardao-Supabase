@@ -223,16 +223,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let active = true
 
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!active) return
-      const mapped = mapUser(session?.user)
-      uidRef.current = mapped?.uid ?? null
-      setUser(mapped)
-      // Finish org setup BEFORE clearing loading, so protected pages (which gate
-      // on profile.organizationId) never mount against an unlinked profile.
-      if (mapped) await ensureOrgSetup(mapped.uid)
-      if (active) setLoading(false)
-    })
+    // Never let auth init hang the whole app. getSession() can try a token
+    // refresh, and ensureOrgSetup() makes DB calls — on resume from a long idle
+    // with an expired/invalid refresh token either can stall or throw. We race
+    // each against a timeout and ALWAYS clear `loading` in finally, so the UI
+    // can route to /login instead of spinning forever.
+    const withTimeout = <T,>(p: Promise<T>, ms: number, label: string): Promise<T> =>
+      Promise.race([
+        p,
+        new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${label} timed out`)), ms)),
+      ])
+
+    const init = async () => {
+      try {
+        const { data: { session } } = await withTimeout(supabase.auth.getSession(), 8000, 'getSession')
+        if (!active) return
+        const mapped = mapUser(session?.user)
+        uidRef.current = mapped?.uid ?? null
+        setUser(mapped)
+        // Finish org setup BEFORE clearing loading, so protected pages (which
+        // gate on profile.organizationId) never mount against an unlinked
+        // profile — but never let it block sign-in resolution.
+        if (mapped) {
+          try { await withTimeout(ensureOrgSetup(mapped.uid), 8000, 'ensureOrgSetup') }
+          catch (e) { logger.error('AuthContext: org setup on init failed (continuing)', e) }
+        }
+      } catch (err) {
+        logger.error('AuthContext: session init failed/timed out — treating as signed out', err)
+        if (active) { uidRef.current = null; setUser(null) }
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+    init()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event: string, session: Session | null) => {
@@ -243,18 +266,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Skip TOKEN_REFRESHED: it re-fires with the same user (and our own
         // refreshSession() inside org setup triggers it), so there's nothing new
         // to set up — the ref guard would no-op anyway, but this avoids the call.
-        if (mapped && event !== 'TOKEN_REFRESHED') await ensureOrgSetup(mapped.uid)
+        if (mapped && event !== 'TOKEN_REFRESHED') {
+          try { await ensureOrgSetup(mapped.uid) }
+          catch (e) { logger.error('AuthContext: org setup on auth change failed (continuing)', e) }
+        }
         setLoading(false)
 
         if (mapped && Capacitor.isNativePlatform()) {
-          await saveFcmToken(mapped.uid)
+          try { await saveFcmToken(mapped.uid) } catch {}
         }
       }
     )
 
+    // Recover a wedged/expired session on resume. When the tab becomes visible
+    // or the network returns after a long idle, re-check the session: if the
+    // refresh has failed, supabase emits SIGNED_OUT (→ user cleared → guards
+    // redirect). This ping just forces that check promptly instead of leaving
+    // the app stuck on a spinner.
+    const recheck = () => {
+      if (document.visibilityState !== 'visible') return
+      withTimeout(supabase.auth.getSession(), 8000, 'getSession(resume)')
+        .catch((e) => logger.error('AuthContext: resume session check failed', e))
+    }
+    document.addEventListener('visibilitychange', recheck)
+    window.addEventListener('online', recheck)
+
     return () => {
       active = false
       subscription.unsubscribe()
+      document.removeEventListener('visibilitychange', recheck)
+      window.removeEventListener('online', recheck)
     }
   }, [])
 

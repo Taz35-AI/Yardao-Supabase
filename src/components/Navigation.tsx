@@ -70,7 +70,7 @@ const BOTTOM_NAV_MEMBER = [
 
 export function Navigation() {
   const pathname = usePathname()
-  const { user, logout } = useAuth()
+  const { user, loading, logout } = useAuth()
   const { isSidebarCollapsed, toggleSidebar } = useSidebar()
   const t = useT()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
@@ -87,20 +87,28 @@ export function Navigation() {
   }, [isSidebarCollapsed])
 
   useEffect(() => {
+    let cancelled = false
     const loadUserRole = async () => {
-      if (user?.uid) {
-        try {
-          const profile = await userProfileService.getProfile(user.uid)
-          setUserRole(profile?.role || 'member')
-        } catch {
-          setUserRole('member')
-        } finally {
-          setLoadingRole(false)
-        }
+      // Wait for auth to settle first.
+      if (loading) return
+      // Signed out (incl. a dead session on resume): stop the spinner so the
+      // page's ProtectedRoute can redirect to /login — never spin forever.
+      if (!user?.uid) {
+        if (!cancelled) { setUserRole(null); setLoadingRole(false) }
+        return
+      }
+      try {
+        const profile = await userProfileService.getProfile(user.uid)
+        if (!cancelled) setUserRole(profile?.role || 'member')
+      } catch {
+        if (!cancelled) setUserRole('member')
+      } finally {
+        if (!cancelled) setLoadingRole(false)
       }
     }
     loadUserRole()
-  }, [user])
+    return () => { cancelled = true }
+  }, [user, loading])
 
   // ── Haptics ──────────────────────────────────────────────────────────────
   const triggerLightHaptic = async () => {

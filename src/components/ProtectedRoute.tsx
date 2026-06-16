@@ -50,6 +50,17 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     return 'ok'
   }, [loading, user, profileLoading, profileError, profile])
 
+  // 🐶 Watchdog: never spin forever. If we're still 'loading' after a generous
+  // window (a wedged/expired session that didn't resolve on resume), stop
+  // waiting and route to /login instead of leaving the user on an endless
+  // spinner. AuthContext now resolves within ~8s, so this only fires in the
+  // genuinely-stuck case.
+  useEffect(() => {
+    if (decision !== 'loading') return
+    const id = setTimeout(() => router.push('/login?reason=timeout'), 12000)
+    return () => clearTimeout(id)
+  }, [decision, router])
+
   // Redirect side-effects — identical destinations/params to the original,
   // but suppressed until the cold-reload settle window has elapsed so a
   // still-rehydrating session is never falsely evicted.

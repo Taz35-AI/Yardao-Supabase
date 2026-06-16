@@ -427,7 +427,7 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <ProtectedRoute>
-        <div className="min-h-screen bg-gradient-to-br from-[#C5D9D0]/30 to-[#72A68E]/20 dark:from-gray-900 dark:to-slate-800">
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-gray-900 dark:to-slate-800">
           <Navigation />
           <div className="pt-0">
             <div className="flex items-center justify-center min-h-[60vh]">
@@ -441,7 +441,7 @@ export default function SettingsPage() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gradient-to-br from-[#C5D9D0]/30 to-[#72A68E]/20 dark:from-gray-900 dark:to-slate-800">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-gray-900 dark:to-slate-800">
         <Navigation />
         
         <div className="pt-0">

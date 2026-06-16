@@ -33,7 +33,7 @@ export default function ProfilePage() {
   if (loading) {
     return (
       <ProtectedRoute>
-        <div className="min-h-screen bg-gradient-to-br from-[#C5D9D0]/20 via-white to-[#72A68E]/10 dark:from-gray-950 dark:via-gray-900 dark:to-slate-900">
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-gray-900 dark:to-slate-800">
           <Navigation />
           <div className="flex items-center justify-center min-h-[60vh]">
             <div className="flex flex-col items-center gap-3">
@@ -48,7 +48,7 @@ export default function ProfilePage() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gradient-to-br from-[#C5D9D0]/20 via-white to-[#72A68E]/10 dark:from-gray-950 dark:via-gray-900 dark:to-slate-900">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-gray-900 dark:to-slate-800">
         <Navigation />
 
         {/* Full-width: same pattern as fleet/dashboard — w-full, px-2 sm:px-4 lg:px-6 */}

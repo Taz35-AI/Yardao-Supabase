@@ -47,7 +47,7 @@ export default function CheckoutHistoryPage() {
   if (error) {
     return (
       <ProtectedRoute>
-        <div className="min-h-screen bg-gradient-to-br from-[#C5D9D0]/20 via-white to-[#72A68E]/10 dark:from-gray-950 dark:via-gray-900 dark:to-slate-900">
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-gray-900 dark:to-slate-800">
           <Navigation />
           <div className="w-full px-2 sm:px-4 lg:px-6 py-8">
             <div className="rounded-2xl border border-red-200 dark:border-red-800/50 bg-white dark:bg-gray-800/80 p-8 text-center">
@@ -66,7 +66,7 @@ export default function CheckoutHistoryPage() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gradient-to-br from-[#C5D9D0]/20 via-white to-[#72A68E]/10 dark:from-gray-950 dark:via-gray-900 dark:to-slate-900">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-gray-900 dark:to-slate-800">
         <Navigation />
 
         <div className="w-full px-2 sm:px-4 lg:px-6 py-5 sm:py-7">
