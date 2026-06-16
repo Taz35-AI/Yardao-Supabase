@@ -617,7 +617,7 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
                       setPartSearch(e.target.value)
                       setFormData({ ...formData, partName: e.target.value })
                     }}
-                    className="w-full px-3 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 dark:text-white transition-all duration-200 font-semibold text-sm sm:text-base placeholder:text-gray-400 placeholder:font-normal"
+                    className="w-full px-3 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 text-gray-900 dark:text-white transition-all duration-200 font-semibold text-sm sm:text-base placeholder:text-gray-400 placeholder:font-normal"
                     placeholder={t('stock.add.partNamePlaceholder')}
                     required
                   />
@@ -641,7 +641,7 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
                   type="text"
                   value={formData.partNumber}
                   onChange={(e) => setFormData({ ...formData, partNumber: e.target.value })}
-                  className="w-full px-3 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 dark:text-white transition-all duration-200 font-semibold text-sm sm:text-base placeholder:text-gray-400 placeholder:font-normal"
+                  className="w-full px-3 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 text-gray-900 dark:text-white transition-all duration-200 font-semibold text-sm sm:text-base placeholder:text-gray-400 placeholder:font-normal"
                   placeholder={t('stock.add.partNumberPlaceholder')}
                   required
                 />
@@ -665,7 +665,7 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
                       setMakeModelInput(e.target.value)
                     }}
                     onKeyDown={handleMakeModelKeyDown}
-                    className="w-full px-3 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 dark:text-white transition-all duration-200 font-semibold text-sm sm:text-base placeholder:text-gray-400 placeholder:font-normal"
+                    className="w-full px-3 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 text-gray-900 dark:text-white transition-all duration-200 font-semibold text-sm sm:text-base placeholder:text-gray-400 placeholder:font-normal"
                     placeholder={t('stock.add.makeModelPlaceholder')}
                   />
                 </div>
@@ -730,7 +730,7 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
                   onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
                   onFocus={() => setShowSupplierDropdown(true)}
                   onBlur={() => setTimeout(() => setShowSupplierDropdown(false), 200)}
-                  className="w-full px-3 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 dark:text-white transition-all duration-200 font-semibold text-sm sm:text-base placeholder:text-gray-400 placeholder:font-normal"
+                  className="w-full px-3 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 text-gray-900 dark:text-white transition-all duration-200 font-semibold text-sm sm:text-base placeholder:text-gray-400 placeholder:font-normal"
                   placeholder={t('stock.add.supplierPlaceholder')}
                 />
                 {showSupplierDropdown && filteredSuppliers.length > 0 && (
@@ -765,7 +765,7 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
                 value={formData.comments}
                 onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
                 rows={3}
-                className="w-full px-3 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 dark:text-white transition-all duration-200 font-medium text-sm sm:text-base placeholder:text-gray-400 placeholder:font-normal resize-none"
+                className="w-full px-3 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 text-gray-900 dark:text-white transition-all duration-200 font-medium text-sm sm:text-base placeholder:text-gray-400 placeholder:font-normal resize-none"
                 placeholder={t('stock.add.commentsPlaceholder')}
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
@@ -852,7 +852,7 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
                       type="text"
                       value={regSearch}
                       onChange={(e) => setRegSearch(e.target.value.toUpperCase())}
-                      className="w-full px-3 py-2 sm:px-5 sm:py-3 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#b3f243] dark:focus:border-[#b3f243] focus:ring-2 focus:ring-[#b3f243]/20 dark:bg-gray-800 dark:text-white transition-all duration-200 font-mono font-bold tracking-widest text-sm placeholder:tracking-normal placeholder:font-normal placeholder:text-gray-400"
+                      className="w-full px-3 py-2 sm:px-5 sm:py-3 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#b3f243] dark:focus:border-[#b3f243] focus:ring-2 focus:ring-[#b3f243]/20 dark:bg-gray-800 text-gray-900 dark:text-white transition-all duration-200 font-mono font-bold tracking-widest text-sm placeholder:tracking-normal placeholder:font-normal placeholder:text-gray-400"
                       placeholder={t('stock.add.regPlaceholder')}
                       autoComplete="off"
                     />
@@ -926,7 +926,7 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
                   value={formData.quantity}
                   onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
                   onFocus={(e) => e.target.select()}
-                  className="w-full px-2 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 dark:text-white transition-all duration-200 font-black text-lg sm:text-2xl text-center"
+                  className="w-full px-2 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 text-gray-900 dark:text-white transition-all duration-200 font-black text-lg sm:text-2xl text-center"
                   placeholder="0"
                   required
                 />
@@ -940,7 +940,7 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
                 <select
                   value={formData.unit}
                   onChange={(e) => setFormData({ ...formData, unit: e.target.value as 'pieces' | 'liters' })}
-                  className="w-full px-2 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 dark:text-white transition-all duration-200 font-semibold text-sm sm:text-base cursor-pointer"
+                  className="w-full px-2 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 text-gray-900 dark:text-white transition-all duration-200 font-semibold text-sm sm:text-base cursor-pointer"
                 >
                   <option value="pieces">{t('stock.units.pieces')}</option>
                   <option value="liters">{t('stock.units.liters')}</option>
@@ -960,7 +960,7 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
                   value={formData.netPrice}
                   onChange={(e) => setFormData({ ...formData, netPrice: e.target.value })}
                   onFocus={(e) => e.target.select()}
-                  className="w-full px-2 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 dark:text-white transition-all duration-200 font-black text-lg sm:text-2xl text-center"
+                  className="w-full px-2 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 text-gray-900 dark:text-white transition-all duration-200 font-black text-lg sm:text-2xl text-center"
                   placeholder="0.00"
                   required
                 />
@@ -978,7 +978,7 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
                   value={formData.restockTarget}
                   onChange={(e) => setFormData({ ...formData, restockTarget: e.target.value })}
                   onFocus={(e) => e.target.select()}
-                  className="w-full px-2 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 dark:text-white transition-all duration-200 font-semibold text-sm sm:text-base"
+                  className="w-full px-2 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 text-gray-900 dark:text-white transition-all duration-200 font-semibold text-sm sm:text-base"
                   placeholder="10"
                 />
               </div>
