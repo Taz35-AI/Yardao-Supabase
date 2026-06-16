@@ -228,7 +228,7 @@ export function Navigation() {
 
             {/* Centre: logo only — no YARDAO text, so it can be big & visible */}
             <Link href="/dashboard" className="flex-shrink-0" onClick={handleNavClick}>
-              <img src="/yardao-logo.png" alt="Yardao" className="h-14 sm:h-16 w-auto object-contain drop-shadow-[0_1px_4px_rgba(0,0,0,0.35)]" />
+              <img src="/yardao-logo.png" alt="Yardao" className="h-12 sm:h-14 w-auto object-contain drop-shadow-[0_1px_4px_rgba(0,0,0,0.35)]" />
             </Link>
 
             {/* Right: Notifications + Hamburger */}
