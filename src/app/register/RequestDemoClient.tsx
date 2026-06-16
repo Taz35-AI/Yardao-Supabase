@@ -68,6 +68,9 @@ export default function RequestDemoPage() {
         await supabase.functions.invoke('send-email', {
           body: {
             to: 'support@yardao.com',
+            // Explicit, valid sender — the deployed function's own default `from`
+            // is malformed (Resend returns 422), so pass a good one here.
+            from: 'Yardao <noreply@yardao.com>',
             subject: `New demo request — ${payload.organization_name}`,
             html: buildDemoEmailHtml(payload),
           },
