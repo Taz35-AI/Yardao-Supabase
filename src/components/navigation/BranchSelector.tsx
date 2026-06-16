@@ -74,7 +74,6 @@ export function BranchSelector() {
         className="flex items-center gap-2 px-3 py-2 text-sm font-medium hover:bg-[#025940] rounded-lg transition-colors"
         aria-label={`Current branch: ${getCurrentBranchName()}`}
       >
-        <MapPin className="w-4 h-4 text-blue-600 dark:text-blue-400" />
         <span style={{ color: '#b3f243' }}>{getCurrentBranchName()}</span>
         <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} style={{ color: '#b3f243' }} />
       </button>
