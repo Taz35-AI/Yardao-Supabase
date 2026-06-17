@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import { CheckedInVehicle, VehicleStatus, Contract } from '@/types'
 import { contractService } from '@/lib/contractService'
+import { mileageService } from '@/lib/services/mileageService'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { logger } from '@/lib/logger'
@@ -175,6 +176,9 @@ export function VehicleEditModal({
   const [condition, setCondition]             = useState(safeString(vehicle.condition))
   const [status, setStatus]                   = useState<VehicleStatus>(vehicle.status || 'Pending checks')
   const [mileage, setMileage]                 = useState(safeString(vehicle.mileage))
+  // Anti-clocking floor (historical max, excludes this live value so a genuine
+  // correction is still possible down to the true floor).
+  const [mileageFloor, setMileageFloor]       = useState<number | null>(null)
   const [contract, setContract]               = useState(safeString(vehicle.contract))
   const [contractColor, setContractColor]     = useState(safeString(vehicle.contractColor))
   const [additionalNotes, setAdditionalNotes] = useState(safeString(vehicle.notes))
@@ -285,8 +289,26 @@ export function VehicleEditModal({
     logger.log('✅ Comments changed, status unchanged')
   }
 
+  // Load the anti-clocking floor for this vehicle once.
+  useEffect(() => {
+    const orgId = (vehicle as any).organizationId as string | undefined
+    const reg = vehicle.registration || ''
+    if (!orgId || !reg) return
+    let cancelled = false
+    mileageService.getHistoricalMileageFloor(orgId, reg)
+      .then(f => { if (!cancelled) setMileageFloor(f) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [vehicle])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    // Anti-clocking: a corrected reading still can't go below the historical floor.
+    const enteredMiles = parseInt((mileage || '').replace(/[,\s]/g, ''), 10)
+    if (mileage.trim() && mileageFloor !== null && Number.isFinite(enteredMiles) && enteredMiles < mileageFloor) {
+      alert(t('vehEdit.mileageTooLow', { min: mileageFloor.toLocaleString('en-GB') }))
+      return
+    }
     setLoading(true)
     try {
       const contractValue      = contract.trim()

@@ -200,11 +200,12 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
     )
   }, [modalController, businessLogic])
 
-  const handleQuickCheckInConfirm = useCallback(async (vehicleId: string, returnNotes?: string) => {
+  const handleQuickCheckInConfirm = useCallback(async (vehicleId: string, returnNotes?: string, mileage?: string) => {
     await modalController.wrapQuickCheckInConfirm(
       businessLogic.handleQuickCheckInConfirm,
       vehicleId,
-      returnNotes
+      returnNotes,
+      mileage
     )
   }, [modalController, businessLogic])
 

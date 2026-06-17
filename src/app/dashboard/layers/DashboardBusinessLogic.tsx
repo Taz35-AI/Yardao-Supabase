@@ -117,7 +117,7 @@ export function useDashboardBusinessLogic({
   }, [yardData, showError, showSuccess])
 
   // Handle quick check in
-  const handleQuickCheckInConfirm = useCallback(async (vehicleId: string, returnNotes?: string): Promise<boolean | undefined> => {
+  const handleQuickCheckInConfirm = useCallback(async (vehicleId: string, returnNotes?: string, mileage?: string): Promise<boolean | undefined> => {
     if (!yardData?.quickCheckIn) {
       showError(t('dashboard.errors.checkInFnUnavailable'))
       return false
@@ -126,7 +126,8 @@ export function useDashboardBusinessLogic({
     try {
       const checkInData: QuickCheckInData = {
         vehicleId,
-        returnNotes
+        returnNotes,
+        mileage
       }
       
       await yardData.quickCheckIn(checkInData)

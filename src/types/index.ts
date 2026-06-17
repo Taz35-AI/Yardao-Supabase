@@ -219,6 +219,9 @@ export interface SetOutOnHireData {
 export interface QuickCheckInData {
   vehicleId: string
   returnNotes?: string
+  // Return mileage captured at quick check-in (return from hire). Optional —
+  // present only when the org requires mileage and the user supplied it.
+  mileage?: string
 }
 
 // NEW: Hire Analytics

@@ -39,6 +39,7 @@ import { contractService } from '@/lib/contractService'
 import { vehicleLookupService } from '@/lib/services/vehicleLookupService'
 import { settingsService, ContractDefaultStatuses, ServiceSettings, DEFAULT_SERVICE_SETTINGS } from '@/lib/services/settingsService'
 import { vehicleServiceHistoryService } from '@/lib/services/vehicleServiceHistoryService'
+import { mileageService } from '@/lib/services/mileageService'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { InsuranceToggle } from '@/components/common/ui/InsuranceToggle'
@@ -163,6 +164,9 @@ export function VehicleCheckInForm({
   // vehicle's last recorded service mileage.
   const [serviceDuePreview, setServiceDuePreview]           = useState<{ overdueBy: number; lastMileage: number } | null>(null)
   const serviceCheckRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Anti-clocking floor — highest mileage ever recorded for this reg.
+  const [mileageFloor, setMileageFloor]                     = useState<number | null>(null)
+  const floorCheckRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // DVLA lookup (custom vehicle only) — same service the fleet add-vehicle form uses.
   const [lookupLoading, setLookupLoading] = useState(false)
@@ -269,6 +273,32 @@ export function VehicleCheckInForm({
 
     return () => { if (serviceCheckRef.current) clearTimeout(serviceCheckRef.current) }
   }, [formData.mileage, formData.registration, mileageNA, organizationId, serviceSettings])
+
+  // ── Anti-clocking floor lookup ────────────────────────────────────────────
+  // Debounced on the registration: fetch the highest mileage ever recorded for
+  // this reg so we can block a reading lower than it (e.g. a throwaway "1").
+  useEffect(() => {
+    if (floorCheckRef.current) clearTimeout(floorCheckRef.current)
+    setMileageFloor(null)
+    if (!organizationId) return
+    const reg = formData.registration.trim()
+    if (!reg) return
+    floorCheckRef.current = setTimeout(async () => {
+      try {
+        setMileageFloor(await mileageService.getHistoricalMileageFloor(organizationId, reg))
+      } catch {
+        /* advisory — never block on a lookup error */
+      }
+    }, 600)
+    return () => { if (floorCheckRef.current) clearTimeout(floorCheckRef.current) }
+  }, [formData.registration, organizationId])
+
+  // Entered mileage is below the recorded floor → block + show the reason.
+  const mileageBelowFloor = (() => {
+    if (mileageNA || mileageFloor === null) return false
+    const entered = parseInt((formData.mileage || '').replace(/[,\s]/g, ''), 10)
+    return Number.isFinite(entered) && entered < mileageFloor
+  })()
 
   // ── Helpers (unchanged) ──────────────────────────────────────────────────
 
@@ -467,6 +497,11 @@ export function VehicleCheckInForm({
     // when the user explicitly marked the odometer unavailable.
     if (serviceSettings.captureMileageOnCheckIn && !mileageNA && !formData.mileage.trim()) {
       alert(t('yardCheckin.mileageRequired'))
+      return
+    }
+    // Anti-clocking: a reading below the highest-ever recorded is rejected.
+    if (mileageBelowFloor && mileageFloor !== null) {
+      alert(t('yardCheckin.mileageTooLow', { min: mileageFloor.toLocaleString('en-GB') }))
       return
     }
     if (!onCheckIn) return
@@ -899,6 +934,14 @@ export function VehicleCheckInForm({
                           </label>
                         )}
 
+                        {/* Anti-clocking error */}
+                        {mileageBelowFloor && mileageFloor !== null && (
+                          <p className="mt-2 text-[11px] text-red-500 flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                            {t('yardCheckin.mileageTooLow', { min: mileageFloor.toLocaleString('en-GB') })}
+                          </p>
+                        )}
+
                         {/* Live service-due warning */}
                         {serviceDuePreview && (
                           <div className="mt-2 flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-xl px-3 py-2">
@@ -1087,6 +1130,7 @@ export function VehicleCheckInForm({
                   !formData.size ||
                   !formData.condition ||
                   (serviceSettings.captureMileageOnCheckIn && !mileageNA && !formData.mileage.trim()) ||
+                  mileageBelowFloor ||
                   Boolean(currentRegistrationConflict)
                 }
                 className="flex-1 bg-[#025940] hover:bg-[#012619] text-white font-semibold py-2.5 text-sm border-0 shadow-none flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"

@@ -311,13 +311,14 @@ export function useDashboardModalController() {
   }, [closeSetOutOnHireModal, setHireActionLoading])
 
   const wrapQuickCheckInConfirm = useCallback(async (
-    businessLogicHandler: (vehicleId: string, returnNotes?: string) => Promise<boolean | undefined>,
+    businessLogicHandler: (vehicleId: string, returnNotes?: string, mileage?: string) => Promise<boolean | undefined>,
     vehicleId: string,
-    returnNotes?: string
+    returnNotes?: string,
+    mileage?: string
   ) => {
     setHireActionLoading(true)
     try {
-      const success = await businessLogicHandler(vehicleId, returnNotes)
+      const success = await businessLogicHandler(vehicleId, returnNotes, mileage)
       if (success) {
         closeQuickCheckInModal()
       }

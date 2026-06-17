@@ -832,6 +832,46 @@ export function useYardDataInternal(props?: UseYardDataProps) {
         data.returnNotes
       )
       logger.log(`Vehicle returned from hire to branch: ${branchId}`)
+
+      // Persist the return mileage + re-assess service-due on the now-returned
+      // row, mirroring a fresh check-in. Best-effort: a failure here must not
+      // undo the (successful) return-from-hire above.
+      if (data.mileage && data.mileage.trim()) {
+        try {
+          const { data: row } = await supabase
+            .from('checked_in_vehicles')
+            .select('registration')
+            .eq('id', data.vehicleId)
+            .maybeSingle()
+          const reg = (row as any)?.registration || ''
+
+          let serviceDueFields: {
+            service_due: boolean
+            service_due_miles: number | null
+            last_service_mileage: number | null
+          } = { service_due: false, service_due_miles: null, last_service_mileage: null }
+
+          const settings = await settingsService.getServiceSettings(userOrganizationId)
+          const currentMiles = parseInt(data.mileage.replace(/[,\s]/g, ''), 10)
+          if (settings.serviceDueEnabled && reg && Number.isFinite(currentMiles) && currentMiles > 0) {
+            const last = await vehicleServiceHistoryService.getLastServiceMileage(userOrganizationId, reg)
+            if (last && Number.isFinite(last.mileage)) {
+              const overdueBy = currentMiles - last.mileage
+              serviceDueFields = overdueBy >= settings.serviceDueThresholdMiles
+                ? { service_due: true, service_due_miles: overdueBy, last_service_mileage: last.mileage }
+                : { service_due: false, service_due_miles: null, last_service_mileage: last.mileage }
+            }
+          }
+
+          const { error: mileageErr } = await supabase
+            .from('checked_in_vehicles')
+            .update({ mileage: data.mileage.trim(), ...serviceDueFields, updated_at: new Date().toISOString() })
+            .eq('id', data.vehicleId)
+          if (mileageErr) throw mileageErr
+        } catch (e) {
+          logger.warn('Quick check-in mileage/service-due update skipped:', e)
+        }
+      }
     } catch (error) {
       logger.error('Error returning vehicle from hire:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to return vehicle from hire'

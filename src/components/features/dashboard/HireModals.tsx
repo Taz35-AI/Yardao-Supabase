@@ -1,12 +1,16 @@
 // src/components/features/dashboard/HireModals.tsx
 'use client'
 
-import React, { useState } from 'react'
-import { X, Car, ArrowLeft, Calendar, User, FileText, AlertTriangle, CheckCircle } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { X, Car, ArrowLeft, Calendar, User, FileText, AlertTriangle, CheckCircle, Gauge, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { CheckedInVehicle } from '@/types'
 import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
+import { useAuth } from '@/contexts/AuthContext'
+import { userProfileService } from '@/lib/firestore'
+import { settingsService, ServiceSettings, DEFAULT_SERVICE_SETTINGS } from '@/lib/services/settingsService'
+import { mileageService } from '@/lib/services/mileageService'
 
 type TFunc = (key: string, vars?: Record<string, string | number>) => string
 
@@ -22,7 +26,7 @@ interface QuickCheckInModalProps {
   vehicle: CheckedInVehicle
   isOpen: boolean
   onClose: () => void
-  onConfirm: (vehicleId: string, returnNotes?: string) => Promise<void>
+  onConfirm: (vehicleId: string, returnNotes?: string, mileage?: string) => Promise<void>
   loading?: boolean
 }
 
@@ -158,21 +162,72 @@ export function SetOutOnHireModal({
   )
 }
 
-export function QuickCheckInModal({ 
-  vehicle, 
-  isOpen, 
-  onClose, 
-  onConfirm, 
+export function QuickCheckInModal({
+  vehicle,
+  isOpen,
+  onClose,
+  onConfirm,
   loading = false
 }: QuickCheckInModalProps) {
 
   const t = useT()
+  const { user } = useAuth()
+
+  const [settings, setSettings] = useState<ServiceSettings>(DEFAULT_SERVICE_SETTINGS)
+  const [mileage, setMileage] = useState('')
+  const [mileageNA, setMileageNA] = useState(false)
+  // Floor = highest historical reading OR the vehicle's current (out-on-hire)
+  // reading, whichever is higher — a returning vehicle can't have fewer miles.
+  const [floor, setFloor] = useState<number | null>(null)
+
+  // Load org settings + the anti-clocking floor when the modal opens.
+  useEffect(() => {
+    if (!isOpen || !user?.uid) return
+    let cancelled = false
+    setMileage(''); setMileageNA(false); setFloor(null)
+    ;(async () => {
+      try {
+        const profile = await userProfileService.getProfile(user.uid)
+        const orgId = profile?.organizationId
+        if (!orgId || cancelled) return
+        const [svc, histFloor] = await Promise.all([
+          settingsService.getServiceSettings(orgId),
+          mileageService.getHistoricalMileageFloor(orgId, vehicle.registration || ''),
+        ])
+        if (cancelled) return
+        setSettings(svc)
+        const current = parseInt(String(vehicle.mileage ?? '').replace(/[,\s]/g, ''), 10)
+        const floors = [histFloor, Number.isFinite(current) ? current : null].filter(
+          (n): n is number => typeof n === 'number',
+        )
+        setFloor(floors.length ? Math.max(...floors) : null)
+      } catch (err) {
+        logger.error('QuickCheckIn settings/floor load failed:', err)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [isOpen, user?.uid, vehicle.id, vehicle.registration, vehicle.mileage])
+
+  const enteredMiles = parseInt((mileage || '').replace(/[,\s]/g, ''), 10)
+  const mileageBelowFloor = !mileageNA && floor !== null && Number.isFinite(enteredMiles) && enteredMiles < floor
+  const serviceDue =
+    settings.serviceDueEnabled && !mileageNA && floor !== null && Number.isFinite(enteredMiles)
+      ? enteredMiles - floor >= settings.serviceDueThresholdMiles
+      : false
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (loading) return
+    if (settings.captureMileageOnCheckIn && !mileageNA && !mileage.trim()) {
+      alert(t('dashboard.hire.mileageRequired'))
+      return
+    }
+    if (mileageBelowFloor && floor !== null) {
+      alert(t('dashboard.hire.mileageTooLow', { min: floor.toLocaleString('en-GB') }))
+      return
+    }
     try {
-      await onConfirm(vehicle.id, undefined)
+      await onConfirm(vehicle.id, undefined, mileageNA ? '' : mileage.trim())
       onClose()
     } catch (error) {
       logger.error('Error returning vehicle from hire:', error)
@@ -247,6 +302,53 @@ export function QuickCheckInModal({
             </p>
           </div>
 
+          {/* Return mileage (only when the org requires mileage at check-in) */}
+          {settings.captureMileageOnCheckIn && (
+            <div>
+              <label className="block text-xs text-[#8a9e94] font-medium mb-1.5">
+                {t('dashboard.hire.mileageLabel')}<span className="text-red-500 ml-0.5">*</span>
+              </label>
+              <div className="relative">
+                <Gauge className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#8a9e94]" />
+                <input
+                  type="number"
+                  value={mileageNA ? '' : mileage}
+                  onChange={e => setMileage(e.target.value)}
+                  placeholder={t('dashboard.hire.mileagePlaceholder')}
+                  disabled={mileageNA || loading}
+                  className={`w-full pl-9 pr-3 py-2.5 text-sm border rounded-xl bg-white dark:bg-gray-800 text-[#012619] dark:text-white focus:ring-2 focus:ring-[#025940]/30 focus:border-[#025940] ${
+                    mileageBelowFloor ? 'border-red-400' : 'border-[#e2e8e5] dark:border-gray-600'
+                  } ${mileageNA ? 'opacity-50 cursor-not-allowed' : ''}`}
+                />
+              </div>
+
+              <label className="mt-2 flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={mileageNA}
+                  onChange={e => { setMileageNA(e.target.checked); if (e.target.checked) setMileage('') }}
+                  className="w-3.5 h-3.5 rounded border-[#c8d5ce] text-[#025940] focus:ring-[#025940]/30"
+                />
+                <span className="text-[11px] text-[#8a9e94]">{t('dashboard.hire.mileageNotAvailable')}</span>
+              </label>
+
+              {mileageBelowFloor && floor !== null && (
+                <p className="mt-2 text-[11px] text-red-500 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                  {t('dashboard.hire.mileageTooLow', { min: floor.toLocaleString('en-GB') })}
+                </p>
+              )}
+              {serviceDue && !mileageBelowFloor && floor !== null && (
+                <div className="mt-2 flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-xl px-3 py-2">
+                  <Wrench className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-snug">
+                    {t('dashboard.hire.serviceDueWarning', { miles: (enteredMiles - floor).toLocaleString('en-GB') })}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Action buttons */}
           <div className="flex gap-3 pt-1">
             <Button
@@ -259,8 +361,12 @@ export function QuickCheckInModal({
             </Button>
             <Button
               type="submit"
-              disabled={loading}
-              className="flex-1 bg-[#025940] hover:bg-[#012619] text-white font-bold py-2.5 shadow-sm hover:shadow-md transition-all border-0"
+              disabled={
+                loading ||
+                (settings.captureMileageOnCheckIn && !mileageNA && !mileage.trim()) ||
+                mileageBelowFloor
+              }
+              className="flex-1 bg-[#025940] hover:bg-[#012619] text-white font-bold py-2.5 shadow-sm hover:shadow-md transition-all border-0 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? t('dashboard.hire.checkingIn') : t('dashboard.hire.checkInBtn')}
             </Button>
