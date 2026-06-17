@@ -37,7 +37,8 @@ import { useT } from '@/lib/i18n'
 import { VehicleFormData, Contract, InsuranceStatus } from '@/types'
 import { contractService } from '@/lib/contractService'
 import { vehicleLookupService } from '@/lib/services/vehicleLookupService'
-import { settingsService, ContractDefaultStatuses } from '@/lib/services/settingsService'
+import { settingsService, ContractDefaultStatuses, ServiceSettings, DEFAULT_SERVICE_SETTINGS } from '@/lib/services/settingsService'
+import { vehicleServiceHistoryService } from '@/lib/services/vehicleServiceHistoryService'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { InsuranceToggle } from '@/components/common/ui/InsuranceToggle'
@@ -152,6 +153,17 @@ export function VehicleCheckInForm({
   const [contractDefaults, setContractDefaults]             = useState<ContractDefaultStatuses>({})
   const [activeTab, setActiveTab]                           = useState<'details' | 'damage'>('details')
 
+  // ── Mileage capture + service-due (org settings, migration 0043) ──────────
+  const [organizationId, setOrganizationId]                 = useState<string | null>(null)
+  const [serviceSettings, setServiceSettings]               = useState<ServiceSettings>(DEFAULT_SERVICE_SETTINGS)
+  // "Odometer not available" escape — satisfies the mandatory-mileage gate for
+  // genuine non-runners / unreadable dashboards.
+  const [mileageNA, setMileageNA]                           = useState(false)
+  // Live "service due" preview computed from the entered mileage vs the
+  // vehicle's last recorded service mileage.
+  const [serviceDuePreview, setServiceDuePreview]           = useState<{ overdueBy: number; lastMileage: number } | null>(null)
+  const serviceCheckRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // DVLA lookup (custom vehicle only) — same service the fleet add-vehicle form uses.
   const [lookupLoading, setLookupLoading] = useState(false)
   const [lookupError, setLookupError]     = useState<string | null>(null)
@@ -209,12 +221,15 @@ export function VehicleCheckInForm({
         setContractsLoading(true)
         const profile = await userProfileService.getProfile(user.uid)
         if (profile?.organizationId) {
-          const [contractsList, defaults] = await Promise.all([
+          setOrganizationId(profile.organizationId)
+          const [contractsList, defaults, svcSettings] = await Promise.all([
             contractService.getContracts(profile.organizationId),
             settingsService.getContractDefaultStatuses(profile.organizationId),
+            settingsService.getServiceSettings(profile.organizationId),
           ])
           setContracts(contractsList)
           setContractDefaults(defaults)
+          setServiceSettings(svcSettings)
         }
       } catch (error) {
         logger.error('Error loading contracts:', error)
@@ -224,6 +239,36 @@ export function VehicleCheckInForm({
     }
     loadContracts()
   }, [user])
+
+  // ── Live "service due" preview ────────────────────────────────────────────
+  // Debounced: when the org has the feature on and the user has entered a
+  // mileage for a known reg, look up the last service mileage and show an
+  // inline warning if the gap is past the org threshold. Purely advisory — the
+  // authoritative flag is recomputed + persisted in checkInVehicle on submit.
+  useEffect(() => {
+    if (serviceCheckRef.current) clearTimeout(serviceCheckRef.current)
+    setServiceDuePreview(null)
+
+    if (!serviceSettings.serviceDueEnabled || mileageNA || !organizationId) return
+    const reg = formData.registration.trim()
+    const miles = parseInt((formData.mileage || '').replace(/[,\s]/g, ''), 10)
+    if (!reg || !Number.isFinite(miles) || miles <= 0) return
+
+    serviceCheckRef.current = setTimeout(async () => {
+      try {
+        const last = await vehicleServiceHistoryService.getLastServiceMileage(organizationId, reg)
+        if (!last || !Number.isFinite(last.mileage)) return
+        const overdueBy = miles - last.mileage
+        if (overdueBy >= serviceSettings.serviceDueThresholdMiles) {
+          setServiceDuePreview({ overdueBy, lastMileage: last.mileage })
+        }
+      } catch {
+        /* advisory only — never block the form on a lookup error */
+      }
+    }, 600)
+
+    return () => { if (serviceCheckRef.current) clearTimeout(serviceCheckRef.current) }
+  }, [formData.mileage, formData.registration, mileageNA, organizationId, serviceSettings])
 
   // ── Helpers (unchanged) ──────────────────────────────────────────────────
 
@@ -402,6 +447,7 @@ export function VehicleCheckInForm({
       return
     }
     setSelectedFleetVehicle(null)
+    setMileageNA(false)
     setFormData({
       registration: '', make: '', model: '', colour: '', size: '',
       condition: conditions[0]?.name || '', status: 'Pending checks',
@@ -417,11 +463,24 @@ export function VehicleCheckInForm({
       alert(t('yardCheckin.cannotCheckIn', { msg: currentRegistrationConflict }))
       return
     }
+    // Mandatory-mileage gate — only when the org has it enabled, and bypassed
+    // when the user explicitly marked the odometer unavailable.
+    if (serviceSettings.captureMileageOnCheckIn && !mileageNA && !formData.mileage.trim()) {
+      alert(t('yardCheckin.mileageRequired'))
+      return
+    }
     if (!onCheckIn) return
     setLoading(true)
     try {
-      logger.log('🚀 Submitting check-in with data:', formData)
-      await onCheckIn(formData)
+      const payload: VehicleFormData = {
+        ...formData,
+        // When odometer marked unavailable, store no mileage (keeps numeric
+        // stats clean) and signal the bypass downstream.
+        mileage: mileageNA ? '' : formData.mileage,
+        mileageNotAvailable: mileageNA,
+      }
+      logger.log('🚀 Submitting check-in with data:', payload)
+      await onCheckIn(payload)
       onCancel()
     } catch (error) {
       logger.error('Check-in failed:', error)
@@ -803,17 +862,55 @@ export function VehicleCheckInForm({
 
                       {/* Mileage */}
                       <div>
-                        <p className={labelCls}>{t('yardCheckin.mileage')}</p>
+                        <p className={labelCls}>
+                          {t('yardCheckin.mileage')}
+                          {serviceSettings.captureMileageOnCheckIn && (
+                            <span className="text-red-500 ml-0.5">*</span>
+                          )}
+                        </p>
                         <div className="relative">
                           <Gauge className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#8a9e94]" />
                           <input
                             type="number"
-                            value={formData.mileage}
+                            value={mileageNA ? '' : formData.mileage}
                             onChange={e => handleChange('mileage', e.target.value)}
                             placeholder={t('yardCheckin.mileagePlaceholder')}
-                            className={`${inputCls} pl-9`}
+                            disabled={mileageNA}
+                            className={`${inputCls} pl-9 ${mileageNA ? 'opacity-50 cursor-not-allowed' : ''} ${
+                              serviceSettings.captureMileageOnCheckIn && !mileageNA && !formData.mileage.trim()
+                                ? '!border-amber-300' : ''
+                            }`}
                           />
                         </div>
+
+                        {/* Odometer-not-available escape (keeps non-runners moving) */}
+                        {serviceSettings.captureMileageOnCheckIn && (
+                          <label className="mt-2 flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={mileageNA}
+                              onChange={e => {
+                                setMileageNA(e.target.checked)
+                                if (e.target.checked) handleChange('mileage', '')
+                              }}
+                              className="w-3.5 h-3.5 rounded border-[#c8d5ce] text-[#025940] focus:ring-[#025940]/30"
+                            />
+                            <span className="text-[11px] text-[#8a9e94]">{t('yardCheckin.mileageNotAvailable')}</span>
+                          </label>
+                        )}
+
+                        {/* Live service-due warning */}
+                        {serviceDuePreview && (
+                          <div className="mt-2 flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-xl px-3 py-2">
+                            <Wrench className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                            <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-snug">
+                              {t('yardCheckin.serviceDueWarning', {
+                                miles: serviceDuePreview.overdueBy.toLocaleString('en-GB'),
+                                last: serviceDuePreview.lastMileage.toLocaleString('en-GB'),
+                              })}
+                            </p>
+                          </div>
+                        )}
                       </div>
 
                       {/* MOT & Tax — read-only for fleet vehicles (Fleet is the
@@ -989,6 +1086,7 @@ export function VehicleCheckInForm({
                   !formData.model ||
                   !formData.size ||
                   !formData.condition ||
+                  (serviceSettings.captureMileageOnCheckIn && !mileageNA && !formData.mileage.trim()) ||
                   Boolean(currentRegistrationConflict)
                 }
                 className="flex-1 bg-[#025940] hover:bg-[#012619] text-white font-semibold py-2.5 text-sm border-0 shadow-none flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"

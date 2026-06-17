@@ -8,7 +8,7 @@ import { CheckedInVehicle } from '@/types'
 import { getStatusConfig } from '@/lib/statusUtils' // Fixed import
 import { getConditionColor, getConditionTextColor, getConditionDisplayName, getConditionByName } from '@/lib/conditionUtils'
 import { formatDate, formatMileage, safeString } from '@/lib/utils'
-import { Calendar, Gauge, FileText, MapPin } from 'lucide-react'
+import { Calendar, Gauge, FileText, MapPin, Wrench } from 'lucide-react'
 import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
 
@@ -66,6 +66,15 @@ export const VehicleCard = React.memo(function VehicleCard({
               <StatusIcon className={`w-3 h-3 mr-1 ${statusConfig.color}`} />
               {statusConfig.label}
             </div>
+            {vehicle.serviceDue && (
+              <div
+                className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-300 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-700"
+                title={typeof vehicle.serviceDueMiles === 'number' ? t('serviceFlag.overdueBy', { miles: vehicle.serviceDueMiles.toLocaleString('en-GB') }) : undefined}
+              >
+                <Wrench className="w-3 h-3 mr-1" />
+                {t('serviceFlag.badge')}
+              </div>
+            )}
           </div>
         </div>
 

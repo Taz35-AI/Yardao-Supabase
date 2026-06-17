@@ -29,7 +29,8 @@ import {
   ExternalLink,
   GitBranch,
   User as UserIcon,
-  Receipt
+  Receipt,
+  Gauge
 } from 'lucide-react'
 import dynamic from 'next/dynamic'
 
@@ -134,9 +135,18 @@ const DataManagement = dynamic(
   }
 )
 
+// Lazy load Check-in & Servicing settings
+const CheckInServiceSettings = dynamic(
+  () => import('@/components/settings/CheckInServiceSettings').then(mod => ({ default: mod.CheckInServiceSettings })),
+  {
+    ssr: false,
+    loading: () => <LoadingLabel />
+  }
+)
+
 type SettingsTab = 'user' | 'organization' | 'data'
 // ✅ UPDATED: Added 'companies' and 'insurance-policies' to OrganizationSubTab
-type OrganizationSubTab = 'branches' | 'conditions' | 'contracts' | 'suppliers' | 'companies' | 'insurance-policies' | 'external-garages' | 'users' | 'general'
+type OrganizationSubTab = 'branches' | 'conditions' | 'contracts' | 'suppliers' | 'companies' | 'insurance-policies' | 'external-garages' | 'check-in' | 'users' | 'general'
 
 export default function SettingsPage() {
   const t = useT()
@@ -250,6 +260,13 @@ export default function SettingsPage() {
       description: t('settings.page.orgExtGaragesDesc'),
       icon: Wrench,
       component: ExternalGarageManagement
+    },
+    {
+      id: 'check-in' as const,
+      label: t('checkInSettings.tabLabel'),
+      description: t('checkInSettings.tabDesc'),
+      icon: Gauge,
+      component: CheckInServiceSettings
     },
     {
       id: 'users' as const,

@@ -154,6 +154,32 @@ export const vehicleServiceHistoryService = {
     return records
   },
 
+  /**
+   * The most recent service record (booking OR manual) that carries an
+   * odometer reading, for one vehicle. Used at check-in to decide whether the
+   * vehicle is overdue for a service (current mileage − this >= threshold).
+   * Returns null when the vehicle has no service history with a mileage on
+   * record — in which case the caller simply doesn't flag it.
+   */
+  async getLastServiceMileage(
+    organizationId: string,
+    registration: string,
+  ): Promise<{ mileage: number; date: string } | null> {
+    if (!organizationId || !registration) return null
+    try {
+      const history = await this.getVehicleServiceHistory({ organizationId, registration })
+      // history is newest-first; take the first record with a usable mileage.
+      const withMileage = history.find(
+        (r) => typeof r.mileage === 'number' && Number.isFinite(r.mileage) && (r.mileage as number) > 0,
+      )
+      if (!withMileage) return null
+      return { mileage: withMileage.mileage as number, date: withMileage.date }
+    } catch (err) {
+      logger.error('getLastServiceMileage failed:', err)
+      return null
+    }
+  },
+
   async addManualServiceRecord(
     record: Omit<ManualServiceHistoryDoc, 'id' | 'createdAt' | 'updatedAt' | 'registrationKey'>,
   ): Promise<string> {

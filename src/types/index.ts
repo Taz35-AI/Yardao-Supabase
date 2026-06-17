@@ -90,6 +90,12 @@ export interface CheckedInVehicle {
   condition: string
   status: VehicleStatus
   mileage?: string
+  // Service-due flag (migration 0043): set at check-in when the vehicle's
+  // mileage is >= threshold past its last recorded service. Self-resets each
+  // yard stay because the checked-in row is recreated on every check-in.
+  serviceDue?: boolean
+  serviceDueMiles?: number | null      // how many miles past the threshold
+  lastServiceMileage?: number | null   // odometer at the last recorded service
   notes?: string
   comments?: string
   motExpiry?: string
@@ -175,11 +181,12 @@ export interface VehicleCheckInData {
   condition: string
   status: VehicleStatus
   mileage: string
+  mileageNotAvailable?: boolean
   notes: string
   motExpiry?: string
   taxExpiry?: string
   comments?: string
-  
+
   // 🔧 FIXED: Contract fields with proper null handling
   contract?: string | null
   contractColor?: string | null
@@ -481,6 +488,9 @@ export interface VehicleFormData {
   condition: string
   status: VehicleStatus
   mileage: string
+  // Set when the user ticks "odometer not available" — lets a genuine
+  // non-runner / unreadable-dash vehicle through the mandatory-mileage gate.
+  mileageNotAvailable?: boolean
   notes: string
   motExpiry?: string
   taxExpiry?: string

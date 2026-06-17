@@ -261,6 +261,8 @@ function ServiceBannerComponent() {
   const [showInsuranceModal, setShowInsuranceModal] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [insuranceCheckedToday, setInsuranceCheckedToday] = useState(false)
+  // ── Service-due (migration 0043) — counted from the same yard query ──────────
+  const [serviceDueCount, setServiceDueCount] = useState(0)
 
   // 🔥 PERFORMANCE: Only show banner on relevant pages
   const shouldShowBanner = useMemo(() => {
@@ -306,6 +308,9 @@ function ServiceBannerComponent() {
           const reg = (d.registration || '').toUpperCase().replace(/\s+/g, '')
           if (reg) regToBranch[reg] = d.branch_id || 'main'
         })
+
+        // Service-due count — vehicles flagged at check-in (migration 0043).
+        setServiceDueCount((yardRows ?? []).filter(d => d.service_due === true).length)
 
         // Step 3: Find uninsured fleet vehicles, attach branch
         const uninsured: UninsuredVehicle[] = []
@@ -485,14 +490,15 @@ function ServiceBannerComponent() {
   const totalCriticalItems = useMemo(() => {
     if (!shouldShowBanner) return 0
     
-    return serviceStats.total + 
-           deliveryDefleetStats.totalToday + 
-           motStats.expired + 
-           motStats.expiresToday + 
-           motStats.expiresIn2Days + 
+    return serviceStats.total +
+           deliveryDefleetStats.totalToday +
+           motStats.expired +
+           motStats.expiresToday +
+           motStats.expiresIn2Days +
            motStats.expiresIn3Days +
-           (uninsuredVehicles.length > 0 ? 1 : 0)
-  }, [serviceStats, deliveryDefleetStats, motStats, shouldShowBanner, uninsuredVehicles.length])
+           (uninsuredVehicles.length > 0 ? 1 : 0) +
+           (serviceDueCount > 0 ? 1 : 0)
+  }, [serviceStats, deliveryDefleetStats, motStats, shouldShowBanner, uninsuredVehicles.length, serviceDueCount])
 
   // 🔥 PERFORMANCE: Optimized time parser (cached)
   const parseAnyTimeFormat = useMemo(() => {
@@ -689,13 +695,14 @@ function ServiceBannerComponent() {
     
     const currentMotCriticalCount = motStats.expired + motStats.expiresToday + motStats.expiresIn2Days + motStats.expiresIn3Days
     
-    if (serviceStats.completed === serviceStats.total && 
-        deliveryDefleetStats.totalToday === 0 && 
-        motStats.expired === 0 && 
-        motStats.expiresToday === 0 && 
-        motStats.expiresIn2Days === 0 && 
+    if (serviceStats.completed === serviceStats.total &&
+        deliveryDefleetStats.totalToday === 0 &&
+        motStats.expired === 0 &&
+        motStats.expiresToday === 0 &&
+        motStats.expiresIn2Days === 0 &&
         motStats.expiresIn3Days === 0 &&
-        uninsuredVehicles.length === 0) {
+        uninsuredVehicles.length === 0 &&
+        serviceDueCount === 0) {
       return false
     }
 
@@ -710,7 +717,7 @@ function ServiceBannerComponent() {
     }
 
     return true
-  }, [shouldShowBanner, totalCriticalItems, todaysServiceBookings, deliveryDefleetEntries, serviceStats, deliveryDefleetStats, motStats, todayString, uninsuredVehicles.length])
+  }, [shouldShowBanner, totalCriticalItems, todaysServiceBookings, deliveryDefleetEntries, serviceStats, deliveryDefleetStats, motStats, todayString, uninsuredVehicles.length, serviceDueCount])
 
   // Update visibility state
   useEffect(() => {
@@ -940,6 +947,12 @@ function ServiceBannerComponent() {
                   <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[#025940]/50 text-[#C5D9D0] text-xs border border-[#025940]">
                     <Clock className="w-3 h-3 text-amber-400" />
                     {t('serviceBanner.chipInProgress', { count: serviceStats.inProgress })}
+                  </span>
+                )}
+                {serviceDueCount > 0 && (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-900/30 text-amber-300 text-xs border border-amber-800/50">
+                    <Wrench className="w-3 h-3" />
+                    {t('serviceFlag.bannerChip', { count: serviceDueCount })}
                   </span>
                 )}
                 {deliveryDefleetStats.deliveriesToday > 0 && (

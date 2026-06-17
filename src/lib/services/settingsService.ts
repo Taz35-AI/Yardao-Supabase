@@ -63,6 +63,24 @@ interface OrganizationSettings {
   updatedAt?: string
 }
 
+// ✅ NEW: Check-in / service preferences (jsonb column service_settings, migration 0043)
+export interface ServiceSettings {
+  // Require a mileage reading to check a vehicle into the yard.
+  captureMileageOnCheckIn: boolean
+  // Flag vehicles that are overdue for a service (mileage since last service).
+  serviceDueEnabled: boolean
+  // Miles-since-last-service that trips the "service due" flag.
+  serviceDueThresholdMiles: number
+}
+
+// Sensible defaults applied whenever the column is null / a field is missing,
+// so the feature works out of the box and old orgs don't need a backfill.
+export const DEFAULT_SERVICE_SETTINGS: ServiceSettings = {
+  captureMileageOnCheckIn: true,
+  serviceDueEnabled: true,
+  serviceDueThresholdMiles: 10000,
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Ensure the settings row exists before updating it. */
@@ -246,6 +264,48 @@ export const settingsService = {
       if (error) throw error
     } catch (error) {
       logger.error('Error saving contract default statuses:', error)
+      throw error
+    }
+  },
+
+  // ==================== SERVICE / CHECK-IN SETTINGS ====================
+
+  /** Org's check-in/service preferences, defaults applied for any missing field. */
+  async getServiceSettings(organizationId: string): Promise<ServiceSettings> {
+    try {
+      const row = await getSettingsRow(organizationId)
+      const stored = (row?.service_settings as Partial<ServiceSettings> | null) || {}
+      return {
+        captureMileageOnCheckIn:
+          typeof stored.captureMileageOnCheckIn === 'boolean'
+            ? stored.captureMileageOnCheckIn
+            : DEFAULT_SERVICE_SETTINGS.captureMileageOnCheckIn,
+        serviceDueEnabled:
+          typeof stored.serviceDueEnabled === 'boolean'
+            ? stored.serviceDueEnabled
+            : DEFAULT_SERVICE_SETTINGS.serviceDueEnabled,
+        serviceDueThresholdMiles:
+          typeof stored.serviceDueThresholdMiles === 'number' && stored.serviceDueThresholdMiles > 0
+            ? stored.serviceDueThresholdMiles
+            : DEFAULT_SERVICE_SETTINGS.serviceDueThresholdMiles,
+      }
+    } catch (error) {
+      logger.error('Error getting service settings:', error)
+      // Never break check-in over a settings read — fall back to defaults.
+      return { ...DEFAULT_SERVICE_SETTINGS }
+    }
+  },
+
+  async saveServiceSettings(organizationId: string, settings: ServiceSettings): Promise<void> {
+    try {
+      await ensureSettingsDoc(organizationId)
+      const { error } = await supabase
+        .from(TABLE)
+        .update({ service_settings: settings, updated_at: new Date().toISOString() })
+        .eq('organization_id', organizationId)
+      if (error) throw error
+    } catch (error) {
+      logger.error('Error saving service settings:', error)
       throw error
     }
   },

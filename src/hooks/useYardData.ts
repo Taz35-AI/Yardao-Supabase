@@ -19,6 +19,8 @@ import { buildContractColorIndex, resolveVehicleContractColor, type ContractColo
 import { branchService } from '@/lib/services/branchService'
 import { VehicleHireService } from '@/lib/services/vehicleHireService'
 import { activityLogService } from '@/lib/services/activityLogService'
+import { settingsService } from '@/lib/services/settingsService'
+import { vehicleServiceHistoryService } from '@/lib/services/vehicleServiceHistoryService'
 import { wireResyncTriggers, onReconnectRefetch } from '@/lib/realtime/resync'
 import {
   normalizeDelta,
@@ -280,6 +282,10 @@ export function useYardDataInternal(props?: UseYardDataProps) {
         // Optional fields
         colour: data.colour ? safeString(data.colour) : undefined,
         mileage: data.mileage ? safeString(data.mileage) : undefined,
+        // Service-due flag (migration 0043) — surfaced on the card + banner
+        serviceDue: data.serviceDue === true,
+        serviceDueMiles: typeof data.serviceDueMiles === 'number' ? data.serviceDueMiles : undefined,
+        lastServiceMileage: typeof data.lastServiceMileage === 'number' ? data.lastServiceMileage : undefined,
         notes: data.notes ? safeString(data.notes) : undefined,
         comments: data.comments ? safeString(data.comments) : undefined,
         contract: data.contract && data.contract.trim() !== '' ? safeString(data.contract) : null,
@@ -854,6 +860,33 @@ export function useYardDataInternal(props?: UseYardDataProps) {
       const normalizedReg = vehicleData.registration.toUpperCase().replace(/\s+/g, '')
       logger.log(`Checking in ${normalizedReg} to branch: ${branchId}`)
 
+      // ── Service-due assessment (migration 0043) ──────────────────────────
+      // Stamp the checked-in row with whether the vehicle is overdue for a
+      // service, so the dashboard + Service Banner can flag it. Stays silent
+      // (service_due=false) when the org has the feature off, when no mileage
+      // was captured, or when there's no prior service mileage to compare to.
+      // Wrapped so a settings/history hiccup can never block a check-in.
+      let serviceDueFields: {
+        service_due: boolean
+        service_due_miles: number | null
+        last_service_mileage: number | null
+      } = { service_due: false, service_due_miles: null, last_service_mileage: null }
+      try {
+        const settings = await settingsService.getServiceSettings(userOrganizationId)
+        const currentMiles = parseInt(safeString(vehicleData.mileage).replace(/[,\s]/g, ''), 10)
+        if (settings.serviceDueEnabled && Number.isFinite(currentMiles) && currentMiles > 0) {
+          const last = await vehicleServiceHistoryService.getLastServiceMileage(userOrganizationId, normalizedReg)
+          if (last && Number.isFinite(last.mileage)) {
+            const overdueBy = currentMiles - last.mileage
+            serviceDueFields = overdueBy >= settings.serviceDueThresholdMiles
+              ? { service_due: true, service_due_miles: overdueBy, last_service_mileage: last.mileage }
+              : { service_due: false, service_due_miles: null, last_service_mileage: last.mileage }
+          }
+        }
+      } catch (assessErr) {
+        logger.warn('Service-due assessment skipped:', assessErr)
+      }
+
       // Check if vehicle exists in ANY branch
       const { data: allVehiclesRows, error: allVehiclesError } = await supabase
         .from('checked_in_vehicles')
@@ -909,6 +942,7 @@ export function useYardDataInternal(props?: UseYardDataProps) {
               condition: safeString(vehicleData.condition),
               status: vehicleData.status,
               mileage: safeString(vehicleData.mileage),
+              ...serviceDueFields,
               notes: safeString(vehicleData.notes),
               comments: safeString(vehicleData.comments),
               contract: contractValue,
@@ -997,6 +1031,7 @@ export function useYardDataInternal(props?: UseYardDataProps) {
           condition: safeString(vehicleData.condition),
           status: normalizeStatus(vehicleData.status),
           mileage: safeString(vehicleData.mileage),
+          ...serviceDueFields,
           notes: safeString(vehicleData.notes),
           comments: safeString(vehicleData.comments),
           contract: contractValue,
