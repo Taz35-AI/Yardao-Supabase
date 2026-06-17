@@ -26,6 +26,63 @@ const INVOICE_TABLE = 'invoices'
 const ORDER_HISTORY_TABLE = 'order_history'
 const STOCK_ADJUSTMENTS_TABLE = 'stock_adjustments'
 
+/**
+ * Atomic compare-and-swap change to a part's quantity.
+ *
+ * The remove/adjust/batch flows used to read the quantity and then blindly
+ * write `read - used`. Two people removing the same part at the same moment
+ * could both read the old value and oversell it (and a half-finished batch
+ * could leave a partial deduction). This closes that race without needing a
+ * Postgres RPC / migration:
+ *
+ *   1. read the current row
+ *   2. compute the new quantity (reject if it would go negative)
+ *   3. write it back ONLY IF the stored quantity is still what we read
+ *      (`.eq('quantity', current)` — a row-level compare-and-swap)
+ *   4. if another writer slipped in (0 rows updated), re-read and retry
+ *
+ * `delta` is negative for a use/removal, positive for an add/restock.
+ * `buildExtra` lets the caller stamp extra snake_case columns computed from
+ * the freshly-read row (e.g. last_used_date, total_usage_count). Returns the
+ * updated part (camelCased). Throws on insufficient stock, or if the row keeps
+ * changing under us after several attempts.
+ */
+async function casChangeQuantity(
+  partId: string,
+  delta: number,
+  buildExtra?: (current: any) => Record<string, any>,
+  underflowMessage = 'Insufficient stock quantity',
+): Promise<StockPart> {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const { data: cur, error: readErr } = await supabase
+      .from(STOCK_TABLE)
+      .select('*')
+      .eq('id', partId)
+      .maybeSingle()
+    if (readErr) throw readErr
+    if (!cur) throw new Error('Part not found')
+
+    const current = Number((cur as any).quantity) || 0
+    const next = current + delta
+    if (next < 0) throw new Error(underflowMessage)
+
+    const extra = buildExtra ? buildExtra(cur) : {}
+    const { data: updated, error: updErr } = await supabase
+      .from(STOCK_TABLE)
+      .update({ quantity: next, ...extra })
+      .eq('id', partId)
+      .eq('quantity', current) // compare-and-swap guard
+      .select()
+    if (updErr) throw updErr
+    if (updated && updated.length > 0) {
+      return toCamel<StockPart>(updated[0]) as StockPart
+    }
+    // CAS miss — the quantity changed beneath us; loop and retry with the
+    // fresh value (re-validates stock on the next pass).
+  }
+  throw new Error('Could not update stock quantity — too many concurrent changes, please retry')
+}
+
 export const stockService = {
   // ==================== STOCK PARTS ====================
 
@@ -171,24 +228,16 @@ export const stockService = {
     // single job's parts instead of a 10-day window. Omitted = unattributed.
     serviceBookingId?: string | null
   ): Promise<void> {
-    const part = await this.getPart(partId)
-    if (!part) throw new Error('Part not found')
-
-    const newQuantity = part.quantity - quantityUsed
-    if (newQuantity < 0) {
-      throw new Error('Insufficient stock quantity')
-    }
-
-    const { error: updateError } = await supabase
-      .from(STOCK_TABLE)
-      .update({
-        quantity: newQuantity,
-        last_used_date: new Date().toISOString(),
-        total_usage_count: (part.totalUsageCount ?? 0) + 1,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', partId)
-    if (updateError) throw updateError
+    // Atomic compare-and-swap deduction — prevents two concurrent removals
+    // both reading the old quantity and overselling. `part` comes back with
+    // the quantity already decremented; its name/number/price/unit + one-off
+    // flags are intact for the snapshot + one-off cleanup below.
+    const part = await casChangeQuantity(partId, -quantityUsed, (cur) => ({
+      last_used_date: new Date().toISOString(),
+      total_usage_count: (Number(cur.total_usage_count) || 0) + 1,
+      updated_at: new Date().toISOString(),
+    }))
+    const newQuantity = part.quantity
 
     const usageRecord: any = {
       partId,
@@ -261,27 +310,19 @@ export const stockService = {
       reason,
     })
 
-    // Get part details
-    const part = await this.getPart(partId)
-    if (!part) throw new Error('Part not found')
-
-    // Calculate new quantity
-    const previousStock = part.quantity
-    const newQuantity = adjustmentType === 'add' ? part.quantity + quantity : part.quantity - quantity
-
-    if (newQuantity < 0) {
-      throw new Error('Cannot adjust stock below zero')
-    }
-
-    // Update part quantity
-    const { error: updateError } = await supabase
-      .from(STOCK_TABLE)
-      .update({
-        quantity: newQuantity,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', partId)
-    if (updateError) throw updateError
+    // Atomic compare-and-swap so a manual correction can't race another
+    // removal/adjustment and drive stock negative. `part` returns with the
+    // quantity already applied; previousStock is recovered from the winning
+    // attempt so the audit record is exact.
+    const delta = adjustmentType === 'add' ? quantity : -quantity
+    const part = await casChangeQuantity(
+      partId,
+      delta,
+      () => ({ updated_at: new Date().toISOString() }),
+      'Cannot adjust stock below zero',
+    )
+    const newQuantity = part.quantity
+    const previousStock = newQuantity - delta
 
     // Create adjustment record for audit trail
     const adjustmentRecord: Omit<StockAdjustment, 'id'> = {
@@ -751,9 +792,16 @@ export const stockService = {
     userId: string,
     userName: string,
     organizationId: string,
-    notes?: string
+    notes?: string,
+    // Optional job link (migration 0039) — parity with removePartQuantity.
+    // When the batch belongs to a specific service booking, pass the id so
+    // every usage row is attributed to that exact job for invoicing. Omitted
+    // (e.g. the bodyshop flow, which isn't a service_booking) = unattributed.
+    serviceBookingId?: string | null
   ): Promise<void> {
-    // Fetch all parts first to validate
+    // Fetch all parts first to fail fast on an obviously-short batch (deducts
+    // nothing in that case). The real oversell guard is the per-item
+    // compare-and-swap below; this is just an early, friendly error.
     const partsData: StockPart[] = []
     for (const item of items) {
       const part = await this.getPart(item.partId)
@@ -766,50 +814,64 @@ export const stockService = {
       partsData.push(part)
     }
 
-    // Build all operations
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i]
-      const part = partsData[i]
-      const newQuantity = part.quantity - item.quantity
+    // Canonical reg key so batch usage matches custom (non-fleet) vehicles by
+    // registration, exactly like removePartQuantity. (Previously omitted — a
+    // gap that left bodyshop/custom-reg parts unmatchable by reg.)
+    const vehicleRegistrationKey = normalizeReg(vehicleRegistration)
 
-      // Update part quantity
-      const { error: updateError } = await supabase
-        .from(STOCK_TABLE)
-        .update({
-          quantity: newQuantity,
+    // Deduct each item atomically. If a later item fails after earlier ones
+    // were applied, compensate by restocking the applied ones so the batch
+    // doesn't leave a partial deduction. (True DB-transaction atomicity would
+    // need a Postgres RPC; this rollback covers the realistic failure modes.)
+    const applied: Array<{ partId: string; quantity: number }> = []
+    try {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]
+        const part = partsData[i]
+
+        await casChangeQuantity(item.partId, -item.quantity, (cur) => ({
           last_used_date: new Date().toISOString(),
-          total_usage_count: (part.totalUsageCount ?? 0) + 1,
+          total_usage_count: (Number(cur.total_usage_count) || 0) + 1,
           updated_at: new Date().toISOString(),
-        })
-        .eq('id', item.partId)
-      if (updateError) throw updateError
+        }))
+        applied.push({ partId: item.partId, quantity: item.quantity })
 
-      // Create usage record
-      const usageRecord: any = {
-        partId: item.partId,
-        partName: part.partName,
-        partNumber: part.partNumber,
-        vehicleId,
-        vehicleRegistration,
-        quantityUsed: item.quantity,
-        unit: part.unit,
-        usedBy: userId,
-        usedByName: userName,
-        usedAt: new Date().toISOString(),
-        organizationId,
-        netPrice: part.netPrice,
-        totalCost: part.netPrice * item.quantity,
+        const usageRecord: any = {
+          partId: item.partId,
+          partName: part.partName,
+          partNumber: part.partNumber,
+          vehicleId,
+          vehicleRegistration,
+          vehicleRegistrationKey,
+          quantityUsed: item.quantity,
+          unit: part.unit,
+          usedBy: userId,
+          usedByName: userName,
+          usedAt: new Date().toISOString(),
+          organizationId,
+          netPrice: part.netPrice,
+          totalCost: part.netPrice * item.quantity,
+          notes: notes || `Batch use: ${items.length} parts`,
+        }
+
+        // Stamp the job link when supplied (toSnake → service_booking_id).
+        if (serviceBookingId) usageRecord.serviceBookingId = serviceBookingId
+
+        const { error: usageError } = await supabase.from(USAGE_TABLE).insert(toSnake(usageRecord))
+        if (usageError) throw usageError
       }
-
-      // Only add notes if provided
-      if (notes) {
-        usageRecord.notes = notes
-      } else {
-        usageRecord.notes = `Batch use: ${items.length} parts`
+    } catch (err) {
+      // Compensating rollback: give back everything already deducted.
+      for (const a of applied) {
+        try {
+          await casChangeQuantity(a.partId, a.quantity, () => ({
+            updated_at: new Date().toISOString(),
+          }))
+        } catch (rollbackErr) {
+          logger.error('batchUseParts rollback failed for part', a.partId, rollbackErr)
+        }
       }
-
-      const { error: usageError } = await supabase.from(USAGE_TABLE).insert(toSnake(usageRecord))
-      if (usageError) throw usageError
+      throw err
     }
   },
 }
