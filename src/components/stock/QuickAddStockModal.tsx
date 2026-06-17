@@ -163,7 +163,7 @@ export function QuickAddStockModal({ isOpen, onClose, onSuccess, part }: QuickAd
                     setQuantity(value)
                   }
                 }}
-                className="w-full px-4 py-3 text-lg font-semibold border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white transition-all"
+                className="w-full px-4 py-3 text-lg font-semibold border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-gray-900 dark:bg-gray-700 dark:text-white transition-all"
                 placeholder={t('stock.quickAdd.addQtyPlaceholder')}
                 required
                 autoFocus

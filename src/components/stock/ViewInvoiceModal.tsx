@@ -136,7 +136,7 @@ export function ViewInvoiceModal({ isOpen, onClose, invoice, onStatusChange, onE
             <select
               value={statusValue}
               onChange={(e) => handleStatusChange(e.target.value as Invoice['status'])}
-              className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-lg text-sm dark:bg-gray-700 dark:text-white"
+              className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
             >
               <option value="draft">{t('stock.viewInvoice.statusDraft')}</option>
               <option value="issued">{t('stock.viewInvoice.statusIssued')}</option>

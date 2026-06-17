@@ -367,7 +367,7 @@ export function RemovePartModal({ isOpen, onClose, onSuccess, part }: RemovePart
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder={t('stock.remove.searchPlaceholder')}
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#025940]/30 focus:border-[#025940] dark:bg-gray-700 dark:text-white"
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#025940]/30 focus:border-[#025940] bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                   autoFocus
                 />
               </div>
@@ -509,7 +509,7 @@ export function RemovePartModal({ isOpen, onClose, onSuccess, part }: RemovePart
                   const value = parseFloat(e.target.value) || 0
                   setQuantity(part.unit === 'pieces' ? Math.round(value) : value)
                 }}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#025940]/30 focus:border-[#025940] dark:bg-gray-700 dark:text-white"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#025940]/30 focus:border-[#025940] bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                 required
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -540,7 +540,7 @@ export function RemovePartModal({ isOpen, onClose, onSuccess, part }: RemovePart
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#025940]/30 focus:border-[#025940] dark:bg-gray-700 dark:text-white resize-none"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-[#025940]/30 focus:border-[#025940] bg-white text-gray-900 dark:bg-gray-700 dark:text-white resize-none"
               placeholder={t('stock.remove.notesPlaceholder')}
             />
           </div>

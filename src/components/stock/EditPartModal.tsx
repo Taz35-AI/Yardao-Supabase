@@ -290,7 +290,7 @@ export function EditPartModal({ isOpen, onClose, onSuccess, part }: EditPartModa
                     type="text"
                     value={partName}
                     onChange={(e) => setPartName(e.target.value)}
-                    className="w-full px-5 py-4 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 dark:text-white transition-all duration-200 font-medium text-base placeholder:text-gray-400 placeholder:font-normal"
+                    className="w-full px-5 py-4 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-4 focus:ring-[#025940]/20 bg-white text-gray-900 dark:bg-gray-800 dark:text-white transition-all duration-200 font-medium text-base placeholder:text-gray-400 placeholder:font-normal"
                     placeholder={t('stock.edit.partNamePlaceholder')}
                     required
                   />
@@ -301,7 +301,7 @@ export function EditPartModal({ isOpen, onClose, onSuccess, part }: EditPartModa
                     type="text"
                     value={partNumber}
                     onChange={(e) => setPartNumber(e.target.value)}
-                    className="w-full px-5 py-4 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 dark:text-white transition-all duration-200 font-medium text-base placeholder:text-gray-400 placeholder:font-normal"
+                    className="w-full px-5 py-4 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-4 focus:ring-[#025940]/20 bg-white text-gray-900 dark:bg-gray-800 dark:text-white transition-all duration-200 font-medium text-base placeholder:text-gray-400 placeholder:font-normal"
                     placeholder={t('stock.edit.partNumberPlaceholder')}
                     required
                   />
@@ -332,7 +332,7 @@ export function EditPartModal({ isOpen, onClose, onSuccess, part }: EditPartModa
                   onChange={(e) => setMakeModelInput(e.target.value)}
                   onKeyDown={handleMakeModelKeyDown}
                   onBlur={addMakeModel}
-                  className="w-full px-5 py-4 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 dark:text-white transition-all duration-200 font-medium text-base placeholder:text-gray-400 placeholder:font-normal"
+                  className="w-full px-5 py-4 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-4 focus:ring-[#025940]/20 bg-white text-gray-900 dark:bg-gray-800 dark:text-white transition-all duration-200 font-medium text-base placeholder:text-gray-400 placeholder:font-normal"
                   placeholder={t('stock.edit.makeModelPlaceholder')}
                 />
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
@@ -349,7 +349,7 @@ export function EditPartModal({ isOpen, onClose, onSuccess, part }: EditPartModa
                   onChange={(e) => setSupplier(e.target.value)}
                   onFocus={() => setShowSupplierDropdown(true)}
                   onBlur={() => setTimeout(() => setShowSupplierDropdown(false), 200)}
-                  className="w-full px-5 py-4 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 dark:text-white transition-all duration-200 font-medium text-base placeholder:text-gray-400 placeholder:font-normal"
+                  className="w-full px-5 py-4 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-4 focus:ring-[#025940]/20 bg-white text-gray-900 dark:bg-gray-800 dark:text-white transition-all duration-200 font-medium text-base placeholder:text-gray-400 placeholder:font-normal"
                   placeholder={t('stock.edit.supplierPlaceholder')}
                 />
                 {showSupplierDropdown && filteredSuppliers.length > 0 && (
@@ -378,7 +378,7 @@ export function EditPartModal({ isOpen, onClose, onSuccess, part }: EditPartModa
                   value={comments}
                   onChange={(e) => setComments(e.target.value)}
                   rows={3}
-                  className="w-full px-5 py-4 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 dark:text-white transition-all duration-200 font-medium text-base placeholder:text-gray-400 placeholder:font-normal resize-none"
+                  className="w-full px-5 py-4 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-4 focus:ring-[#025940]/20 bg-white text-gray-900 dark:bg-gray-800 dark:text-white transition-all duration-200 font-medium text-base placeholder:text-gray-400 placeholder:font-normal resize-none"
                   placeholder={t('stock.edit.commentsPlaceholder')}
                 />
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
@@ -418,7 +418,7 @@ export function EditPartModal({ isOpen, onClose, onSuccess, part }: EditPartModa
                         setLinkedRegistration(e.target.value.toUpperCase())
                         setRegSuggestions([])
                       }}
-                      className="w-full px-5 py-4 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-[#b3f243] dark:focus:border-[#b3f243] focus:ring-4 focus:ring-[#b3f243]/20 dark:bg-gray-800 dark:text-white transition-all duration-200 font-mono font-bold tracking-widest text-base placeholder:tracking-normal placeholder:font-normal placeholder:text-gray-400"
+                      className="w-full px-5 py-4 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-[#b3f243] dark:focus:border-[#b3f243] focus:ring-4 focus:ring-[#b3f243]/20 bg-white text-gray-900 dark:bg-gray-800 dark:text-white transition-all duration-200 font-mono font-bold tracking-widest text-base placeholder:tracking-normal placeholder:font-normal placeholder:text-gray-400"
                       placeholder={t('stock.edit.regPlaceholder')}
                       autoComplete="off"
                     />
@@ -482,7 +482,7 @@ export function EditPartModal({ isOpen, onClose, onSuccess, part }: EditPartModa
                     min="0"
                     value={netPrice}
                     onChange={(e) => setNetPrice(e.target.value)}
-                    className="w-full px-5 py-4 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 dark:text-white transition-all duration-200 font-medium text-base placeholder:text-gray-400 placeholder:font-normal"
+                    className="w-full px-5 py-4 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-4 focus:ring-[#025940]/20 bg-white text-gray-900 dark:bg-gray-800 dark:text-white transition-all duration-200 font-medium text-base placeholder:text-gray-400 placeholder:font-normal"
                     placeholder="0.00"
                     required
                   />
@@ -494,7 +494,7 @@ export function EditPartModal({ isOpen, onClose, onSuccess, part }: EditPartModa
                     min="0"
                     value={restockTarget}
                     onChange={(e) => setRestockTarget(e.target.value)}
-                    className="w-full px-5 py-4 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 dark:text-white transition-all duration-200 font-medium text-base placeholder:text-gray-400 placeholder:font-normal"
+                    className="w-full px-5 py-4 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-4 focus:ring-[#025940]/20 bg-white text-gray-900 dark:bg-gray-800 dark:text-white transition-all duration-200 font-medium text-base placeholder:text-gray-400 placeholder:font-normal"
                     placeholder="10"
                     required
                   />
@@ -504,7 +504,7 @@ export function EditPartModal({ isOpen, onClose, onSuccess, part }: EditPartModa
                   <select
                     value={unit}
                     onChange={(e) => setUnit(e.target.value as 'pieces' | 'liters')}
-                    className="w-full px-5 py-4 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 dark:text-white transition-all duration-200 font-medium text-base"
+                    className="w-full px-5 py-4 border-2 border-gray-200 dark:border-gray-700 rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-4 focus:ring-[#025940]/20 bg-white text-gray-900 dark:bg-gray-800 dark:text-white transition-all duration-200 font-medium text-base"
                   >
                     <option value="pieces">{t('stock.units.pieces')}</option>
                     <option value="liters">{t('stock.units.liters')}</option>

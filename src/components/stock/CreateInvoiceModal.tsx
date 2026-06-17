@@ -1004,7 +1004,7 @@ const loadServiceBookingHoursAndCustomer = async () => {
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       placeholder={t('stock.createInvoice.vehiclePlaceholder')}
-                      className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
+                      className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                     />
                   </div>
 
@@ -1167,7 +1167,7 @@ const loadServiceBookingHoursAndCustomer = async () => {
                       type="date"
                       value={invoiceDate}
                       onChange={(e) => setInvoiceDate(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                       required
                     />
                   </div>
@@ -1183,7 +1183,7 @@ const loadServiceBookingHoursAndCustomer = async () => {
                         setShowFromDropdown(!showFromDropdown)
                         setShowToDropdown(false)
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white text-left flex items-center justify-between"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 bg-white text-gray-900 dark:bg-gray-700 dark:text-white text-left flex items-center justify-between"
                     >
                       <div className="flex items-center space-x-2">
                         <Building2 className="w-4 h-4 text-gray-400" />
@@ -1236,7 +1236,7 @@ const loadServiceBookingHoursAndCustomer = async () => {
                         setShowToDropdown(!showToDropdown)
                         setShowFromDropdown(false)
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 dark:bg-gray-700 dark:text-white text-left flex items-center justify-between"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 bg-white text-gray-900 dark:bg-gray-700 dark:text-white text-left flex items-center justify-between"
                     >
                       <div className="flex items-center space-x-2">
                         <Building2 className="w-4 h-4 text-gray-400" />
@@ -1367,14 +1367,14 @@ const loadServiceBookingHoursAndCustomer = async () => {
                           value={part.partName}
                           onChange={(e) => updatePart(index, 'partName', e.target.value)}
                           placeholder={t('stock.createInvoice.partNamePlaceholder')}
-                          className="col-span-4 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm dark:bg-gray-700 dark:text-white"
+                          className="col-span-4 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                         />
                         <input
                           type="text"
                           value={part.partNumber}
                           onChange={(e) => updatePart(index, 'partNumber', e.target.value)}
                           placeholder={t('stock.createInvoice.partNumPlaceholder')}
-                          className="col-span-2 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm dark:bg-gray-700 dark:text-white"
+                          className="col-span-2 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                         />
                         <input
                           type="number"
@@ -1382,7 +1382,7 @@ const loadServiceBookingHoursAndCustomer = async () => {
                           step="1"
                           value={part.quantity}
                           onChange={(e) => updatePart(index, 'quantity', parseFloat(e.target.value) || 1)}
-                          className="col-span-2 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm dark:bg-gray-700 dark:text-white"
+                          className="col-span-2 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                         />
                         <input
                           type="number"
@@ -1390,7 +1390,7 @@ const loadServiceBookingHoursAndCustomer = async () => {
                           step="0.01"
                           value={part.unitPrice}
                           onChange={(e) => updatePart(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                          className="col-span-2 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm dark:bg-gray-700 dark:text-white"
+                          className="col-span-2 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                         />
                         <div className="col-span-1 text-right text-sm font-medium">£{part.total.toFixed(2)}</div>
                         <button
@@ -1427,7 +1427,7 @@ const loadServiceBookingHoursAndCustomer = async () => {
                             total: Math.round((l.hours || 0) * v * 100) / 100,
                           })))
                         }}
-                        className="w-20 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm dark:bg-gray-700 dark:text-white"
+                        className="w-20 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                       />
                       <span className="text-sm text-gray-600 dark:text-gray-400">{t('stock.createInvoice.perHr')}</span>
                     </div>
@@ -1466,7 +1466,7 @@ const loadServiceBookingHoursAndCustomer = async () => {
                           value={item.description}
                           onChange={(e) => updateLabour(item.id, 'description', e.target.value)}
                           placeholder={t('stock.createInvoice.descPlaceholder')}
-                          className="col-span-5 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm dark:bg-gray-700 dark:text-white"
+                          className="col-span-5 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                         />
                         <input
                           type="number"
@@ -1474,7 +1474,7 @@ const loadServiceBookingHoursAndCustomer = async () => {
                           step="0.01"
                           value={item.hours}
                           onChange={(e) => updateLabour(item.id, 'hours', parseFloat(e.target.value) || 0)}
-                          className="col-span-2 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm dark:bg-gray-700 dark:text-white"
+                          className="col-span-2 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                         />
                         <input
                           type="number"
@@ -1482,7 +1482,7 @@ const loadServiceBookingHoursAndCustomer = async () => {
                           step="0.01"
                           value={item.rate}
                           onChange={(e) => updateLabour(item.id, 'rate', parseFloat(e.target.value) || 0)}
-                          className="col-span-2 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm dark:bg-gray-700 dark:text-white"
+                          className="col-span-2 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
                         />
                         <div className="col-span-2 text-right text-sm font-medium">£{item.total.toFixed(2)}</div>
                         <button
