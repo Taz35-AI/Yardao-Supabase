@@ -30,6 +30,7 @@ import {
 } from 'lucide-react'
 import { logger } from '@/lib/logger'
 import { useBranches } from '@/hooks/useBranches'
+import { DeleteAccountSection } from '@/components/settings/DeleteAccountSection'
 
 type DefaultView = 'pipeline' | 'table' | 'cards' | 'layout'
 
@@ -473,6 +474,9 @@ export function UserSettings() {
           )}
         </button>
       </div>
+
+      {/* Danger zone — self-service account deletion (App Store requirement) */}
+      <DeleteAccountSection />
     </div>
   )
 }

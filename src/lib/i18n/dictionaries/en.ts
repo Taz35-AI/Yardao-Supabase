@@ -2671,6 +2671,23 @@ export const en = {
       entryRemoveFail: 'Failed to remove entry',
     },
   },
+  deleteAccount: {
+    title: 'Delete account',
+    memberBlurb: 'Permanently delete your account and personal data. This cannot be undone.',
+    ownerBlurb: 'You are the account owner. Deleting your account permanently deletes the entire organisation — all vehicles, stock, invoices and every team member’s account. This cannot be undone.',
+    button: 'Delete my account',
+    confirmTitle: 'Delete account',
+    memberWarning: 'This permanently deletes your account and personal data. You will be signed out immediately. This action cannot be undone.',
+    ownerWarning: 'WARNING: You are the owner. This permanently deletes the ENTIRE organisation — all vehicles, stock, invoices, and every team member’s account and data. There is no way to recover it.',
+    passwordLabel: 'Confirm your password',
+    passwordPlaceholder: 'Your current password',
+    typeToConfirm: 'Type DELETE to confirm',
+    wrongPassword: 'Incorrect password. Please try again.',
+    failed: 'Could not delete the account. Please try again or contact support.',
+    deleting: 'Deleting…',
+    confirmButton: 'Permanently delete',
+    cancel: 'Cancel',
+  },
   settings: {
     common: {
       cancel: 'Cancel', save: 'Save', saveChanges: 'Save changes', add: 'Add',

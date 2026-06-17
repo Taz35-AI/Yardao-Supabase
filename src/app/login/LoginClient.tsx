@@ -12,8 +12,13 @@ import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { completePendingOrgSetup } from '@/lib/orgSetup'
+import { supabase } from '@/lib/supabaseClient'
 import { logger } from '@/lib/logger'
 import { isUserActive, isUserDeleted } from '@/types'
+
+// Show the one-tap demo sign-in only once it's been set up (demo account +
+// secrets + deployed function). Set NEXT_PUBLIC_ENABLE_DEMO=true to reveal it.
+const DEMO_ENABLED = process.env.NEXT_PUBLIC_ENABLE_DEMO === 'true'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -111,6 +116,31 @@ export default function LoginPage() {
       } else {
         setError('Incorrect email or password. Please try again.')
       }
+    }
+  }
+
+  // One-tap demo sign-in (App Store reviewer access). Identity + password live
+  // server-side in the demo-login function; we just apply the returned session.
+  const handleDemo = async () => {
+    setError('')
+    setAccountError('')
+    setLoading(true)
+    try {
+      const { data, error: fnErr } = await supabase.functions.invoke('demo-login')
+      const tokens = data as { access_token?: string; refresh_token?: string; error?: string } | null
+      if (fnErr || !tokens?.access_token || !tokens?.refresh_token) {
+        throw new Error(fnErr?.message || tokens?.error || 'demo unavailable')
+      }
+      const { error: sessErr } = await supabase.auth.setSession({
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+      })
+      if (sessErr) throw sessErr
+      router.push('/dashboard')
+    } catch (err) {
+      logger.error('Demo sign-in failed:', err)
+      setLoading(false)
+      setError('The demo is unavailable right now. Please try again later.')
     }
   }
 
@@ -227,6 +257,28 @@ export default function LoginPage() {
             <span className="button-text">Sign In</span>
             <span className="button-loader" aria-hidden="true"></span>
           </button>
+
+          {DEMO_ENABLED && (
+            <>
+              <div aria-hidden="true" style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0', color: 'rgba(225,255,172,0.45)', fontSize: 12 }}>
+                <span style={{ flex: 1, height: 1, background: 'rgba(225,255,172,0.18)' }} />
+                or
+                <span style={{ flex: 1, height: 1, background: 'rgba(225,255,172,0.18)' }} />
+              </div>
+              <button
+                type="button"
+                onClick={handleDemo}
+                disabled={loading}
+                style={{
+                  width: '100%', padding: '12px 16px', borderRadius: 12, cursor: loading ? 'not-allowed' : 'pointer',
+                  background: 'transparent', border: '1px solid rgba(214,255,47,0.4)', color: '#d6ff2f',
+                  fontWeight: 600, fontSize: 14, transition: 'background .2s, border-color .2s', opacity: loading ? 0.6 : 1,
+                }}
+              >
+                Explore the demo
+              </button>
+            </>
+          )}
 
           {status && (
             <p className="form-status" role="status" aria-live="polite" style={{ color: statusColor }}>
