@@ -575,30 +575,26 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
         ════════════════════════════════════════════════════════════════ */}
         <div className="flex-shrink-0 bg-[#012619] px-4 py-3 sm:px-6 sm:py-4 border-b-2 border-[#b3f243]/30">
 
-          {/* ── Mobile ── */}
-          <div className="flex sm:hidden flex-col gap-2.5">
-            <div className="flex items-center justify-between">
-              <RegBadge registration={vehicleRegistration} size="sm" />
-              {/* 44px tap target per Apple HIG — was p-1.5 + w-4 (≈28px) which
-                  is hard to hit on iPhone, especially near the Dynamic Island. */}
-              <button
-                onClick={onClose}
-                className="p-2.5 -m-1 rounded-lg text-[#72A68E] hover:text-white hover:bg-white/10 transition-colors"
-                aria-label={t('vehDetail.close')}
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0 flex-1">
-                <p className="text-white font-semibold text-xs truncate leading-tight">
+          {/* ── Row 1: identity + close ──────────────────────────────────────
+              One responsive layout (no separate mobile/desktop). The title now
+              has the row to itself (only the close button competes), so the
+              make/model stops truncating to "Mercede…". Status pills sit
+              directly beneath it. */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <RegBadge registration={vehicleRegistration} size="md" />
+              <div className="min-w-0">
+                <p className="text-white font-semibold text-sm sm:text-lg leading-tight truncate">
                   {vehicleMake}{vehicleMake && vehicleModel ? ' ' : ''}{vehicleModel}
                 </p>
-                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
                   <StatusPill bg={config.bg} color={config.color}>
                     <span className="w-1.5 h-1.5 rounded-full mr-1 flex-shrink-0" style={{ backgroundColor: config.color }} />
                     {isOutOnHire ? t('vehDetail.outOnHire') : statusLabelText}
                   </StatusPill>
+                  {isOutOnHire && (
+                    <span className="text-[10px] text-[#72A68E]">{t('vehDetail.wasStatus', { status: statusLabelText })}</span>
+                  )}
                   {localInsuranceStatus && (
                     <StatusPill
                       bg={localInsuranceStatus === 'Insured' ? '#e6f4ec' : '#fee2e2'}
@@ -609,74 +605,41 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
                   )}
                 </div>
               </div>
-              {onUpdateVehicle && (
-                <div className="flex items-center gap-1.5 bg-white/10 rounded-lg px-2 py-1.5 border border-white/20 flex-shrink-0">
-                  <Shield className="w-3 h-3 text-[#72A68E]" />
-                  <InsuranceToggle
-  insuranceStatus={localInsuranceStatus}
-  onToggle={handleInsuranceToggle}
-  disabled={updatingInsurance}
-  size="sm"
-  showLabel={false}
-  className="text-white"
-  vehicleRegistration={vehicleRegistration}
-/>
-                </div>
-              )}
             </div>
+            {/* 44px tap target per Apple HIG. */}
+            <button
+              onClick={onClose}
+              className="p-2.5 -m-1 rounded-lg text-[#72A68E] hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+              aria-label={t('vehDetail.close')}
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
 
-          {/* ── Desktop ── */}
-          <div className="hidden sm:flex items-center gap-4">
-            <RegBadge registration={vehicleRegistration} size="md" />
-            <div className="flex-1 min-w-0">
-              <p className="text-white font-semibold text-base truncate leading-tight">
-                {vehicleMake}{vehicleMake && vehicleModel ? ' ' : ''}{vehicleModel}
-              </p>
-              <div className="flex items-center gap-2 flex-wrap mt-1">
-                <StatusPill bg={config.bg} color={config.color}>
-                  <span className="w-1.5 h-1.5 rounded-full mr-1 flex-shrink-0" style={{ backgroundColor: config.color }} />
-                  {isOutOnHire ? 'Out on Hire' : config.label}
-                </StatusPill>
-                {isOutOnHire && (
-                  <span className="text-[10px] text-[#72A68E]">{t('vehDetail.wasStatus', { status: statusLabelText })}</span>
-                )}
-                {localInsuranceStatus && (
-                  <StatusPill
-                    bg={localInsuranceStatus === 'Insured' ? '#e6f4ec' : '#fee2e2'}
-                    color={localInsuranceStatus === 'Insured' ? '#0d6b2e' : '#991b1b'}
-                  >
-                    {localInsuranceStatus === 'Insured' ? t('vehDetail.insured') : t('vehDetail.notInsured')}
-                  </StatusPill>
-                )}
+          {/* ── Row 2: insurance quick-action ────────────────────────────────
+              On its own line with a divider so the toggle (and its policy chip)
+              have room instead of crowding the title. Real policy fed in so the
+              control shows the assigned policy, not a "tap to assign" hint. */}
+          {onUpdateVehicle && (
+            <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-[#72A68E]">
+                <Shield className="w-4 h-4 flex-shrink-0" />
+                <span className="text-xs font-medium">{t('vehDetail.insurance')}</span>
               </div>
+              <InsuranceToggle
+                insuranceStatus={localInsuranceStatus}
+                onToggle={handleInsuranceToggle}
+                disabled={updatingInsurance}
+                size="sm"
+                showLabel={false}
+                className="text-white items-end"
+                vehicleRegistration={vehicleRegistration}
+                currentPolicyId={(vehicle as any).insurancePolicyId}
+                currentPolicyName={(vehicle as any).insurancePolicyName}
+                currentPolicyExpiry={(vehicle as any).insurancePolicyExpiry}
+              />
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              {onUpdateVehicle && (
-                <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-1.5 border border-white/20">
-                  <Shield className="w-3.5 h-3.5 text-[#72A68E]" />
-                  <span className="text-xs text-[#72A68E] font-medium">{t('vehDetail.insurance')}</span>
-                  <InsuranceToggle
-  insuranceStatus={localInsuranceStatus}
-  onToggle={handleInsuranceToggle}
-  disabled={updatingInsurance}
-  size="sm"
-  showLabel={false}
-  className="text-white"
-  vehicleRegistration={vehicleRegistration}
-/>
-                </div>
-              )}
-              {/* Desktop X — bumped to match mobile (44px tap target). */}
-              <button
-                onClick={onClose}
-                className="p-2.5 rounded-lg text-[#72A68E] hover:text-white hover:bg-white/10 transition-colors"
-                aria-label={t('vehDetail.close')}
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
+          )}
 
         </div>
         {/* ════ END HEADER ════ */}
