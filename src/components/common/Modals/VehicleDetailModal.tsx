@@ -44,6 +44,7 @@ import { DamageMapper } from '@/components/common/DamageMapper/DamageMapper'
 import type { DamagePin, VehicleDiagramType } from '@/components/common/DamageMapper/DamageMapper'
 import { userProfileService } from '@/lib/firestore'
 import { stockService } from '@/lib/services/stockService'
+import { mileageService, type MileageReading } from '@/lib/services/mileageService'
 import { useAuth } from '@/contexts/AuthContext'
 import type { StockPart } from '@/types/stock'
 
@@ -348,6 +349,65 @@ function LinkedPartsSection({ registration, organizationId }: { registration: st
                 £{part.netPrice.toFixed(2)}
               </p>
               <p className="text-[10px] text-[#8a9e94]">{t('vehDetail.qty', { n: part.quantity })}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Mileage history sub-component (gold-standard odometer log, 0044) ─────────
+
+function MileageHistorySection({ registration, organizationId }: { registration: string; organizationId: string }) {
+  const t = useT()
+  const { locale } = useLang()
+  const [readings, setReadings] = useState<MileageReading[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!registration || !organizationId) { setLoading(false); return }
+    let cancelled = false
+    mileageService.getReadings(organizationId, registration, 12)
+      .then(r => { if (!cancelled) setReadings(r) })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [registration, organizationId])
+
+  if (loading || readings.length === 0) return null
+
+  const sourceLabel = (s: string) => {
+    const key = `vehDetail.mileageSource.${s}`
+    const label = t(key)
+    return label === key ? s : label
+  }
+
+  return (
+    <div className="mt-4">
+      <div className="flex items-center justify-between mb-2">
+        <SectionTitle>{t('vehDetail.mileageHistory')}</SectionTitle>
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#b3f243]/20 text-[#025940] border border-[#b3f243]/40 -mt-1">
+          <Gauge className="w-2.5 h-2.5" />
+          {t('vehDetail.mileageCurrent', { miles: readings[0].mileage.toLocaleString(locale) })}
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {readings.map(r => (
+          <div
+            key={r.id}
+            className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-700 shadow-sm"
+          >
+            <Gauge className="w-3.5 h-3.5 text-[#72A68E] flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-[#012619] dark:text-white">
+                {r.mileage.toLocaleString(locale)} {t('vehDetail.mileageUnit')}
+              </p>
+              <p className="text-[10px] text-[#8a9e94] truncate">
+                {formatDateLocale(r.recordedAt, locale, { day: 'numeric', month: 'short', year: 'numeric' })}
+                {' · '}{sourceLabel(r.source)}
+                {r.recordedByName ? ` · ${r.recordedByName}` : ''}
+              </p>
             </div>
           </div>
         ))}
@@ -725,6 +785,14 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
               {/* ── Linked one-off parts for this vehicle ── */}
               {orgId && vehicle.registration && (
                 <LinkedPartsSection
+                  registration={vehicle.registration}
+                  organizationId={orgId}
+                />
+              )}
+
+              {/* ── Mileage history timeline (0044) ── */}
+              {orgId && vehicle.registration && (
+                <MileageHistorySection
                   registration={vehicle.registration}
                   organizationId={orgId}
                 />

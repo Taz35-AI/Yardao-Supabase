@@ -21,6 +21,7 @@ import { VehicleHireService } from '@/lib/services/vehicleHireService'
 import { activityLogService } from '@/lib/services/activityLogService'
 import { settingsService } from '@/lib/services/settingsService'
 import { vehicleServiceHistoryService } from '@/lib/services/vehicleServiceHistoryService'
+import { mileageService } from '@/lib/services/mileageService'
 import { wireResyncTriggers, onReconnectRefetch } from '@/lib/realtime/resync'
 import {
   normalizeDelta,
@@ -840,10 +841,11 @@ export function useYardDataInternal(props?: UseYardDataProps) {
         try {
           const { data: row } = await supabase
             .from('checked_in_vehicles')
-            .select('registration')
+            .select('registration, vehicle_id')
             .eq('id', data.vehicleId)
             .maybeSingle()
           const reg = (row as any)?.registration || ''
+          const fleetId = (row as any)?.vehicle_id || null
 
           let serviceDueFields: {
             service_due: boolean
@@ -868,6 +870,17 @@ export function useYardDataInternal(props?: UseYardDataProps) {
             .update({ mileage: data.mileage.trim(), ...serviceDueFields, updated_at: new Date().toISOString() })
             .eq('id', data.vehicleId)
           if (mileageErr) throw mileageErr
+
+          // Append the return reading to the history log (0044).
+          await mileageService.recordReading({
+            organizationId: userOrganizationId,
+            registration: reg,
+            mileage: data.mileage,
+            source: 'quick_check_in',
+            vehicleId: fleetId,
+            recordedBy: user.uid,
+            recordedByName: userDisplayName,
+          })
         } catch (e) {
           logger.warn('Quick check-in mileage/service-due update skipped:', e)
         }
@@ -1035,6 +1048,18 @@ export function useYardDataInternal(props?: UseYardDataProps) {
         const vehicleIdForSync = existingVehicle.vehicleId || vehicleData.vehicleId
         await syncToFleet(vehicleIdForSync, normalizedReg, contractValue, contractColorValue, insuranceValue, conditionValue)
 
+        // Append the odometer reading to the history log (0044). No-op for an
+        // empty / "not available" mileage.
+        await mileageService.recordReading({
+          organizationId: userOrganizationId,
+          registration: normalizedReg,
+          mileage: vehicleData.mileage,
+          source: 'check_in',
+          vehicleId: vehicleIdForSync || null,
+          recordedBy: user.uid,
+          recordedByName: userDisplayName,
+        })
+
       } else {
         // NEW VEHICLE - create in current branch
         const auditLog = createCheckInAuditLog(userDisplayName, user.uid)
@@ -1111,6 +1136,17 @@ export function useYardDataInternal(props?: UseYardDataProps) {
 
         // Handle sync using vehicle ID if available - INCLUDING CONDITION
         await syncToFleet(fleetVehicleId, normalizedReg, contractValue, contractColorValue, insuranceValue, conditionValue)
+
+        // Append the odometer reading to the history log (0044).
+        await mileageService.recordReading({
+          organizationId: userOrganizationId,
+          registration: normalizedReg,
+          mileage: vehicleData.mileage,
+          source: 'check_in',
+          vehicleId: fleetVehicleId || null,
+          recordedBy: user.uid,
+          recordedByName: userDisplayName,
+        })
       }
     } catch (err) {
       logger.error('Check-in error:', err)
@@ -1397,6 +1433,24 @@ export function useYardDataInternal(props?: UseYardDataProps) {
         if (updError) throw updError
       }
       logger.log(`✅ Vehicle updated in branch: ${branchId}`)
+
+      // Append an edit reading to the mileage log (0044) when the odometer
+      // actually changed. recordReading no-ops on empty/non-numeric values.
+      if (
+        updates.mileage !== undefined &&
+        safeString(updates.mileage).trim() &&
+        safeString(updates.mileage) !== safeString(vehicleData.mileage)
+      ) {
+        await mileageService.recordReading({
+          organizationId: userOrganizationId,
+          registration: registration || vehicleData.registration,
+          mileage: updates.mileage,
+          source: 'edit',
+          vehicleId: vehicleData.vehicleId || null,
+          recordedBy: user.uid,
+          recordedByName: userDisplayName,
+        })
+      }
 
       // ── Activity feed: one entry per meaningful change (with the actor) ──
       {

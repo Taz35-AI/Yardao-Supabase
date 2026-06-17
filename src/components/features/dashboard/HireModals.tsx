@@ -192,7 +192,7 @@ export function QuickCheckInModal({
         if (!orgId || cancelled) return
         const [svc, histFloor] = await Promise.all([
           settingsService.getServiceSettings(orgId),
-          mileageService.getHistoricalMileageFloor(orgId, vehicle.registration || ''),
+          mileageService.getMileageFloor(orgId, vehicle.registration || ''),
         ])
         if (cancelled) return
         setSettings(svc)

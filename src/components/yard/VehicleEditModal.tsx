@@ -295,7 +295,13 @@ export function VehicleEditModal({
     const reg = vehicle.registration || ''
     if (!orgId || !reg) return
     let cancelled = false
-    mileageService.getHistoricalMileageFloor(orgId, reg)
+    // Exclude the current stay's readings (recorded at/after check-in) so a
+    // genuine correction of the live value is still possible down to the
+    // historical floor.
+    const stayStart = (vehicle as any).checkInTime || vehicle.createdAt
+    let beforeIso: string | undefined
+    try { beforeIso = stayStart ? new Date(stayStart).toISOString() : undefined } catch { beforeIso = undefined }
+    mileageService.getMileageFloor(orgId, reg, beforeIso)
       .then(f => { if (!cancelled) setMileageFloor(f) })
       .catch(() => {})
     return () => { cancelled = true }

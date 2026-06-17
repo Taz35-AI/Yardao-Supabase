@@ -38,6 +38,7 @@ import { userProfileService } from '@/lib/firestore'
 import { toCamel } from '@/lib/dbMap'
 import { logger } from '@/lib/logger'
 import { activityLogService } from '@/lib/services/activityLogService'
+import { mileageService } from '@/lib/services/mileageService'
 import { DEFAULT_LABOUR_RATE, type Invoice } from '@/types/stock'
 import { buildInvoiceDraft } from '@/utils/serviceBookings/invoiceFromBooking'
 
@@ -899,6 +900,20 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
           })
           .eq('id', booking.id)
         if (bookingUpdateError) throw bookingUpdateError
+
+        // Append the service odometer reading to the mileage log (0044) so it
+        // feeds the anti-clocking floor + per-vehicle timeline. Best-effort.
+        if (typeof mileage === 'number' && !Number.isNaN(mileage) && mileage > 0) {
+          await mileageService.recordReading({
+            organizationId,
+            registration: booking.registration || '',
+            mileage,
+            source: 'service',
+            recordedBy: user.uid,
+            recordedByName: user.displayName || user.email || 'Unknown User',
+            notes: 'Service completed',
+          })
+        }
 
         activityLogService.log({
           organizationId, actorId: user.uid, actorName: user.displayName || user.email || 'Unknown User',

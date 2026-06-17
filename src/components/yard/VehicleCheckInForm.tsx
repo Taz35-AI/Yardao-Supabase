@@ -285,7 +285,7 @@ export function VehicleCheckInForm({
     if (!reg) return
     floorCheckRef.current = setTimeout(async () => {
       try {
-        setMileageFloor(await mileageService.getHistoricalMileageFloor(organizationId, reg))
+        setMileageFloor(await mileageService.getMileageFloor(organizationId, reg))
       } catch {
         /* advisory — never block on a lookup error */
       }
