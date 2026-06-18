@@ -950,7 +950,7 @@ a:focus-visible {
   position: absolute;
   left: max(16px, calc((100% - 1180px) / 2));
   top: 26px;
-  color: rgba(0, 51, 39, 0.04);
+  color: rgba(255, 159, 18, 0.06);
   font-size: clamp(4rem, 10vw, 9.5rem);
   font-weight: 950;
   line-height: 0.8;
@@ -1168,7 +1168,7 @@ a:focus-visible {
   position: absolute;
   left: max(72px, calc((100% - 1180px) / 2 + 84px));
   top: clamp(660px, 78%, 840px);
-  color: rgba(0, 51, 39, 0.038);
+  color: rgba(255, 159, 18, 0.06);
   font-size: clamp(6rem, 15vw, 13.5rem);
   font-weight: 950;
   line-height: 0.8;
@@ -1895,7 +1895,7 @@ a:focus-visible {
   position: absolute;
   right: max(18px, calc((100% - 1180px) / 2));
   top: 20px;
-  color: rgba(179, 242, 67, 0.035);
+  color: rgba(255, 159, 18, 0.08);
   font-size: clamp(4.5rem, 12vw, 11rem);
   font-weight: 950;
   line-height: 1;
@@ -2164,7 +2164,7 @@ a:focus-visible {
   position: absolute;
   left: max(18px, calc((100% - 1180px) / 2));
   top: 50px;
-  color: rgba(0, 51, 39, 0.045);
+  color: rgba(255, 159, 18, 0.06);
   font-size: clamp(4.5rem, 13vw, 12rem);
   font-weight: 950;
   line-height: 0.8;
@@ -3171,7 +3171,7 @@ a:focus-visible {
   position: absolute;
   left: max(18px, calc((100% - 1180px) / 2));
   top: 58px;
-  color: rgba(0, 61, 45, 0.045);
+  color: rgba(255, 159, 18, 0.06);
   font-size: clamp(4.5rem, 13vw, 12rem);
   font-weight: 950;
   line-height: 0.8;
@@ -4994,7 +4994,7 @@ a:focus-visible {
   position: absolute;
   right: max(16px, calc((100% - 1180px) / 2));
   top: 34px;
-  color: rgba(0, 51, 39, 0.045);
+  color: rgba(255, 159, 18, 0.06);
   font-size: clamp(4.2rem, 11vw, 10rem);
   font-weight: 950;
   line-height: 0.8;
@@ -5981,7 +5981,7 @@ a:focus-visible {
     left: 28px;
     top: 62%;
     font-size: clamp(4.4rem, 26vw, 7.5rem);
-    color: rgba(0, 51, 39, 0.032);
+    color: rgba(255, 159, 18, 0.06);
   }
 
   .zao-section h2 {
