@@ -15,6 +15,21 @@
   }
 }
 
+/* 🍏 iOS perf — backdrop-filter kill-switch ──────────────────────────────
+   `backdrop-filter` (Tailwind `backdrop-blur-*`, inline backdrop-filter) is
+   extremely expensive on WebKit and tanks scroll/animation framerate on iOS
+   even on high-end iPhones. A tiny head script tags <html class="kill-blur">
+   on iOS only; this strips every blur there while desktop keeps the glass
+   look. Translucent backgrounds stay, so the UI is visually ~unchanged.
+   To A/B test: remove the class (or the script) and the blur returns.
+   ─────────────────────────────────────────────────────────────────────── */
+html.kill-blur *,
+html.kill-blur *::before,
+html.kill-blur *::after {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
 /* 🔧 CRITICAL: STATUS BAR SPACING CLASSES */
 .pt-status-bar {
   padding-top: env(safe-area-inset-top, 24px);

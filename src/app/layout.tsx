@@ -63,7 +63,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Yardao',
+    title: 'Yardao',
   },
   openGraph: {
     type: 'website',
@@ -128,6 +128,16 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        {/* iOS perf kill-switch: backdrop-filter (frosted glass) is very
+            expensive on WebKit even on high-end iPhones. Tag <html> with
+            `kill-blur` on iOS so globals.css can neutralise it there while
+            desktop keeps the glass look. Runs before paint → no flash. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var u=navigator.userAgent||'';var ios=/iPad|iPhone|iPod/.test(u)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);if(ios)document.documentElement.classList.add('kill-blur');}catch(e){}`,
+          }}
+        />
+
         {/* PWA Configuration */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
