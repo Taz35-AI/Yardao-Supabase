@@ -22,7 +22,7 @@ export function VehicleSearchDropdown({
           onClick={() => onVehicleSelect(vehicle)}
           className="w-full text-left px-3 py-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 flex items-center justify-between border-b border-emerald-100 dark:border-emerald-700 last:border-b-0 text-sm"
         >
-          <span className="font-medium">{vehicle.registration}</span>
+          <span className="font-medium text-[#012619] dark:text-white">{vehicle.registration}</span>
           <span className="text-xs text-gray-500 dark:text-gray-400">
             {vehicle.make} {vehicle.model}
           </span>
