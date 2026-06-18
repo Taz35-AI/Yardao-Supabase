@@ -848,12 +848,13 @@ function ServiceBannerComponent() {
         data-service-banner
         className={`
           fixed z-40
-          top-[calc(5rem+env(safe-area-inset-top,0px))] left-1/2 -translate-x-1/2
-          w-[calc(100%-16px)]
-          md:top-2 md:w-[360px]
+          left-2 right-24
+          bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))]
+          md:left-1/2 md:right-auto md:-translate-x-1/2
+          md:bottom-auto md:top-2 md:w-[360px]
           transition-all duration-500 ease-out
           ${isAnimating
-            ? 'opacity-0 -translate-y-full pointer-events-none'
+            ? 'opacity-0 translate-y-3 pointer-events-none'
             : 'opacity-100 translate-y-0'
           }
         `}

@@ -1490,12 +1490,16 @@ useEffect(() => {
         <div style={{
           position: 'fixed',
           bottom: isMobile ? `${bottomOffset + 80}px` : `${bottomOffset + 84}px`,
-          // Desktop: anchor the panel bottom-left; mobile: bottom (unchanged).
+          // Desktop: anchor bottom-left by the sidebar. Mobile: a compact panel
+          // anchored bottom-right (under the Zao button), capped so it never
+          // spans the full width or runs off the top of the screen.
           right: isMobile ? '12px' : 'auto',
-          left: isMobile ? '12px' : '280px',
+          left: isMobile ? 'auto' : '280px',
           top: 'auto',
-          width: isMobile ? 'auto' : '380px',
-          maxHeight: isMobile ? 'calc(100dvh - 160px)' : '540px',
+          width: isMobile ? 'min(330px, calc(100vw - 24px))' : '380px',
+          // Height is bounded by the space above the panel's bottom anchor minus
+          // a top gap (status bar / notch) so the top is always on-screen.
+          maxHeight: isMobile ? `calc(100dvh - ${bottomOffset + 80 + 64}px)` : '540px',
           borderRadius: 18,
           background: `linear-gradient(160deg, #013d2a 0%, ${C.darkGreen} 100%)`,
           border: `1px solid ${C.borderBright}`,
@@ -1574,9 +1578,9 @@ useEffect(() => {
             {conversation.length === 0 && (
               <div style={{
                 textAlign: 'center', color: C.textMuted, fontSize: 12,
-                marginTop: 40, lineHeight: 1.8,
+                marginTop: 8, lineHeight: 1.8,
               }}>
-                <div style={{ fontSize: 28, marginBottom: 8 }}>⚡</div>
+                <div style={{ fontSize: 24, marginBottom: 6 }}>⚡</div>
                 <div style={{ color: C.textLight, fontWeight: 600, marginBottom: 6 }}>Zao — Fleet Intelligence</div>
                 <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 12, lineHeight: 1.6 }}>
                   Your AI assistant for yard operations.
@@ -1605,32 +1609,6 @@ useEffect(() => {
                         <span>{text}</span>
                       </div>
                       <span style={{ fontSize: 10, color: C.accent, fontWeight: 700 }}>TAP →</span>
-                    </div>
-                  ))}
-
-                  {/* Divider */}
-                  <div style={{ borderTop: `1px solid ${C.border}`, margin: '4px 0', opacity: 0.5 }} />
-
-                  {/* Example showcase chips — display only */}
-                  <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    You can also ...
-                  </div>
-                  {([
-                    ['🎤', 'Long-press my icon for voice commands'],
-                    ['🏭', 'What vehicles are at external garages?'],
-                    ['🌤️', "What's the weather in London?"],
-                    ['📋', 'Remind me to call insurance tomorrow at 10am'],
-                    ['📅', 'Any bookings for next Friday?'],
-                  ] as [string, string][]).map(([icon, text], i) => (
-                    
-                    <div key={i} style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      background: 'transparent', border: `1px dashed ${C.border}`,
-                      borderRadius: 8, padding: '6px 10px',
-                      fontSize: 11, color: C.textMuted,
-                    }}>
-                      <span style={{ fontSize: 13 }}>{icon}</span>
-                      <span style={{ fontStyle: 'italic' }}>{text}</span>
                     </div>
                   ))}
                 </div>

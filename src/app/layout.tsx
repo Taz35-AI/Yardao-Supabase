@@ -8,6 +8,7 @@ import { SpeechEnabledGroqAssistant } from '@/components/common/SpeechEnabledGro
 import { ZaoGuard } from '@/components/common/ZaoGuard'
 // PasswordResetGuard is kept as a fallback (forced-reset flow), no longer auto-mounted.
 import { TempPasswordNotice } from '@/components/common/TempPasswordNotice'
+import CapacitorRouterBridge from '@/components/common/CapacitorRouterBridge'
 
 // ─── Fonts ────────────────────────────────────────────────────────────────────
 // Geist: clean, geometric, excellent at all weights on mobile and desktop
@@ -227,6 +228,10 @@ export default function RootLayout({
       <body className={`${geist.variable} ${dmMono.variable} font-sans antialiased`} suppressHydrationWarning>
         {/* ✅ SINGLE CONDITIONAL WRAPPER - Handles auth vs dashboard page logic */}
         <ConditionalProviders>
+          {/* Native (Capacitor) only: routes in-app link taps through Next's
+              client-side router so the WebView never does a full reload that
+              the static file server would mis-resolve to the homepage. */}
+          <CapacitorRouterBridge />
           {children}
           {/* ✅ Zao AI assistant — only shown when user is signed in */}
           <ZaoGuard />
