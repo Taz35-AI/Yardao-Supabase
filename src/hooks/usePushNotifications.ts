@@ -10,6 +10,7 @@ import { PushNotifications } from '@capacitor/push-notifications'
 import { LocalNotifications } from '@capacitor/local-notifications'
 import { Capacitor } from '@capacitor/core'
 import { useAuth } from '@/contexts/AuthContext'
+import { appNavigate } from '@/lib/nav'
 import { supabase } from '@/lib/supabaseClient'
 import { logger } from '@/lib/logger'
 
@@ -258,10 +259,10 @@ export function usePushNotifications() {
     
     if (data?.type === 'service_today' || data?.type === 'service_created') {
       logger.log('🚗 [NAVIGATION] Navigating to /bookings')
-      window.location.href = '/bookings'
+      appNavigate('/bookings')
     } else if (data?.type === 'mot_expired' || data?.type === 'mot_expiring') {
       logger.log('🚗 [NAVIGATION] Navigating to /fleet')
-      window.location.href = '/fleet'
+      appNavigate('/fleet')
     } else {
       logger.log('🚗 [NAVIGATION] No specific navigation for notification type:', data?.type)
     }

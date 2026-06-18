@@ -27,9 +27,26 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Capacitor } from '@capacitor/core'
+import { registerNativePush, appNavigate } from '@/lib/nav'
 
 export default function CapacitorRouterBridge() {
   const router = useRouter()
+
+  // Expose the client-side router to non-component code (contexts/hooks/services)
+  // via appNavigate(), so programmatic navigations (logout, auto-logout, push
+  // deep links) also avoid a full WebView reload on native.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+    registerNativePush((href) => router.push(href))
+    return () => registerNativePush(null)
+  }, [router])
+
+  // Also expose appNavigate on window for injected-HTML handlers (e.g. the
+  // inactivity-warning modal's inline onclick) that can't import a module.
+  // Safe on web — appNavigate falls back to a normal window.location there.
+  useEffect(() => {
+    ;(window as any).__appNavigate = appNavigate
+  }, [])
 
   useEffect(() => {
     // Native shells only. On the web, leave Next.js navigation 100% untouched.

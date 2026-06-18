@@ -9,6 +9,7 @@ import { useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 import { logger } from '@/lib/logger'
+import { appNavigate } from '@/lib/nav'
 
 interface UseAutoLogoutOptions {
   timeoutMinutes?: number
@@ -59,7 +60,7 @@ export function useAutoLogout({
       
     } catch (error) {
       logger.error('❌ Logout failed:', error)
-      window.location.href = '/login?reason=timeout'
+      appNavigate('/login?reason=timeout')
     }
   }, [logout, router])
 
@@ -186,7 +187,7 @@ export function useAutoLogout({
         </button>
         
         <button 
-          onclick="window.location.href='/login'" 
+          onclick="(window.__appNavigate||function(h){window.location.href=h})('/login')"
           style="
             background: transparent;
             color: #6b7280;

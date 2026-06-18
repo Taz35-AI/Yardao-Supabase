@@ -2,6 +2,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
+import { appNavigate } from '@/lib/nav'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { 
@@ -44,7 +45,7 @@ export default function OfflinePage() {
       })
       
       // If successful, redirect to home
-      window.location.href = '/'
+      appNavigate('/')
     } catch (error) {
       // Still offline, show error
       setTimeout(() => setIsRetrying(false), 1000)
@@ -52,7 +53,7 @@ export default function OfflinePage() {
   }
 
   const goHome = () => {
-    window.location.href = '/'
+    appNavigate('/')
   }
 
   return (

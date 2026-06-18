@@ -3,6 +3,7 @@ import { PushNotifications, Token, ActionPerformed } from '@capacitor/push-notif
 import { Capacitor } from '@capacitor/core'
 import { supabase } from '@/lib/supabaseClient'
 import { logger } from '@/lib/logger'
+import { appNavigate } from '@/lib/nav'
 
 export class PushNotificationService {
   private static instance: PushNotificationService
@@ -71,7 +72,7 @@ export class PushNotificationService {
         const data = action.notification.data
         if (data?.type === 'service_booking') {
           // Navigate to service bookings page
-          window.location.href = '/dashboard/service-booking'
+          appNavigate('/dashboard/service-booking')
         }
       })
 

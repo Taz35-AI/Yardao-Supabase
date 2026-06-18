@@ -14,6 +14,7 @@ import { completePendingOrgSetup } from '@/lib/orgSetup'
 import { PushNotifications } from '@capacitor/push-notifications'
 import { LocalNotifications } from '@capacitor/local-notifications'
 import { Capacitor } from '@capacitor/core'
+import { appNavigate } from '@/lib/nav'
 import { logger } from '@/lib/logger'
 
 // Firebase-User-compatible projection of a Supabase user.
@@ -212,9 +213,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const handleNotificationTap = (data: any) => {
     if (!data) return
     if (data.type === 'service_today' || data.type === 'service_created') {
-      window.location.href = '/bookings'
+      appNavigate('/bookings')
     } else if (data.type === 'mot_expired' || data.type === 'mot_expiring') {
-      window.location.href = '/fleet'
+      appNavigate('/fleet')
     }
   }
 
@@ -419,10 +420,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null)
       uidRef.current = null
       await supabase.auth.signOut()
-      if (typeof window !== 'undefined') window.location.href = '/login'
+      appNavigate('/login')
     } catch (error) {
       logger.error('Logout error:', error)
-      if (typeof window !== 'undefined') window.location.href = '/login'
+      appNavigate('/login')
     }
   }
 

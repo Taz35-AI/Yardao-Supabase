@@ -4,8 +4,9 @@
 import { useState, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { 
-  LayoutDashboard, 
+import { appNavigate } from '@/lib/nav'
+import {
+  LayoutDashboard,
   Car, 
   History, 
   Settings, 
@@ -98,9 +99,7 @@ export function useNavigation() {
     } catch (error) {
       logger.error('Error signing out:', error)
       // Force redirect even on error as a fallback
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login'
-      }
+      appNavigate('/login')
     }
   }
 
