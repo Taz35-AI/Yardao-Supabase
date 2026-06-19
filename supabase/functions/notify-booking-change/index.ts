@@ -92,9 +92,17 @@ async function notifyOrgUsers(
   return rows.length
 }
 
+// YYYY-MM-DD → DD/MM/YYYY (UK/EU). Other formats pass through unchanged.
+function euDate(d: unknown): string {
+  if (!d) return ''
+  const s = String(d).slice(0, 10)
+  const [y, m, day] = s.split('-')
+  return y && m && day ? `${day}/${m}/${y}` : s
+}
+
 function whenText(b: any): string {
-  const date = b?.date ? ` on ${b.date}` : ''
-  const time = b?.time_slot ? ` at ${b.time_slot}` : ''
+  const date = b?.date ? ` on ${euDate(b.date)}` : ''
+  const time = b?.time_slot ? ` at ${b.time_slot}` : '' // time_slot is already 24h HH:MM
   return `${date}${time}`
 }
 
@@ -130,24 +138,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const when = whenText(b)
     const data = { bookingId: String(b?.id ?? ''), registration: String(reg) }
     const T = 'service_booking' // matches the app's notification tap router
+    // "who did it" suffix — the app writes the actor name on each action
+    // (created_by_name / last_modified_by_name / cancelled_by_name / completed_by_name).
+    const by = (name?: unknown) => (name ? ` — by ${String(name)}` : '')
 
     let payload:
       | { type: string; title: string; message: string; priority: 'high' | 'medium' | 'low'; data?: Record<string, unknown> }
       | null = null
 
     if (event === 'INSERT') {
-      payload = { type: T, title: '🗓️ New Service Booking', message: `${reg} booked for service${when}`, priority: 'medium', data }
+      payload = { type: T, title: '🗓️ New Service Booking', message: `${reg} booked for service${when}${by(rec?.created_by_name)}`, priority: 'medium', data }
     } else if (event === 'DELETE') {
-      payload = { type: T, title: '🗑️ Booking Removed', message: `${reg}'s service booking was removed`, priority: 'medium', data }
+      payload = { type: T, title: '🗑️ Booking Removed', message: `${reg}'s service booking was removed${by(old?.last_modified_by_name)}`, priority: 'medium', data }
     } else if (event === 'UPDATE') {
       const statusChanged = rec?.status !== old?.status
       if (statusChanged && rec?.status === 'completed') {
-        payload = { type: T, title: '✅ Service Completed', message: `${reg}'s service is complete`, priority: 'medium', data }
+        payload = { type: T, title: '✅ Service Completed', message: `${reg}'s service is complete${by(rec?.completed_by_name)}`, priority: 'medium', data }
       } else if (statusChanged && rec?.status === 'cancelled') {
-        payload = { type: T, title: '🚫 Booking Cancelled', message: `${reg}'s service booking was cancelled`, priority: 'medium', data }
+        payload = { type: T, title: '🚫 Booking Cancelled', message: `${reg}'s service booking was cancelled${by(rec?.cancelled_by_name)}`, priority: 'medium', data }
       } else if (Number(rec?.slot_count) !== Number(old?.slot_count)) {
         const n = Number(rec?.slot_count) || 1
-        payload = { type: T, title: '🕒 Booking Length Changed', message: `${reg}'s service is now ${n} slot${n === 1 ? '' : 's'}${when}`, priority: 'low', data }
+        payload = { type: T, title: '🕒 Booking Length Changed', message: `${reg}'s service is now ${n} slot${n === 1 ? '' : 's'}${when}${by(rec?.last_modified_by_name)}`, priority: 'low', data }
       } else {
         // Only notify when something meaningful changed — ignore updated_at-only
         // touches and bookkeeping fields so the feed isn't spammy.
@@ -158,7 +169,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         ]
         const changed = keys.some((k) => JSON.stringify(rec?.[k]) !== JSON.stringify(old?.[k]))
         if (changed) {
-          payload = { type: T, title: '✏️ Booking Updated', message: `${reg}'s service booking was updated${when}`, priority: 'low', data }
+          payload = { type: T, title: '✏️ Booking Updated', message: `${reg}'s service booking was updated${when}${by(rec?.last_modified_by_name)}`, priority: 'low', data }
         }
       }
     }
