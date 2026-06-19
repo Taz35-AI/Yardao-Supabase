@@ -145,6 +145,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
         payload = { type: T, title: '✅ Service Completed', message: `${reg}'s service is complete`, priority: 'medium', data }
       } else if (statusChanged && rec?.status === 'cancelled') {
         payload = { type: T, title: '🚫 Booking Cancelled', message: `${reg}'s service booking was cancelled`, priority: 'medium', data }
+      } else if (Number(rec?.slot_count) !== Number(old?.slot_count)) {
+        const n = Number(rec?.slot_count) || 1
+        payload = { type: T, title: '🕒 Booking Length Changed', message: `${reg}'s service is now ${n} slot${n === 1 ? '' : 's'}${when}`, priority: 'low', data }
       } else {
         // Only notify when something meaningful changed — ignore updated_at-only
         // touches and bookkeeping fields so the feed isn't spammy.
