@@ -23,6 +23,21 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { handlePreflight, json } from '../_shared/cors.ts'
 import { sendFcm } from '../_shared/fcm.ts'
 
+// Accept the exact service_role key OR any Supabase-issued service_role JWT (the
+// Edge gateway verifies the signature first) — tolerant of legacy-vs-new
+// service_role key strings differing between caller (cron / manual curl) and env.
+function isServiceRole(token: string, serviceKey: string): boolean {
+  if (!token) return false
+  if (serviceKey && token === serviceKey) return true
+  try {
+    let p = token.split('.')[1]
+    if (!p) return false
+    p = p.replace(/-/g, '+').replace(/_/g, '/')
+    while (p.length % 4) p += '='
+    return JSON.parse(atob(p))?.role === 'service_role'
+  } catch { return false }
+}
+
 // ── date helpers (ported from functions/src/utils.ts, UTC) ───────────────────
 function getTodayString(): string {
   const now = new Date()
@@ -302,7 +317,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // Only the service-role bearer (passed by pg_cron) may run these jobs.
     const authHeader = req.headers.get('Authorization') ?? ''
     const token = authHeader.replace(/^Bearer\s+/i, '')
-    if (!token || token !== serviceKey) {
+    if (!isServiceRole(token, serviceKey)) {
       return json({ error: 'Forbidden.' }, 403)
     }
 
