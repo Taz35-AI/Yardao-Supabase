@@ -21,6 +21,26 @@ import { sendFcm } from '../_shared/fcm.ts'
 
 type Admin = ReturnType<typeof createClient>
 
+// Accept the caller if the bearer is the service_role key (exact match) OR any
+// Supabase-issued service_role JWT. The Edge gateway verifies the JWT signature
+// before this function runs, so trusting the decoded `role` is safe — and it
+// tolerates the webhook's service_role token string differing from the
+// function's SUPABASE_SERVICE_ROLE_KEY (legacy-vs-new key formats).
+function isServiceRole(token: string, serviceKey: string): boolean {
+  if (!token) return false
+  if (serviceKey && token === serviceKey) return true
+  try {
+    let p = token.split('.')[1]
+    if (!p) return false
+    p = p.replace(/-/g, '+').replace(/_/g, '/')
+    while (p.length % 4) p += '='
+    const payload = JSON.parse(atob(p))
+    return payload?.role === 'service_role'
+  } catch {
+    return false
+  }
+}
+
 function toFcmData(type: string, data?: Record<string, unknown>): Record<string, string> {
   const out: Record<string, string> = { type }
   for (const [k, v] of Object.entries(data ?? {})) out[k] = String(v)
@@ -87,17 +107,24 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 
     const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
-    if (!token || token !== serviceKey) return json({ error: 'Forbidden.' }, 403)
+    if (!isServiceRole(token, serviceKey)) {
+      console.warn('notify-booking-change: 403 — bearer is not a service_role token')
+      return json({ error: 'Forbidden.' }, 403)
+    }
 
     // Supabase webhook payload: { type:'INSERT'|'UPDATE'|'DELETE', record, old_record, table, schema }
     const body = await req.json().catch(() => ({}))
     const event = String(body?.type ?? '')
+    console.log('notify-booking-change: received event', event, 'table', String(body?.table ?? ''))
     const rec = body?.record ?? {}
     const old = body?.old_record ?? {}
     const b = event === 'DELETE' ? old : rec
 
     const organizationId = b?.organization_id
-    if (!organizationId) return json({ ok: true, skipped: 'no organization_id' })
+    if (!organizationId) {
+      console.warn('notify-booking-change: skipped — no organization_id on payload', JSON.stringify(body).slice(0, 300))
+      return json({ ok: true, skipped: 'no organization_id' })
+    }
 
     const reg = b?.registration || 'A vehicle'
     const when = whenText(b)
@@ -133,10 +160,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    if (!payload) return json({ ok: true, skipped: 'no meaningful change' })
+    if (!payload) {
+      console.log('notify-booking-change: skipped — no meaningful change for', event)
+      return json({ ok: true, skipped: 'no meaningful change' })
+    }
 
     const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
     const notified = await notifyOrgUsers(admin, organizationId, payload)
+    console.log(`notify-booking-change: ${event} for ${reg} → notified ${notified} user(s)`)
     return json({ ok: true, event, notified })
   } catch (e) {
     console.error('notify-booking-change failed:', e)
