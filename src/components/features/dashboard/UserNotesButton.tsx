@@ -1162,9 +1162,9 @@ export function UserNotesButton({ className = '' }: UserNotesButtonProps) {
         </button>
 
         {isOpen && (
-          <div className="fixed inset-0 z-[200] flex flex-col justify-end">
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onPointerDown={() => setIsOpen(false)} />
-            <div className="relative bg-white dark:bg-[#012619] rounded-t-2xl shadow-2xl border-t border-[#72A68E]/30 dark:border-[#025940] flex flex-col max-h-[85vh]" onPointerDown={e => e.stopPropagation()}>
+          <div className="fixed inset-0 z-[200] flex flex-col justify-end p-3">
+            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onPointerDown={() => setIsOpen(false)} />
+            <div className="relative w-full max-w-md mx-auto bg-white dark:bg-[#012619] rounded-2xl shadow-2xl border border-[#72A68E]/30 dark:border-[#025940] flex flex-col max-h-[85vh]" onPointerDown={e => e.stopPropagation()}>
               <div className="flex justify-center pt-2 pb-1 flex-shrink-0">
                 <div className="w-10 h-1 bg-gray-300 dark:bg-[#025940] rounded-full" />
               </div>
