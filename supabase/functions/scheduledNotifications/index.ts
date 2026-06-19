@@ -43,6 +43,11 @@ function getDaysDifference(dateString: string): number {
 // closest equivalents that represent an in-service vehicle.
 const ACTIVE_STATUSES = new Set(['in_fleet', 'checked_in', 'external_service'])
 
+// MOT reminder cadence — flag a vehicle at these exact "days remaining"
+// milestones (in addition to expired + expiring-today), instead of every day,
+// so users get 14/7/3/1-day nudges rather than a daily stream.
+const MOT_REMINDER_DAYS = [14, 7, 3, 1]
+
 type Admin = ReturnType<typeof createClient>
 
 /**
@@ -132,7 +137,7 @@ async function runMotExpirations(admin: Admin): Promise<Record<string, unknown>>
       const days = getDaysDifference(String(veh.mot_expiry))
       if (days < 0) expired.push(veh.registration)
       else if (days === 0) expiringToday.push(veh.registration)
-      else if (days <= 7) {
+      else if (MOT_REMINDER_DAYS.includes(days)) {
         if (!expiringSoonByDays.has(days)) expiringSoonByDays.set(days, [])
         expiringSoonByDays.get(days)!.push(veh.registration)
       }
