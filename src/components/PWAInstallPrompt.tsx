@@ -2,9 +2,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
-import { Button } from '@/components/ui/Button'
-import { X, Download, Smartphone, Monitor } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/Card'
+import { X, Download, Share } from 'lucide-react'
 import { logger } from '@/lib/logger'
 
 interface BeforeInstallPromptEvent extends Event {
@@ -113,6 +111,14 @@ export function PWAInstallPrompt() {
     }
   }, [userDismissed, isInstalled, isInStandaloneMode])
 
+  // iOS Safari never fires beforeinstallprompt, so surface the "Add to Home
+  // Screen" hint ourselves (when not already installed / not dismissed).
+  useEffect(() => {
+    if (!isIOS || isInStandaloneMode || isInstalled || userDismissed) return
+    const t = setTimeout(() => setShowInstallPrompt(true), 5000)
+    return () => clearTimeout(t)
+  }, [isIOS, isInStandaloneMode, isInstalled, userDismissed])
+
   const handleInstallClick = useCallback(async () => {
     if (!deferredPrompt) {
       logger.log('No deferred prompt available')
@@ -157,112 +163,81 @@ export function PWAInstallPrompt() {
     return null
   }
 
+  // Shared: a big, obvious close button (≥44px tap target) so it's easy to dismiss.
+  const CloseButton = (
+    <button
+      onClick={handleDismiss}
+      aria-label="Dismiss"
+      className="absolute top-2 right-2 p-2.5 rounded-full text-gray-400 hover:text-gray-700 dark:text-[#72A68E] dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#025940]/40 transition-colors"
+    >
+      <X className="w-5 h-5" />
+    </button>
+  )
+
   return (
     <>
-      {/* Main Install Prompt */}
-      {showInstallPrompt && deferredPrompt && (
-        <div className="fixed bottom-4 left-4 right-4 z-50 md:left-auto md:right-4 md:max-w-md">
-          <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
-            <CardContent className="p-4">
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0">
-                  <div className="w-10 h-10 bg-blue-100 dark:bg-blue-800 rounded-lg flex items-center justify-center">
-                    <Download className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                  </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-sm text-gray-900 dark:text-white">
-                    Install Yardao
-                  </h3>
-                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
-                    Get quick access and work offline. Install our app for the best fleet management experience!
-                  </p>
-                  <div className="flex items-center gap-2 mt-3">
-                    <Button
-                      onClick={handleInstallClick}
-                      size="sm"
-                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5"
-                    >
-                      <Download className="w-3 h-3 mr-1.5" />
-                      Install
-                    </Button>
-                    <Button
-                      onClick={handleDismiss}
-                      variant="ghost"
-                      size="sm"
-                      className="text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 text-xs px-2 py-1.5"
-                    >
-                      Not now
-                    </Button>
-                  </div>
-                </div>
-                <Button
-                  onClick={handleDismiss}
-                  variant="ghost"
-                  size="sm"
-                  className="flex-shrink-0 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
+      {/* Install prompt (Android / Chromium) — branded, bottom-anchored, above
+          the daily banner, clear of the safe-area + easy to dismiss. */}
+      {showInstallPrompt && deferredPrompt && !isIOS && (
+        <div
+          className="fixed inset-x-3 bottom-3 z-[70] mx-auto max-w-md"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        >
+          <div className="relative bg-white dark:bg-[#012619] rounded-2xl shadow-2xl border border-[#72A68E]/30 dark:border-[#025940] p-4">
+            {CloseButton}
+            <div className="flex items-start gap-3 pr-8">
+              <img src="/web-app-manifest-192x192.png" alt="Yardao" className="w-11 h-11 rounded-xl flex-shrink-0 shadow-sm" />
+              <div className="min-w-0">
+                <h3 className="font-bold text-sm text-[#012619] dark:text-white">Install Yardao</h3>
+                <p className="text-xs text-gray-600 dark:text-[#C5D9D0] mt-0.5 leading-relaxed">
+                  Quick access from your home screen — works offline.
+                </p>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+            <div className="flex items-center gap-2 mt-3">
+              <button
+                onClick={handleInstallClick}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 bg-[#025940] hover:bg-[#012619] text-white text-sm font-semibold py-2.5 rounded-xl transition-colors"
+              >
+                <Download className="w-4 h-4" /> Install
+              </button>
+              <button
+                onClick={handleDismiss}
+                className="px-4 py-2.5 text-sm font-medium text-gray-500 dark:text-[#72A68E] hover:bg-gray-100 dark:hover:bg-[#025940]/30 rounded-xl transition-colors"
+              >
+                Not now
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* iOS Install Instructions */}
+      {/* iOS "Add to Home Screen" hint — branded (iOS can't auto-install). */}
       {showInstallPrompt && isIOS && (
-        <div className="fixed bottom-4 left-4 right-4 z-50 md:left-auto md:right-4 md:max-w-md">
-          <Card className="bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-            <CardContent className="p-4">
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0">
-                  <div className="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center">
-                    <Smartphone className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-                  </div>
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-sm text-gray-900 dark:text-white">
-                    Install Yardao
-                  </h3>
-                  <div className="text-xs text-gray-600 dark:text-gray-300 mt-1">
-                    <p>Tap the share button below and then "Add to Home Screen"</p>
-                    <div className="mt-2 text-xs bg-gray-100 dark:bg-gray-700 p-2 rounded">
-                      1. Tap <span className="font-mono">□</span> Share button<br/>
-                      2. Scroll and tap "Add to Home Screen"<br/>
-                      3. Tap "Add" to confirm
-                    </div>
-                  </div>
-                </div>
-                <Button
-                  onClick={handleDismiss}
-                  variant="ghost"
-                  size="sm"
-                  className="flex-shrink-0 p-1 text-gray-400 hover:text-gray-600"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
+        <div
+          className="fixed inset-x-3 bottom-3 z-[70] mx-auto max-w-md"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        >
+          <div className="relative bg-white dark:bg-[#012619] rounded-2xl shadow-2xl border border-[#72A68E]/30 dark:border-[#025940] p-4">
+            {CloseButton}
+            <div className="flex items-start gap-3 pr-8">
+              <img src="/web-app-manifest-192x192.png" alt="Yardao" className="w-11 h-11 rounded-xl flex-shrink-0 shadow-sm" />
+              <div className="min-w-0">
+                <h3 className="font-bold text-sm text-[#012619] dark:text-white">Add Yardao to your Home Screen</h3>
+                <p className="text-xs text-gray-600 dark:text-[#C5D9D0] mt-1 leading-relaxed">
+                  Tap the <Share className="inline w-3.5 h-3.5 -mt-0.5" /> <span className="font-semibold">Share</span> icon, then <span className="font-semibold">“Add to Home Screen”</span>.
+                </p>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+            <button
+              onClick={handleDismiss}
+              className="mt-3 w-full py-2.5 text-sm font-semibold text-[#025940] dark:text-[#72A68E] bg-[#025940]/10 dark:bg-[#025940]/20 hover:bg-[#025940]/20 rounded-xl transition-colors"
+            >
+              Got it
+            </button>
+          </div>
         </div>
       )}
-
-      {/* REMOVED: Development/Fallback Manual Install Button - this was the persistent button */}
-      {/* 
-      {showManualInstallButton && (
-        <div className="fixed bottom-20 right-4 z-40">
-          <Button
-            onClick={deferredPrompt ? handleInstallClick : () => setShowInstallPrompt(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg"
-            size="sm"
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Install Yardao
-          </Button>
-        </div>
-      )}
-      */}
     </>
   )
 }
