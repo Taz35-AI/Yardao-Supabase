@@ -1,0 +1,49 @@
+Yardao is the all-in-one app for running a busy vehicle yard. Check vehicles in, book and track services, manage parts and stock, raise invoices, and stay on top of MOT and road tax, all from your phone while your team keeps moving.
+
+Built for fleet operators, vehicle rental and hire businesses, garages, bodyshops and trade yards that need one clear view of every vehicle.
+
+WHAT YOU CAN DO
+
+Yard at a glance
+- See every vehicle by status: ready, pending checks, repairs needed, on hire and more.
+- Search by registration, make, colour, contract or status, or any combination.
+- Multi branch ready: switch between sites and keep each yard organised.
+
+Fast check-in
+- Check a vehicle in seconds and capture its mileage.
+- Scan registration plates with the camera.
+- Record condition with a visual damage map and photos.
+
+Servicing and bookings
+- Book, reschedule and complete services with assigned mechanics and bays.
+- Get notified when a booking is created, changed, cancelled or completed.
+- Keep a full service history for every vehicle.
+
+Compliance you can trust
+- Automatic MOT reminders at 14, 7, 3 and 1 days before expiry, plus expired alerts.
+- Road tax and insurance kept in view so nothing slips through.
+- Live DVLA and DVSA vehicle data, including outstanding recalls.
+
+Parts and stock
+- Track parts, suppliers and stock levels.
+- Scan parts out against a registration and see exactly who used what and when.
+- Build per job parts lists for accurate invoicing.
+
+Invoicing
+- Raise professional invoices for parts and labour in a few taps.
+- Add your own company details and logo.
+- Export your records to Excel.
+
+Zao, your built-in assistant
+- Ask Zao to book a service, move a vehicle, update mileage and more, by voice or text.
+
+Smart notifications
+- Push reminders for MOT, services, bookings and your own notes.
+- An in-app inbox so nothing important is missed.
+
+Works on the move
+- Designed for mobile, fast on the yard floor, and installable to your home screen.
+
+Yardao keeps your whole operation in one place so you spend less time chasing paperwork and more time turning vehicles around.
+
+Have a question or feedback? Contact us any time at support@yardao.com
