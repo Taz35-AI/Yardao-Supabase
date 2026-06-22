@@ -20,6 +20,7 @@
 import React from 'react'
 import { Plus } from 'lucide-react'
 import type { ServiceBooking } from '@/types/serviceBookings'
+import { bayLabel } from '@/utils/serviceBookings/bayLabels'
 import { useT, localizeWorkRequired } from '@/lib/i18n'
 
 // ── Time-axis constants ─────────────────────────────────────────────────────
@@ -84,6 +85,8 @@ function minutesToPx(minutes: number): number {
 
 export interface BayGridProps {
   bayCount: number
+  /** Optional custom bay names (display only). Index 0 = bay 1. */
+  bayNames?: string[]
   bookings: ServiceBooking[]
   onCellClick: () => void
   onBookingClick: (b: ServiceBooking) => void
@@ -187,7 +190,7 @@ const BayColumn: React.FC<BayColumnProps> = ({
 
 // ── Main Component ───────────────────────────────────────────────────────────
 
-export function BayGrid({ bayCount, bookings, onCellClick, onBookingClick }: BayGridProps) {
+export function BayGrid({ bayCount, bayNames, bookings, onCellClick, onBookingClick }: BayGridProps) {
   // Split bookings by bay (1-based) and into an "unassigned" bucket
   const byBay: ServiceBooking[][] = Array.from({ length: bayCount }, () => [])
   const unassigned: ServiceBooking[] = []
@@ -216,7 +219,7 @@ export function BayGrid({ bayCount, bookings, onCellClick, onBookingClick }: Bay
             key={`bay-h-${i}`}
             className="bg-[#f5f9f7] dark:bg-[#012619]/80 border-b border-r border-[#e2e8e5] dark:border-[#025940]/40 px-2 py-2 flex items-center justify-center text-[11px] uppercase tracking-widest font-bold text-[#025940] dark:text-[#72A68E]"
           >
-            Bay {i + 1}
+            {bayLabel(bayNames, i + 1, `Bay ${i + 1}`)}
           </div>
         ))}
         {hasUnassigned && (

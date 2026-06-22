@@ -27,6 +27,7 @@ import { useBranches } from '@/hooks/useBranches'
 import { useCustomers } from '@/hooks/useCustomers'
 import { DEFAULT_SERVICE_BAY_COUNT } from '@/types/branch'
 import { bookingCoversSlot, getBookingEndTime } from '@/utils/serviceBookings/slotHelpers'
+import { bayLabel } from '@/utils/serviceBookings/bayLabels'
 import type { PartsStatus } from '@/lib/utils/partsStatus'
 import { WorkingReportModal } from './WorkingReportModal'
 import { ToolbarKebab } from './ToolbarKebab'
@@ -127,9 +128,11 @@ function toDateStr(d: Date): string {
 function UpcomingItem({
   booking,
   onClick,
+  bayNames,
 }: {
   booking: ServiceBooking
   onClick: () => void
+  bayNames?: string[]
 }) {
   const t = useT()
   const date = new Date(booking.date + 'T00:00:00')
@@ -146,7 +149,7 @@ function UpcomingItem({
       : startTime
   const location = booking.isExternalProvider
     ? (booking.externalProvider?.garageName || t('serviceBookings.content.upcomingLocationExternal'))
-    : (booking.serviceBay ? t('serviceBookings.content.upcomingLocationBay', { bay: booking.serviceBay }) : t('serviceBookings.content.upcomingLocationBay', { bay: 1 }))
+    : bayLabel(bayNames, booking.serviceBay ?? 1, t('serviceBookings.content.upcomingLocationBay', { bay: booking.serviceBay ?? 1 }))
   const work = localizeWorkRequired(t, booking.workRequired, t('serviceBookings.workFallback.service'))
 
   // 👤 Inline mechanic quick-assign. The select uses the same useMechanics
@@ -408,6 +411,8 @@ export function ServiceBookingsContent() {
   }, [branches, branchSlugParam])
   const currentBayCount =
     currentBranch?.serviceBayCount ?? DEFAULT_SERVICE_BAY_COUNT
+  // Custom bay names for the current branch (display only). Index 0 = bay 1.
+  const currentBayNames = currentBranch?.serviceBayNames
 
   // Branch name for subtitle + admin role gate for the Working Report button.
   // Both come from the same profile fetch so we don't pay for two reads.
@@ -1579,6 +1584,7 @@ export function ServiceBookingsContent() {
           bookings={mergedBookings}
           vehicles={vehicles}
           bayCount={currentBayCount}
+          bayNames={currentBayNames}
           initialDate={selectedDate}
           editingBooking={workspaceEditingBooking}
           customers={customers}
@@ -1628,6 +1634,7 @@ export function ServiceBookingsContent() {
                     selectedDate={selectedDate}
                     onDateChange={setSelectedDate}
                     bayCount={currentBayCount}
+                    bayNames={currentBayNames}
                     bayFilter={workshopBayFilter}
                     onBayFilterChange={setWorkshopBayFilter}
                     mechanicFilter={workshopMechanicFilter}
@@ -1671,6 +1678,7 @@ export function ServiceBookingsContent() {
                       selectedDate={selectedDate}
                       bookings={mergedBookings}
                       bayCount={currentBayCount}
+                      bayNames={currentBayNames}
                       mechanicFilter={workshopMechanicFilter}
                       partsFilter={workshopPartsFilter}
                       onPickDate={setSelectedDate}
@@ -1691,6 +1699,7 @@ export function ServiceBookingsContent() {
                       selectedDate={selectedDate}
                       bookings={mergedBookings}
                       bayCount={currentBayCount}
+                      bayNames={currentBayNames}
                       bayFilter={workshopBayFilter}
                       mechanicFilter={workshopMechanicFilter}
                       partsFilter={workshopPartsFilter}
@@ -1751,6 +1760,7 @@ export function ServiceBookingsContent() {
                       key={b.id}
                       booking={b}
                       onClick={() => handleEditBooking(b)}
+                      bayNames={currentBayNames}
                     />
                   ))}
                 </div>
@@ -1811,6 +1821,7 @@ export function ServiceBookingsContent() {
           getBookingsForDate={getBookingsForDate}
           searchReg={searchReg}
           matchingDates={matchingDates}
+          bayNames={currentBayNames}
         />
       )}
 
@@ -1840,6 +1851,7 @@ export function ServiceBookingsContent() {
           onSave={editingBooking ? handleUpdateBooking : handleCreateBooking}
           isTimeSlotAvailable={isTimeSlotAvailable}
           bayCount={currentBayCount}
+          bayNames={currentBayNames}
         />
       )}
 
@@ -1864,6 +1876,7 @@ export function ServiceBookingsContent() {
           isOpen={!!detailsBooking}
           booking={detailsBooking}
           customers={customers}
+          bayNames={currentBayNames}
           onClose={() => setDetailsBooking(null)}
           onEdit={
             detailsBooking.id.startsWith('garage-')

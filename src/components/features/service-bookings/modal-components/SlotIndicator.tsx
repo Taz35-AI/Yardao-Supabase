@@ -4,6 +4,7 @@
 import React from 'react'
 import { Users, Car } from 'lucide-react'
 import { getSlotButtonStyle } from '@/utils/serviceBookings/slotHelpers'
+import { getBayName } from '@/utils/serviceBookings/bayLabels'
 import { SlotOccupancy } from '@/types/serviceBookingTypes'
 import { useT } from '@/lib/i18n'
 
@@ -19,6 +20,8 @@ interface SlotIndicatorProps {
   onClick?: () => void
   slotOccupancy: Map<string, SlotOccupancy>
   slotId: string
+  /** Optional custom bay names (display only). Index 0 = bay 1. */
+  bayNames?: string[]
 }
 
 export function SlotIndicator({
@@ -32,7 +35,8 @@ export function SlotIndicator({
   onMouseLeave,
   onClick,
   slotOccupancy,
-  slotId
+  slotId,
+  bayNames
 }: SlotIndicatorProps) {
   const t = useT()
   const buttonStyle = getSlotButtonStyle(slotId, isSelected, slotOccupancy)
@@ -76,9 +80,12 @@ export function SlotIndicator({
           )
         }
         if (nextAvailableBay) {
+          const namedBay = getBayName(bayNames, nextAvailableBay)
           return (
             <div className="text-[10px] text-blue-700 dark:text-blue-300 mt-0.5">
-              {t('serviceBookings.slotIndicator.bayWillBeUsed', { nextAvailableBay })}
+              {namedBay
+                ? t('serviceBookings.slotIndicator.bayWillBeUsedNamed', { bay: namedBay })
+                : t('serviceBookings.slotIndicator.bayWillBeUsed', { nextAvailableBay })}
             </div>
           )
         }
@@ -89,12 +96,19 @@ export function SlotIndicator({
       {isHovered && bookingCount > 0 && (
         <div className="absolute z-10 bottom-full left-1/2 transform -translate-x-1/2 mb-2 p-2 bg-gray-900 dark:bg-gray-700 text-white rounded-lg shadow-lg min-w-[200px] text-xs">
           <div className="font-semibold mb-1">{t('serviceBookings.slotIndicator.currentBookings')}</div>
-          {bookings.map((b, idx) => (
-            <div key={idx} className="flex items-center space-x-1">
-              <Car className="w-3 h-3" />
-              <span>{t('serviceBookings.slotIndicator.bayLine', { bay: b.serviceBay || 1, registration: b.registration })}</span>
-            </div>
-          ))}
+          {bookings.map((b, idx) => {
+            const namedBay = getBayName(bayNames, b.serviceBay || 1)
+            return (
+              <div key={idx} className="flex items-center space-x-1">
+                <Car className="w-3 h-3" />
+                <span>
+                  {namedBay
+                    ? `${namedBay}: ${b.registration}`
+                    : t('serviceBookings.slotIndicator.bayLine', { bay: b.serviceBay || 1, registration: b.registration })}
+                </span>
+              </div>
+            )
+          })}
           <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-full">
             <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900 dark:border-t-gray-700"></div>
           </div>

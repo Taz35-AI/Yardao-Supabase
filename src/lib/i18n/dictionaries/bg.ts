@@ -1443,6 +1443,7 @@ export const bg: DeepPartial<Dictionary> = {
     slotIndicator: {
       bookingCount: '{count} заявки', allBaysBooked: 'Всички боксове заети',
       bayWillBeUsed: 'Ще се използва Бокс {nextAvailableBay}',
+      bayWillBeUsedNamed: 'Ще се използва {bay}',
       currentBookings: 'Текущи заявки:', bayLine: 'Бокс {bay}: {registration}',
     },
     customerSearch: { resultsHeader: '{count} съществуващи клиенти' },
@@ -2645,6 +2646,9 @@ export const bg: DeepPartial<Dictionary> = {
       resolvingLocation: 'Определяне на местоположение…',
       enablesMap: 'Включва показване на карта в Преглед на филиала',
       capsBookings: 'Ограничава едновременните записвания за времеви слот',
+      bayNamesLabel: 'Имена на клетките (по избор)',
+      bayNamesHint: 'Оставете полето празно, за да запазите стойността по подразбиране (Клетка 1, Клетка 2…)',
+      bayNamePlaceholder: 'Клетка {n}',
       locating: 'Локализиране…',
       creating: 'Създаване…',
       emptyTitle: 'Още няма филиали',

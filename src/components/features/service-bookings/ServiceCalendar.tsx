@@ -13,6 +13,7 @@ import { ConfirmationModal } from '@/components/common/Modals/ConfirmationModal'
 import { AlertModal } from '@/components/common/Modals/AlertModal'
 import { logger } from '@/lib/logger'
 import { useT, localizeWorkRequired } from '@/lib/i18n'
+import { bayLabel } from '@/utils/serviceBookings/bayLabels'
 
 // shared types
 import type { ServiceBooking } from '@/types/serviceBookings'
@@ -54,6 +55,8 @@ interface ServiceCalendarProps {
   getBookingsForDate: (date: string) => ServiceBooking[]
   searchReg?: string
   matchingDates?: string[]
+  /** Optional custom bay names (display only). Index 0 = bay 1. */
+  bayNames?: string[]
 }
 
 // Modal states interface
@@ -82,7 +85,8 @@ export const ServiceCalendar = forwardRef<ServiceCalendarRef, ServiceCalendarPro
   isTimeSlotAvailable,
   getBookingsForDate,
   searchReg = '',
-  matchingDates = []
+  matchingDates = [],
+  bayNames
 }, ref) => {
   const t = useT()
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -743,7 +747,7 @@ export const ServiceCalendar = forwardRef<ServiceCalendarRef, ServiceCalendarPro
                                 {!booking.isExternalProvider && booking.serviceBay && 
                                  !hasMultipleBaysInTimeSlot(booking.date, booking.timeSlot) && 
                                  booking.serviceBay > 1 && (
-                                  <span className="ml-2 text-[#72A68E]">{t('serviceBookings.calendar.bayInline', { count: booking.serviceBay })}</span>
+                                  <span className="ml-2 text-[#72A68E]">{bayLabel(bayNames, booking.serviceBay, t('serviceBookings.calendar.bayInline', { count: booking.serviceBay }))}</span>
                                 )}
                               </span>
                               {/* ✅ SURGICAL FIX: Enhanced status badge for external checkouts */}
@@ -771,7 +775,7 @@ export const ServiceCalendar = forwardRef<ServiceCalendarRef, ServiceCalendarPro
                             {!booking.isExternalProvider && booking.serviceBay && hasMultipleBaysInTimeSlot(booking.date, booking.timeSlot) && (
                               <Badge className={`${getBayColor(booking.serviceBay)} text-xs font-semibold flex items-center gap-1`}>
                                 <Users className="w-3 h-3" />
-                                {t('serviceBookings.calendar.bayBadge', { count: booking.serviceBay })}
+                                {bayLabel(bayNames, booking.serviceBay, t('serviceBookings.calendar.bayBadge', { count: booking.serviceBay }))}
                               </Badge>
                             )}
                           </div>

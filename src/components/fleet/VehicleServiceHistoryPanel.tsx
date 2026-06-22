@@ -11,6 +11,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
+import { useBranches } from '@/hooks/useBranches'
+import { bayLabel } from '@/utils/serviceBookings/bayLabels'
 import { vehicleServiceHistoryService } from '@/lib/services/vehicleServiceHistoryService'
 import type {
   VehicleServiceRecord,
@@ -61,6 +63,15 @@ const emptyForm = (): FormState => ({
 export function VehicleServiceHistoryPanel({ registration, make, model }: Props) {
   const t = useT()
   const { user } = useAuth()
+  const { branches } = useBranches()
+  // Resolve a record's custom bay names by its branch name. Falls back to the
+  // main/first branch (covers single-branch orgs where records carry no branch).
+  const bayNamesFor = (branchName?: string): string[] | undefined => {
+    const b = branchName
+      ? branches.find((x) => x.name === branchName)
+      : (branches.find((x) => x.isMain) ?? branches[0])
+    return (b ?? branches.find((x) => x.isMain) ?? branches[0])?.serviceBayNames
+  }
 
   const [orgId, setOrgId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -416,7 +427,7 @@ export function VehicleServiceHistoryPanel({ registration, make, model }: Props)
                       {!isExternal && r.mechanicName && (
                         <span>
                           {t('fleet.serviceHistory.mechanicLabel')}: <span className="font-semibold text-[#4a5e54] dark:text-gray-300">{r.mechanicName}</span>
-                          {typeof r.serviceBay === 'number' ? ` · ${t('fleet.serviceHistory.bay', { bay: r.serviceBay })}` : ''}
+                          {typeof r.serviceBay === 'number' ? ` · ${bayLabel(bayNamesFor(r.branchName), r.serviceBay, t('fleet.serviceHistory.bay', { bay: r.serviceBay }))}` : ''}
                         </span>
                       )}
                       {r.branchName && (

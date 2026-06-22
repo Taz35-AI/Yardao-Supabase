@@ -29,6 +29,8 @@ export interface BookingWorkspaceProps {
   vehicles: Vehicle[]
   /** Branch bay cap. */
   bayCount: number
+  /** Optional custom bay names (display only). Index 0 = bay 1. */
+  bayNames?: string[]
   /** Date the user was viewing when they hit "+". */
   initialDate: Date
   /** Save handler for CREATE mode — wired straight to
@@ -77,6 +79,7 @@ export function BookingWorkspace({
   bookings,
   vehicles,
   bayCount,
+  bayNames,
   initialDate,
   editingBooking,
   onCreate,
@@ -136,6 +139,7 @@ export function BookingWorkspace({
           bookings={bookings}
           vehicles={vehicles}
           bayCount={bayCount}
+          bayNames={bayNames}
           initialDate={initialDate}
           editingBooking={editingBooking}
           pendingCell={pendingCell}
@@ -158,6 +162,7 @@ export function BookingWorkspace({
           selectedDate={selectedDate}
           onDateChange={setSelectedDate}
           bayCount={bayCount}
+          bayNames={bayNames}
           bayFilter={bayFilter}
           onBayFilterChange={setBayFilter}
           mechanicFilter={mechanicFilter}
@@ -170,6 +175,7 @@ export function BookingWorkspace({
             selectedDate={selectedDate}
             bookings={displayBookings}
             bayCount={bayCount}
+            bayNames={bayNames}
             bayFilter={bayFilter}
             mechanicFilter={mechanicFilter}
             partsFilter={partsFilter}

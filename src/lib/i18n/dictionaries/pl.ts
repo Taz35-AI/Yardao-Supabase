@@ -1444,6 +1444,7 @@ export const pl: DeepPartial<Dictionary> = {
     slotIndicator: {
       bookingCount: '{count} rezerwacji', allBaysBooked: 'Wszystkie stanowiska zarezerwowane',
       bayWillBeUsed: 'Zostanie użyte stanowisko {nextAvailableBay}',
+      bayWillBeUsedNamed: 'Zostanie użyte {bay}',
       currentBookings: 'Bieżące rezerwacje:', bayLine: 'Stanowisko {bay}: {registration}',
     },
     customerSearch: { resultsHeader: '{count} istniejących klientów' },
@@ -2646,6 +2647,9 @@ export const pl: DeepPartial<Dictionary> = {
       resolvingLocation: 'Ustalanie lokalizacji…',
       enablesMap: 'Umożliwia wyświetlanie mapy w Przeglądzie oddziału',
       capsBookings: 'Ogranicza liczbę jednoczesnych rezerwacji na przedział czasowy',
+      bayNamesLabel: 'Nazwy stanowisk (opcjonalnie)',
+      bayNamesHint: 'Pozostaw pole puste, aby zachować domyślne (Stanowisko 1, Stanowisko 2…)',
+      bayNamePlaceholder: 'Stanowisko {n}',
       locating: 'Lokalizowanie…',
       creating: 'Tworzenie…',
       emptyTitle: 'Brak oddziałów',

@@ -8,12 +8,69 @@ import { Plus, Edit2, Trash2, MapPin, AlertCircle, Check, X, Loader2, Map } from
 import { geocodingService } from '@/lib/services/geocodingService'
 import { YardLayoutModal } from '@/components/yard/layout/YardLayoutModal'
 import { DEFAULT_SERVICE_BAY_COUNT } from '@/types/branch'
+import { normalizeBayNames } from '@/utils/serviceBookings/bayLabels'
 import { useT } from '@/lib/i18n'
 
 interface EditFormData {
   name: string
   address: string
   serviceBayCount: number
+  // Custom bay names (display only). Index 0 = bay 1. Blank => "Bay N".
+  serviceBayNames: string[]
+}
+
+// Resize a names array to `count` entries, keeping existing values and padding
+// with blanks. Used when the bay count changes in the form.
+function resizeNames(names: string[], count: number): string[] {
+  const out = names.slice(0, count)
+  while (out.length < count) out.push('')
+  return out
+}
+
+// One text box per bay so each can be given a custom name. Blank => "Bay N".
+// Names are display-only; the bay's identity stays its number.
+function BayNameInputs({
+  count,
+  names,
+  onChange,
+  disabled,
+  t,
+  labelCls,
+  inputCls,
+}: {
+  count: number
+  names: string[]
+  onChange: (names: string[]) => void
+  disabled: boolean
+  t: (key: string, vars?: Record<string, string | number>) => string
+  labelCls: string
+  inputCls: string
+}) {
+  const rows = resizeNames(names, count)
+  return (
+    <div>
+      <label className={labelCls}>{t('settings.branch.bayNamesLabel')}</label>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {rows.map((name, i) => (
+          <input
+            key={i}
+            type="text"
+            value={name}
+            onChange={(e) => {
+              const next = [...rows]
+              next[i] = e.target.value
+              onChange(next)
+            }}
+            placeholder={t('settings.branch.bayNamePlaceholder', { n: i + 1 })}
+            className={inputCls}
+            disabled={disabled}
+            maxLength={40}
+          />
+        ))}
+      </div>
+      <p className="text-[11px] text-[#8a9e94] mt-1">{t('settings.branch.bayNamesHint')}</p>
+    </div>
+  )
 }
 
 export function BranchManagement() {
@@ -25,12 +82,14 @@ export function BranchManagement() {
     name: '',
     address: '',
     serviceBayCount: DEFAULT_SERVICE_BAY_COUNT,
+    serviceBayNames: [],
   })
   const [createFormData, setCreateFormData] = useState({
     name: '',
     slug: '',
     address: '',
     serviceBayCount: DEFAULT_SERVICE_BAY_COUNT,
+    serviceBayNames: [] as string[],
   })
   const [formError, setFormError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -94,10 +153,11 @@ export function BranchManagement() {
         Number.isFinite(createFormData.serviceBayCount) && createFormData.serviceBayCount >= 1
           ? Math.floor(createFormData.serviceBayCount)
           : DEFAULT_SERVICE_BAY_COUNT
-      await createBranch(createFormData.name.trim(), formattedSlug, locationData, bayCount)
+      const bayNames = normalizeBayNames(createFormData.serviceBayNames.slice(0, bayCount))
+      await createBranch(createFormData.name.trim(), formattedSlug, locationData, bayCount, bayNames)
 
       // Reset form
-      setCreateFormData({ name: '', slug: '', address: '', serviceBayCount: DEFAULT_SERVICE_BAY_COUNT })
+      setCreateFormData({ name: '', slug: '', address: '', serviceBayCount: DEFAULT_SERVICE_BAY_COUNT, serviceBayNames: [] })
       setShowCreateForm(false)
     } catch (err) {
       setFormError(err instanceof Error ? err.message : t('settings.branch.createFail'))
@@ -110,10 +170,12 @@ export function BranchManagement() {
   const handleStartEdit = (branchId: string) => {
     const branch = branches.find(b => b.id === branchId)
     if (branch) {
+      const bayCount = branch.serviceBayCount ?? DEFAULT_SERVICE_BAY_COUNT
       setEditFormData({
         name: branch.name,
         address: branch.address || '',
-        serviceBayCount: branch.serviceBayCount ?? DEFAULT_SERVICE_BAY_COUNT,
+        serviceBayCount: bayCount,
+        serviceBayNames: resizeNames(branch.serviceBayNames ?? [], bayCount),
       })
       setEditingBranch(branchId)
       setFormError(null)
@@ -144,6 +206,14 @@ export function BranchManagement() {
       const currentBayCount = currentBranch?.serviceBayCount ?? DEFAULT_SERVICE_BAY_COUNT
       if (requestedBayCount !== currentBayCount) {
         updates.serviceBayCount = requestedBayCount
+      }
+
+      // 🏷️ Bay names: trim to the (possibly reduced) bay count, normalise, and
+      // only persist when changed. null clears back to the "Bay N" defaults.
+      const nextNames = normalizeBayNames(editFormData.serviceBayNames.slice(0, requestedBayCount))
+      const currentNames = normalizeBayNames(currentBranch?.serviceBayNames)
+      if (JSON.stringify(nextNames ?? null) !== JSON.stringify(currentNames ?? null)) {
+        updates.serviceBayNames = nextNames ?? null
       }
 
       if (addressChanged && editFormData.address.trim()) {
@@ -189,7 +259,7 @@ export function BranchManagement() {
 
   const handleCancelEdit = () => {
     setEditingBranch(null)
-    setEditFormData({ name: '', address: '', serviceBayCount: DEFAULT_SERVICE_BAY_COUNT })
+    setEditFormData({ name: '', address: '', serviceBayCount: DEFAULT_SERVICE_BAY_COUNT, serviceBayNames: [] })
     setFormError(null)
   }
 
@@ -323,10 +393,14 @@ export function BranchManagement() {
               min={1}
               max={50}
               value={createFormData.serviceBayCount}
-              onChange={(e) => setCreateFormData({
-                ...createFormData,
-                serviceBayCount: parseInt(e.target.value, 10) || 1,
-              })}
+              onChange={(e) => {
+                const count = Math.min(50, Math.max(1, parseInt(e.target.value, 10) || 1))
+                setCreateFormData({
+                  ...createFormData,
+                  serviceBayCount: count,
+                  serviceBayNames: resizeNames(createFormData.serviceBayNames, count),
+                })
+              }}
               className={`${inputCls} sm:w-32`}
               disabled={isSubmitting}
             />
@@ -334,6 +408,16 @@ export function BranchManagement() {
               {t('settings.branch.capsBookings')}
             </p>
           </div>
+
+          <BayNameInputs
+            count={createFormData.serviceBayCount}
+            names={createFormData.serviceBayNames}
+            onChange={(names) => setCreateFormData({ ...createFormData, serviceBayNames: names })}
+            disabled={isSubmitting}
+            t={t}
+            labelCls={labelCls}
+            inputCls={inputCls}
+          />
 
           <div className="flex items-center gap-1.5 pt-1">
             <button
@@ -356,7 +440,7 @@ export function BranchManagement() {
             <button
               onClick={() => {
                 setShowCreateForm(false)
-                setCreateFormData({ name: '', slug: '', address: '', serviceBayCount: DEFAULT_SERVICE_BAY_COUNT })
+                setCreateFormData({ name: '', slug: '', address: '', serviceBayCount: DEFAULT_SERVICE_BAY_COUNT, serviceBayNames: [] })
                 setFormError(null)
               }}
               disabled={isSubmitting}
@@ -418,14 +502,27 @@ export function BranchManagement() {
                         min={1}
                         max={50}
                         value={editFormData.serviceBayCount}
-                        onChange={(e) => setEditFormData({
-                          ...editFormData,
-                          serviceBayCount: parseInt(e.target.value, 10) || 1,
-                        })}
+                        onChange={(e) => {
+                          const count = Math.min(50, Math.max(1, parseInt(e.target.value, 10) || 1))
+                          setEditFormData({
+                            ...editFormData,
+                            serviceBayCount: count,
+                            serviceBayNames: resizeNames(editFormData.serviceBayNames, count),
+                          })
+                        }}
                         className={`${inputCls} sm:w-32`}
                         disabled={isSubmitting}
                       />
                     </div>
+                    <BayNameInputs
+                      count={editFormData.serviceBayCount}
+                      names={editFormData.serviceBayNames}
+                      onChange={(names) => setEditFormData({ ...editFormData, serviceBayNames: names })}
+                      disabled={isSubmitting}
+                      t={t}
+                      labelCls={labelCls}
+                      inputCls={inputCls}
+                    />
                     <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => handleSaveEdit(branch.id)}

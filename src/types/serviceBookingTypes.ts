@@ -102,6 +102,8 @@ export interface ServiceBookingModalProps {
   // and the "all bays full" guard. Omitting it preserves the legacy
   // unbounded behaviour.
   bayCount?: number
+  // 🏷️ Optional custom bay names (display only). Index 0 = bay 1.
+  bayNames?: string[]
 }
 
 /**
@@ -146,6 +148,8 @@ export interface TimeSlotSectionProps {
   // behaviour exactly.
   slotCount?: number
   onSlotCountChange?: (count: number) => void
+  // 🏷️ Optional custom bay names (display only). Index 0 = bay 1.
+  bayNames?: string[]
 }
 
 export interface VehicleSectionProps {

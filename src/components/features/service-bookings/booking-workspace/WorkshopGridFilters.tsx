@@ -8,12 +8,14 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useMechanics } from '@/hooks/useMechanics'
 import { getDateInputValue, parseDateFromInput } from '@/utils/serviceBookings/dateHelpers'
 import { PARTS_STATUS_ORDER, PARTS_STATUS_META, type PartsStatus } from '@/lib/utils/partsStatus'
+import { bayLabel } from '@/utils/serviceBookings/bayLabels'
 import { useT, localizePartsStatus } from '@/lib/i18n'
 
 export interface WorkshopGridFiltersProps {
   selectedDate: Date
   onDateChange: (date: Date) => void
   bayCount: number
+  bayNames?: string[]
   bayFilter: number | 'all'
   onBayFilterChange: (bay: number | 'all') => void
   mechanicFilter: string | 'all'
@@ -26,6 +28,7 @@ export function WorkshopGridFilters({
   selectedDate,
   onDateChange,
   bayCount,
+  bayNames,
   bayFilter,
   onBayFilterChange,
   mechanicFilter,
@@ -98,7 +101,7 @@ export function WorkshopGridFilters({
           <option value="all">{t('serviceBookings.filters.allBays')}</option>
           {Array.from({ length: bayCount }, (_, i) => i + 1).map((b) => (
             <option key={b} value={b}>
-              {t('serviceBookings.filters.bayOption', { count: b })}
+              {bayLabel(bayNames, b, t('serviceBookings.filters.bayOption', { count: b }))}
             </option>
           ))}
         </select>

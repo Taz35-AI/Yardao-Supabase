@@ -23,6 +23,7 @@ import { useServiceBookings } from '@/hooks/useServiceBookings'
 import { useBranches } from '@/hooks/useBranches'
 import { DEFAULT_SERVICE_BAY_COUNT } from '@/types/branch'
 import { getBookingEndTime } from '@/utils/serviceBookings/slotHelpers'
+import { bayLabel } from '@/utils/serviceBookings/bayLabels'
 
 interface ServiceTodayViewProps {
   selectedDate: Date
@@ -126,6 +127,7 @@ function BookingCard({
   onBookingEdit,
   onBookingDelete,
   showDate = false,
+  bayNames,
 }: {
   booking: ServiceBooking
   onMarkCompleted: (b: ServiceBooking) => void
@@ -134,6 +136,7 @@ function BookingCard({
   onBookingEdit: (b: ServiceBooking) => void
   onBookingDelete: (id: string) => void
   showDate?: boolean
+  bayNames?: string[]
 }) {
   const t = useT()
   const { locale } = useLang()
@@ -261,7 +264,7 @@ function BookingCard({
             )}
             {booking.serviceBay && !isExternal && (
               <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${getBayBadge(booking.serviceBay)}`}>
-                {t('serviceBookings.today.bayBadge', { bay: booking.serviceBay })}
+                {bayLabel(bayNames, booking.serviceBay, t('serviceBookings.today.bayBadge', { bay: booking.serviceBay }))}
               </span>
             )}
             {/* 🕐 Multi-slot indicator */}
@@ -574,6 +577,7 @@ function BookingSection({
   title, count, bookings, dotColor,
   onMarkCompleted, onReturnFromGarage, onCheckInToGarage, onBookingEdit, onBookingDelete,
   showDate = false,
+  bayNames,
 }: {
   title: string
   count: number
@@ -585,6 +589,7 @@ function BookingSection({
   onBookingEdit: (b: ServiceBooking) => void
   onBookingDelete: (id: string) => void
   showDate?: boolean
+  bayNames?: string[]
 }) {
   if (bookings.length === 0) return null
 
@@ -611,6 +616,7 @@ function BookingSection({
             onBookingEdit={onBookingEdit}
             onBookingDelete={onBookingDelete}
             showDate={showDate}
+            bayNames={bayNames}
           />
         ))}
       </div>
@@ -648,6 +654,7 @@ export function ServiceTodayView({
   const { branches } = useBranches()
   const primaryBranch = branches.find(b => b.isMain) ?? branches[0]
   const bayCount = primaryBranch?.serviceBayCount ?? DEFAULT_SERVICE_BAY_COUNT
+  const bayNames = primaryBranch?.serviceBayNames
   const effectiveViewMode: 'list' | 'grid' = viewFilter === 'all' ? 'list' : bookingsViewMode
 
   const dateBookings = viewFilter === 'all'
@@ -747,6 +754,7 @@ export function ServiceTodayView({
           <>
             <BayGrid
               bayCount={bayCount}
+              bayNames={bayNames}
               bookings={sorted.filter(
                 b => !b.isExternalProvider && !isSyntheticGarageVehicle(b)
               )}
@@ -781,6 +789,7 @@ export function ServiceTodayView({
               onBookingEdit={onBookingEdit}
               onBookingDelete={onBookingDelete}
               showDate={viewFilter === 'all'}
+              bayNames={bayNames}
             />
             <BookingSection
               title={t('serviceBookings.today.sectionScheduled')}
@@ -793,6 +802,7 @@ export function ServiceTodayView({
               onBookingEdit={onBookingEdit}
               onBookingDelete={onBookingDelete}
               showDate={viewFilter === 'all'}
+              bayNames={bayNames}
             />
 
             {/* ✅ External garage section — collapsible, collapsed by default */}
@@ -817,6 +827,7 @@ export function ServiceTodayView({
               onBookingEdit={onBookingEdit}
               onBookingDelete={onBookingDelete}
               showDate={viewFilter === 'all'}
+              bayNames={bayNames}
             />
           </>
         )}

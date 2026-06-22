@@ -1469,6 +1469,7 @@ export const en = {
     slotIndicator: {
       bookingCount: '{count} bookings', allBaysBooked: 'All bays booked',
       bayWillBeUsed: 'Bay {nextAvailableBay} will be used',
+      bayWillBeUsedNamed: '{bay} will be used',
       currentBookings: 'Current Bookings:', bayLine: 'Bay {bay}: {registration}',
     },
     customerSearch: { resultsHeader: '{count} existing customers' },
@@ -2820,6 +2821,9 @@ export const en = {
       resolvingLocation: 'Resolving location…',
       enablesMap: 'Enables map display on Branch Overview',
       capsBookings: 'Caps simultaneous bookings per time slot',
+      bayNamesLabel: 'Bay names (optional)',
+      bayNamesHint: 'Leave a box blank to keep the default (Bay 1, Bay 2…)',
+      bayNamePlaceholder: 'Bay {n}',
       locating: 'Locating…',
       creating: 'Creating…',
       emptyTitle: 'No branches yet',

@@ -66,6 +66,8 @@ export const branchService = {
     // 🛠️ Optional service bay count. When omitted the field is left unset
     // and consumers fall back to DEFAULT_SERVICE_BAY_COUNT.
     serviceBayCount?: number
+    // 🏷️ Optional custom bay names (display only). Index 0 = bay 1.
+    serviceBayNames?: string[]
   }): Promise<string> {
     // Check if slug already exists for this organization
     const { data: existing, error: existingError } = await supabase
@@ -94,6 +96,11 @@ export const branchService = {
       ...(typeof branchData.serviceBayCount === 'number' && {
         service_bay_count: branchData.serviceBayCount,
       }),
+      // Only persist names when provided and non-empty.
+      ...(Array.isArray(branchData.serviceBayNames) &&
+        branchData.serviceBayNames.length > 0 && {
+          service_bay_names: branchData.serviceBayNames,
+        }),
     }
 
     const { data, error } = await supabase
@@ -308,5 +315,9 @@ function mapBranchUpdates(updates: Partial<Branch>): Record<string, any> {
   if (updates.latitude !== undefined) out.latitude = updates.latitude
   if (updates.longitude !== undefined) out.longitude = updates.longitude
   if (updates.serviceBayCount !== undefined) out.service_bay_count = updates.serviceBayCount
+  // Custom bay names (display only). null clears them back to the "Bay N"
+  // defaults; an array (jsonb) sets them.
+  if (updates.serviceBayNames !== undefined)
+    out.service_bay_names = updates.serviceBayNames ?? null
   return out
 }

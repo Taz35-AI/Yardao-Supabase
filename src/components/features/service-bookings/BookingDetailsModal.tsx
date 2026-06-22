@@ -29,6 +29,7 @@ import type { ServiceBooking } from '@/types/serviceBookings'
 import type { Customer } from '@/types/customer'
 import type { Invoice } from '@/types/stock'
 import { getBookingEndTime } from '@/utils/serviceBookings/slotHelpers'
+import { bayLabel } from '@/utils/serviceBookings/bayLabels'
 import { normalizePhone } from '@/lib/utils/phone'
 import { useT, localizeWorkType } from '@/lib/i18n'
 import { useServiceBookings } from '@/hooks/useServiceBookings'
@@ -51,6 +52,8 @@ interface BookingDetailsModalProps {
    *  saved "preferred notes" is shown inside the Customer section.
    *  Lookup is by normalised phone. */
   customers?: Customer[]
+  /** Optional custom bay names (display only). Index 0 = bay 1. */
+  bayNames?: string[]
 }
 
 function formatDate(dateStr: string): string {
@@ -115,6 +118,7 @@ export function BookingDetailsModal({
   onDelete,
   onComplete,
   customers,
+  bayNames,
 }: BookingDetailsModalProps) {
   const t = useT()
   const { raiseInvoiceForBooking, updateBooking } = useServiceBookings()
@@ -293,7 +297,7 @@ export function BookingDetailsModal({
               {time || '—'}
               {!isExternal && booking.serviceBay ? (
                 <span className="ml-2 inline-flex items-center text-[10px] font-bold text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-900/30 px-1.5 py-0.5 rounded">
-                  {t('serviceBookings.details.bayBadge', { count: booking.serviceBay })}
+                  {bayLabel(bayNames, booking.serviceBay, t('serviceBookings.details.bayBadge', { count: booking.serviceBay }))}
                 </span>
               ) : null}
               {!isExternal && span > 1 ? (

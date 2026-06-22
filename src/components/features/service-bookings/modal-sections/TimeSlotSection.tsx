@@ -20,6 +20,7 @@ export function TimeSlotSection({
   error,
   slotCount,
   onSlotCountChange,
+  bayNames,
 }: TimeSlotSectionProps) {
   const t = useT()
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null)
@@ -230,6 +231,7 @@ export function TimeSlotSection({
               onClick={() => handleSlotClick(slot.id)}
               slotOccupancy={slotOccupancy}
               slotId={slot.id}
+              bayNames={bayNames}
             />
           )
         })}

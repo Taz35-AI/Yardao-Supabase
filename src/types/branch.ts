@@ -25,6 +25,13 @@ export interface Branch {
   // undefined we treat it as DEFAULT_SERVICE_BAY_COUNT below for backward
   // compatibility with branches that existed before this field.
   serviceBayCount?: number
+
+  // 🏷️ Optional custom display names for the bays. Index 0 = bay 1's name,
+  // index 1 = bay 2, etc. The bay's IDENTITY is always its number (bookings,
+  // history and scheduling reference the number, never the name) — these are
+  // display labels only. A blank/missing entry falls back to "Bay N". Renaming
+  // a bay never moves a booking. See bayLabel() in utils/serviceBookings.
+  serviceBayNames?: string[]
 }
 
 // Default applied when a branch hasn't had its bay count set yet.

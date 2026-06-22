@@ -155,11 +155,12 @@ export const vehicleServiceHistoryService = {
   },
 
   /**
-   * The most recent service record (booking OR manual) that carries an
-   * odometer reading, for one vehicle. Used at check-in to decide whether the
+   * The most recent OIL / FULL SERVICE record (booking OR manual) that carries
+   * an odometer reading, for one vehicle. Used at check-in to decide whether the
    * vehicle is overdue for a service (current mileage − this >= threshold).
-   * Returns null when the vehicle has no service history with a mileage on
-   * record — in which case the caller simply doesn't flag it.
+   * Only oil/service-type work counts (keyword match) so a brake or tyre job
+   * with a mileage doesn't reset the clock. Returns null when the vehicle has no
+   * such record — in which case the caller simply doesn't flag it.
    */
   async getLastServiceMileage(
     organizationId: string,
@@ -168,9 +169,21 @@ export const vehicleServiceHistoryService = {
     if (!organizationId || !registration) return null
     try {
       const history = await this.getVehicleServiceHistory({ organizationId, registration })
-      // history is newest-first; take the first record with a usable mileage.
+      // Only an OIL / FULL SERVICE resets the service-due clock — not a brake,
+      // tyre or clutch job. We keyword-match the work description: "service"
+      // catches full/major/minor/interim/annual service; \boil\b catches engine
+      // oil, oil filter, oil change, oil & filter (the word boundary stops it
+      // matching "coil"). We check both the work-done text and any notes.
+      const isServiceWork = (r: VehicleServiceRecord) =>
+        /\bservices?\b|\boil\b/i.test(`${r.workDone || ''} ${r.notes || ''}`)
+      // history is newest-first; take the most recent service-type record that
+      // also carries a usable mileage.
       const withMileage = history.find(
-        (r) => typeof r.mileage === 'number' && Number.isFinite(r.mileage) && (r.mileage as number) > 0,
+        (r) =>
+          typeof r.mileage === 'number' &&
+          Number.isFinite(r.mileage) &&
+          (r.mileage as number) > 0 &&
+          isServiceWork(r),
       )
       if (!withMileage) return null
       return { mileage: withMileage.mileage as number, date: withMileage.date }

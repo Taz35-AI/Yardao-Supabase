@@ -29,6 +29,7 @@ import {
 } from '@/utils/serviceBookings/validationHelpers'
 import { formatDate, parseDateFromInput } from '@/utils/serviceBookings/dateHelpers'
 import { getBookingEndTime } from '@/utils/serviceBookings/slotHelpers'
+import { bayLabel } from '@/utils/serviceBookings/bayLabels'
 import { formatDuration } from '@/lib/utils/duration'
 import { PARTS_STATUS_ORDER, PARTS_STATUS_META } from '@/lib/utils/partsStatus'
 
@@ -56,6 +57,8 @@ export interface BookingFormPanelProps {
   vehicles: Vehicle[]
   /** Branch bay cap so the form can't oversell. */
   bayCount: number
+  /** Optional custom bay names (display only). Index 0 = bay 1. */
+  bayNames?: string[]
   /** Pre-selected date (e.g. the day the user was viewing when they hit "+"). */
   initialDate: Date
   /** When set, the form is in EDIT mode: every field is prefilled from the
@@ -92,6 +95,7 @@ export function BookingFormPanel({
   bookings,
   vehicles,
   bayCount,
+  bayNames,
   initialDate,
   editingBooking,
   pendingCell,
@@ -473,7 +477,7 @@ export function BookingFormPanel({
                         : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-600 hover:border-[#72A68E]'
                     }`}
                   >
-                    {t('serviceBookings.form.bayButton', { count: b })}
+                    {bayLabel(bayNames, b, t('serviceBookings.form.bayButton', { count: b }))}
                   </button>
                 ))}
               </div>

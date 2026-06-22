@@ -24,6 +24,7 @@ export interface WorkshopWeekGridProps {
   selectedDate: Date
   bookings: ServiceBooking[]
   bayCount: number
+  bayNames?: string[]
   mechanicFilter: string | 'all'
   partsFilter: PartsStatus | 'all'
   /** Week nav (prev/next/today) — change the date, STAY in week view. */
@@ -66,6 +67,7 @@ export function WorkshopWeekGrid({
   selectedDate,
   bookings,
   bayCount,
+  bayNames,
   mechanicFilter,
   partsFilter,
   onPickDate,
@@ -215,6 +217,7 @@ export function WorkshopWeekGrid({
                     selectedDate={day}
                     bookings={bookings}
                     bayCount={bayCount}
+                    bayNames={bayNames}
                     bayFilter="all"
                     mechanicFilter={mechanicFilter}
                     partsFilter={partsFilter}

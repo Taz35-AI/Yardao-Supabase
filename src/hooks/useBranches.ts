@@ -86,6 +86,8 @@ export function useBranches() {
     },
     // 🛠️ Optional service bay count for the new branch.
     serviceBayCount?: number,
+    // 🏷️ Optional custom bay names (display only). Index 0 = bay 1.
+    serviceBayNames?: string[],
   ) => {
     if (!user) throw new Error('User not authenticated')
 
@@ -109,6 +111,7 @@ export function useBranches() {
         createdByName: userProfile.displayName || user.email || 'Unknown User',
         ...locationData, // Spread location data if provided
         ...(typeof serviceBayCount === 'number' && { serviceBayCount }),
+        ...(Array.isArray(serviceBayNames) && serviceBayNames.length > 0 && { serviceBayNames }),
       })
 
       return true

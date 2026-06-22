@@ -24,6 +24,7 @@ import {
   getEffectiveSlotCount,
 } from '@/utils/serviceBookings/slotHelpers'
 import { formatDate } from '@/utils/serviceBookings/dateHelpers'
+import { bayLabel } from '@/utils/serviceBookings/bayLabels'
 import { formatDuration } from '@/lib/utils/duration'
 import { normalizePhone } from '@/lib/utils/phone'
 import { useT, localizeWorkRequired } from '@/lib/i18n'
@@ -62,6 +63,8 @@ export interface WorkshopScheduleGridProps {
   selectedDate: Date
   bookings: ServiceBooking[]
   bayCount: number
+  /** Optional custom bay names (display only). Index 0 = bay 1. */
+  bayNames?: string[]
   /** Optional bay filter — when set, only this bay's column is rendered. */
   bayFilter: number | 'all'
   /** Optional technician filter — bookings assigned to other mechanics dim. */
@@ -224,6 +227,7 @@ export function WorkshopScheduleGrid({
   selectedDate,
   bookings,
   bayCount,
+  bayNames,
   bayFilter,
   mechanicFilter,
   partsFilter,
@@ -755,7 +759,7 @@ export function WorkshopScheduleGrid({
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white dark:bg-gray-800 border border-amber-300 dark:border-amber-700 font-mono font-bold text-amber-900 dark:text-amber-100 hover:bg-amber-100 dark:hover:bg-amber-800/40"
               title={t('serviceBookings.grid.offGridChipTitle', { registration: b.registration, bay: b.serviceBay ?? 1, timeSlot: b.timeSlot ?? '' })}
             >
-              {b.registration} · Bay {b.serviceBay} · {b.timeSlot}
+              {b.registration} · {bayLabel(bayNames, b.serviceBay, `Bay ${b.serviceBay}`)} · {b.timeSlot}
             </button>
           ))}
         </div>
@@ -778,7 +782,7 @@ export function WorkshopScheduleGrid({
             {/* Custom bay icon (public/bay.svg) — replaces the generic
                 lucide Building icon for branded look. */}
             <img src="/bay.svg" alt="" className="w-6 h-6 object-contain" />
-            {t('serviceBookings.grid.bayHeader', { count: bay })}
+            {bayLabel(bayNames, bay, t('serviceBookings.grid.bayHeader', { count: bay }))}
           </div>
         ))}
       </div>

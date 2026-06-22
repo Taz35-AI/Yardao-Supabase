@@ -1438,6 +1438,7 @@ export const ro: DeepPartial<Dictionary> = {
     slotIndicator: {
       bookingCount: '{count} rezervări', allBaysBooked: 'Toate rampele rezervate',
       bayWillBeUsed: 'Se va folosi rampa {nextAvailableBay}',
+      bayWillBeUsedNamed: 'Se va folosi {bay}',
       currentBookings: 'Rezervări curente:', bayLine: 'Rampa {bay}: {registration}',
     },
     customerSearch: { resultsHeader: '{count} clienți existenți' },
@@ -2640,6 +2641,9 @@ export const ro: DeepPartial<Dictionary> = {
       resolvingLocation: 'Se rezolvă locația…',
       enablesMap: 'Permite afișarea pe hartă în Prezentare filiale',
       capsBookings: 'Limitează programările simultane pe interval orar',
+      bayNamesLabel: 'Nume rampe (opțional)',
+      bayNamesHint: 'Lasă o casetă goală pentru a păstra valoarea implicită (Rampa 1, Rampa 2…)',
+      bayNamePlaceholder: 'Rampa {n}',
       locating: 'Se localizează…',
       creating: 'Se creează…',
       emptyTitle: 'Nicio filială încă',

@@ -49,6 +49,7 @@ export function ServiceBookingModal({
   onSave,
   isTimeSlotAvailable,
   bayCount,
+  bayNames,
 }: ServiceBookingModalProps) {
   const t = useT()
   // External data hooks
@@ -292,6 +293,7 @@ export function ServiceBookingModal({
                     onSlotCountChange={(count) =>
                       setFormData(prev => ({ ...prev, slotCount: count }))
                     }
+                    bayNames={bayNames}
                   />
                 )}
 
