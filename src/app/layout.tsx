@@ -28,11 +28,12 @@ const dmMono = DM_Mono({
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://yardao.com'),
   title: {
     template: '%s | Yardao',
-    default: 'Yardao - Fleet Management System',
+    default: 'Yardao | Vehicle Yard & Fleet Management Software',
   },
-  description: 'Professional fleet management and vehicle tracking system for modern businesses',
+  description: 'Manage your vehicle yard end to end: check-in, servicing, MOT reminders, stock and invoicing. The all-in-one app for fleets, hire firms and garages.',
   generator: 'Next.js',
   keywords: [
     'fleet management',
@@ -69,8 +70,8 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     siteName: 'Yardao',
-    title: 'Yardao - Fleet Management System',
-    description: 'Professional fleet management and vehicle tracking system for modern businesses',
+    title: 'Yardao | Vehicle Yard & Fleet Management Software',
+    description: 'Manage your vehicle yard end to end: check-in, servicing, MOT reminders, stock and invoicing. The all-in-one app for fleets, hire firms and garages.',
     url: 'https://yardao.com',
     images: [
       {
@@ -83,8 +84,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Yardao - Fleet Management System',
-    description: 'Professional fleet management and vehicle tracking system for modern businesses',
+    title: 'Yardao | Vehicle Yard & Fleet Management Software',
+    description: 'Manage your vehicle yard end to end: check-in, servicing, MOT reminders, stock and invoicing. The all-in-one app for fleets, hire firms and garages.',
     images: ['https://yardao.com/og-image.jpg'],
     site: '@yardao',
     creator: '@yardao',
