@@ -17,6 +17,7 @@ export type ActivityActionType =
   | 'vehicle_added' | 'defleet'
   | 'registration_changed'
   | 'transfer'
+  | 'rental_on_hire' | 'rental_swap' | 'rental_end' | 'rental_temp_return'
 
 export interface ActivityRecord {
   id: string

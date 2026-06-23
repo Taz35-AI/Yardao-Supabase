@@ -60,6 +60,10 @@ const ACTION: Record<ActivityActionType | 'default', { icon: React.ElementType; 
   vehicle_added:        { icon: PlusCircle,     label: 'Added',          tone: 'green' },
   defleet:              { icon: MinusCircle,    label: 'Defleeted',      tone: 'red' },
   registration_changed: { icon: Hash,           label: 'Reg changed',    tone: 'slate' },
+  rental_on_hire:       { icon: Truck,          label: 'On hire',        tone: 'purple' },
+  rental_swap:          { icon: ArrowLeftRight, label: 'Vehicle swap',   tone: 'blue' },
+  rental_end:           { icon: Truck,          label: 'Hire ended',     tone: 'indigo' },
+  rental_temp_return:   { icon: ArrowDownLeft,  label: 'Temp return',    tone: 'amber' },
   default:              { icon: Activity,       label: 'Event',          tone: 'slate' },
 }
 
