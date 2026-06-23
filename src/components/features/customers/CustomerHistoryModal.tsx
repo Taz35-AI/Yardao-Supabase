@@ -11,6 +11,8 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
+import { useBranches } from '@/hooks/useBranches'
+import { bayLabel } from '@/utils/serviceBookings/bayLabels'
 import { useT } from '@/lib/i18n'
 import { logger } from '@/lib/logger'
 import { customerJobHistoryService } from '@/lib/services/customerJobHistoryService'
@@ -35,6 +37,15 @@ export function CustomerHistoryModal({
 }) {
   const t = useT()
   const { user } = useAuth()
+  const { branches } = useBranches()
+  // Resolve a record's custom bay names by its branch name. Falls back to the
+  // main/first branch (covers single-branch orgs where records carry no branch).
+  const bayNamesFor = (branchName?: string): string[] | undefined => {
+    const b = branchName
+      ? branches.find((x) => x.name === branchName)
+      : (branches.find((x) => x.isMain) ?? branches[0])
+    return (b ?? branches.find((x) => x.isMain) ?? branches[0])?.serviceBayNames
+  }
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [records, setRecords] = useState<CustomerJobRecord[]>([])
@@ -229,7 +240,7 @@ export function CustomerHistoryModal({
                             {r.mechanicName}
                           </span>
                           {typeof r.serviceBay === 'number'
-                            ? ` · ${t('customers.history.bay', { bay: r.serviceBay })}`
+                            ? ` · ${bayLabel(bayNamesFor(r.branchName), r.serviceBay, t('customers.history.bay', { bay: r.serviceBay }))}`
                             : ''}
                         </span>
                       )}
