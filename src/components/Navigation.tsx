@@ -20,6 +20,7 @@ import {
   Menu,
   X,
   Plus,
+  PackagePlus,
   Users,
   CarIcon,
   PaintbrushIcon,
@@ -406,22 +407,27 @@ export function Navigation() {
             onClick={handleNavClick}
           />
 
-          {/* Centre FAB – only on dashboard */}
-          {pathname.startsWith('/dashboard') && (
-            <div className="flex flex-col items-center -mt-5">
-              <button
-                onClick={async () => {
-                  await triggerLightHaptic()
-                  window.dispatchEvent(new CustomEvent('yardao:open-checkin'))
-                }}
-                className="w-14 h-14 rounded-full bg-[#b3f243] shadow-lg shadow-[#b3f243]/30 flex items-center justify-center active:scale-95 transition-transform border-4 border-[#012619]"
-                aria-label="Add vehicle"
-              >
-                <Plus className="w-7 h-7 text-[#012619]" strokeWidth={3} />
-              </button>
-              <span className="text-[9px] font-semibold text-[#4a6a5a] mt-1 leading-none">{t('nav.add')}</span>
-            </div>
-          )}
+          {/* Centre FAB – context-aware: check-in on the yard, add-part on stock */}
+          {(pathname.startsWith('/dashboard') || pathname.startsWith('/stock')) && (() => {
+            const isStock = pathname.startsWith('/stock')
+            return (
+              <div className="flex flex-col items-center -mt-5">
+                <button
+                  onClick={async () => {
+                    await triggerLightHaptic()
+                    window.dispatchEvent(new CustomEvent(isStock ? 'yardao:open-addpart' : 'yardao:open-checkin'))
+                  }}
+                  className="w-14 h-14 rounded-full bg-[#b3f243] shadow-lg shadow-[#b3f243]/30 flex items-center justify-center active:scale-95 transition-transform border-4 border-[#012619]"
+                  aria-label={isStock ? 'Add part' : 'Add vehicle'}
+                >
+                  {isStock
+                    ? <PackagePlus className="w-7 h-7 text-[#012619]" strokeWidth={2.5} />
+                    : <Plus className="w-7 h-7 text-[#012619]" strokeWidth={3} />}
+                </button>
+                <span className="text-[9px] font-semibold text-[#4a6a5a] mt-1 leading-none">{isStock ? t('nav.addPart') : t('nav.add')}</span>
+              </div>
+            )
+          })()}
 
           {/* Slot 3 */}
           <BottomNavItem

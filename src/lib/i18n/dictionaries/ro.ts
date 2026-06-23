@@ -41,6 +41,7 @@ export const ro: DeepPartial<Dictionary> = {
     theme: 'Temă',
     logout: 'Deconectare',
     add: 'Adaugă',
+    addPart: 'Adaugă piesă',
     yard: 'Autobază',
     reports: 'Rapoarte',
     fleet: 'Flotă',

@@ -44,7 +44,7 @@ import { useT } from '@/lib/i18n'
 type SortKey = 'quantity' | 'name' | 'value'
 type SortDir = 'asc' | 'desc'
 
-export function StockTab() {
+export function StockTab({ autoOpenAddSignal = 0 }: { autoOpenAddSignal?: number } = {}) {
   const t = useT()
   const { user } = useAuth()
   const [organizationId, setOrganizationId] = useState<string | null>(null)
@@ -72,6 +72,12 @@ export function StockTab() {
   
   // Modals
   const [showAddModal, setShowAddModal] = useState(false)
+
+  // Open the Add Part modal when the mobile bottom-nav "+" FAB fires
+  // (the page bumps a signal so this works even when arriving from another tab).
+  useEffect(() => {
+    if (autoOpenAddSignal > 0) setShowAddModal(true)
+  }, [autoOpenAddSignal])
   const [showRemoveModal, setShowRemoveModal] = useState(false)
   const [showQuickAddModal, setShowQuickAddModal] = useState(false)
   const [showBulkUploadModal, setShowBulkUploadModal] = useState(false)
@@ -543,9 +549,9 @@ export function StockTab() {
       {/* 🔥 PREMIUM ACTION BAR - Glass Effect with Utilities Menu */}
       {/* ✅ FIXED: Brand background instead of white/70 */}
       <div className="sticky top-0 z-30 bg-[#f6f8f7] dark:bg-gray-900 py-3 -mx-2 px-2 sm:-mx-4 sm:px-4 lg:-mx-8 lg:px-8 border-b border-[#e2e8e5] dark:border-gray-700/60">
-        <div className="flex gap-2 items-center flex-wrap">
+        <div className="flex gap-2 items-center flex-nowrap md:flex-wrap">
           {/* Search */}
-          <div className="relative flex-1 min-w-[200px]">
+          <div className="relative flex-1 min-w-0 md:min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#72A68E]" />
             <input
               type="text"
@@ -564,23 +570,24 @@ export function StockTab() {
             )}
           </div>
 
-          {/* ✅ Group Toggle Button */}
+          {/* ✅ Group Toggle Button — icon-only on mobile to keep one row */}
           <button
             onClick={() => setShowGrouped(!showGrouped)}
-            className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-2.5 rounded-xl text-xs font-semibold border transition-colors flex-shrink-0 ${
               showGrouped
                 ? 'bg-[#025940] dark:bg-[#025940] border-transparent text-white'
                 : 'bg-white dark:bg-gray-800 text-[#72A68E] dark:text-gray-400 border-[#e2e8e5] dark:border-gray-700 hover:border-[#72A68E] dark:hover:border-[#72A68E]'
             }`}
+            title={showGrouped ? t('stock.tab.showAll') : t('stock.tab.group')}
           >
             <Layers className="w-3.5 h-3.5" />
-            {showGrouped ? t('stock.tab.showAll') : t('stock.tab.group')}
+            <span className="hidden sm:inline">{showGrouped ? t('stock.tab.showAll') : t('stock.tab.group')}</span>
           </button>
 
           {/* Out-of-stock visibility toggle — zero-stock parts hidden by default */}
           <button
             onClick={() => setHideOutOfStock(v => !v)}
-            className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold border transition-colors ${
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-2.5 rounded-xl text-xs font-semibold border transition-colors flex-shrink-0 ${
               hideOutOfStock
                 ? 'bg-white dark:bg-gray-800 text-[#72A68E] dark:text-gray-400 border-[#e2e8e5] dark:border-gray-700 hover:border-[#72A68E] dark:hover:border-[#72A68E]'
                 : 'bg-[#025940] dark:bg-[#025940] border-transparent text-white'
@@ -592,7 +599,7 @@ export function StockTab() {
           </button>
 
           {/* Scan Buttons Group */}
-          <div className="flex items-center gap-1.5 bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl p-1.5 border border-[#e2e8e5] dark:border-gray-700">
+          <div className="flex items-center gap-1.5 bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl p-1.5 border border-[#e2e8e5] dark:border-gray-700 flex-shrink-0">
             <Scan className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#025940] dark:text-[#72A68E] flex-shrink-0" />
             <button
               onClick={handleScanIn}
@@ -611,7 +618,7 @@ export function StockTab() {
           </div>
 
           {/* 🔥 Utilities Menu */}
-          <div className="relative">
+          <div className="relative flex-shrink-0">
             <button
               onClick={() => setShowUtilitiesMenu(!showUtilitiesMenu)}
               onBlur={() => setTimeout(() => setShowUtilitiesMenu(false), 200)}
@@ -669,10 +676,10 @@ export function StockTab() {
             )}
           </div>
 
-          {/* Add Part Button - Hero CTA */}
+          {/* Add Part Button - Hero CTA (desktop only; mobile uses the bottom-nav FAB) */}
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-[10px] sm:text-sm font-semibold bg-[#025940] text-white hover:bg-[#012619] transition-colors whitespace-nowrap"
+            className="hidden md:flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-[10px] sm:text-sm font-semibold bg-[#025940] text-white hover:bg-[#012619] transition-colors whitespace-nowrap flex-shrink-0"
           >
             <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span>{t('stock.tab.addPart')}</span>

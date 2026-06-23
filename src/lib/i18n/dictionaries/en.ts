@@ -37,6 +37,7 @@ export const en = {
     theme: 'Theme',
     logout: 'Logout',
     add: 'Add',
+    addPart: 'Add part',
     yard: 'Yard',
     reports: 'Reports',
     fleet: 'Fleet',

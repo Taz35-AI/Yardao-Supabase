@@ -24,6 +24,18 @@ export default function StockPage() {
   const [activeTab, setActiveTab] = useState<'stock' | 'history' | 'usedtoday' | 'invoicing'>('stock')
   const [userProfile, setUserProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  // Bumped by the mobile bottom-nav "+" FAB to open the Add Part modal. We also
+  // switch to the Stock tab so it works no matter which tab is showing.
+  const [addPartSignal, setAddPartSignal] = useState(0)
+
+  useEffect(() => {
+    const handler = () => {
+      setActiveTab('stock')
+      setAddPartSignal(n => n + 1)
+    }
+    window.addEventListener('yardao:open-addpart', handler)
+    return () => window.removeEventListener('yardao:open-addpart', handler)
+  }, [])
 
   // Load user profile to check admin status
   useEffect(() => {
@@ -159,7 +171,7 @@ export default function StockPage() {
           </div>
 
           {/* Tab Content */}
-          {activeTab === 'stock' && <StockTab />}
+          {activeTab === 'stock' && <StockTab autoOpenAddSignal={addPartSignal} />}
           {activeTab === 'history' && <OrderHistoryTab />}
           {activeTab === 'usedtoday' && isAdmin && <PartsUsedTodayTab />}
           {activeTab === 'invoicing' && isAdmin && <InvoicingTab />}

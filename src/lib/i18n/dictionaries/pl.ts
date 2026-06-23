@@ -43,6 +43,7 @@ export const pl: DeepPartial<Dictionary> = {
     theme: 'Motyw',
     logout: 'Wyloguj',
     add: 'Dodaj',
+    addPart: 'Dodaj część',
     yard: 'Plac',
     reports: 'Raporty',
     fleet: 'Flota',

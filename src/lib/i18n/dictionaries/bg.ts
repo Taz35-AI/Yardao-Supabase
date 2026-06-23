@@ -42,6 +42,7 @@ export const bg: DeepPartial<Dictionary> = {
     theme: 'Тема',
     logout: 'Изход',
     add: 'Добави',
+    addPart: 'Добави част',
     yard: 'Двор',
     reports: 'Справки',
     fleet: 'Автопарк',
