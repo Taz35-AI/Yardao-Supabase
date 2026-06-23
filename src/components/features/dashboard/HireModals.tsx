@@ -11,6 +11,26 @@ import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { settingsService, ServiceSettings, DEFAULT_SERVICE_SETTINGS } from '@/lib/services/settingsService'
 import { mileageService } from '@/lib/services/mileageService'
+import { hireAgreementService } from '@/lib/services/hireAgreementService'
+import { hireSettingsService } from '@/lib/services/hireSettingsService'
+
+const ymdToday = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+const euFromYmd = (iso?: string | null) => {
+  if (!iso) return ''
+  const [y, m, d] = iso.slice(0, 10).split('-')
+  return y && m && d ? `${d}/${m}/${y}` : ''
+}
+
+interface AgreementMatch {
+  customer: string
+  label: string
+  reference?: string | null
+  startDate?: string | null
+  future: boolean
+}
 
 type TFunc = (key: string, vars?: Record<string, string | number>) => string
 
@@ -61,6 +81,44 @@ export function SetOutOnHireModal({
 }: SetOutOnHireModalProps) {
 
   const t = useT()
+  const { user } = useAuth()
+  const [match, setMatch] = useState<AgreementMatch | null>(null)
+
+  // On open, see if this vehicle is on an open hire-agreement line so we can
+  // confirm "Setting up on hire with {customer}, {label}?" (+ future warning).
+  useEffect(() => {
+    if (!isOpen || !user?.uid) {
+      setMatch(null)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const profile = await userProfileService.getProfile(user.uid)
+        const orgId = profile?.organizationId
+        if (!orgId || cancelled) return
+        const line = await hireAgreementService.findOpenLineByRegistration(orgId, vehicle.registration || '')
+        if (!line || cancelled) return
+        const [agreement, settings] = await Promise.all([
+          hireAgreementService.getAgreement(line.agreementId),
+          hireSettingsService.getHireSettings(orgId),
+        ])
+        if (!agreement || cancelled) return
+        setMatch({
+          customer: agreement.customerName || '—',
+          label: settings.agreementLabelSingular,
+          reference: agreement.reference,
+          startDate: agreement.startDate,
+          future: !!agreement.startDate && agreement.startDate > ymdToday(),
+        })
+      } catch (err) {
+        logger.error('SetOutOnHireModal: agreement lookup failed', err)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, user?.uid, vehicle.registration])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -129,6 +187,32 @@ export function SetOutOnHireModal({
               <p className="text-[#012619] dark:text-white font-semibold mt-0.5">{safeString(vehicle.colour) || '—'}</p>
             </div>
           </div>
+
+          {/* 🔗 Hire-agreement match — "Setting up on hire with X, Contract Y?" */}
+          {match && (
+            <div className="rounded-xl border-2 border-[#025940]/40 bg-[#025940]/5 dark:bg-[#025940]/10 p-4">
+              <div className="flex items-start gap-3">
+                <FileText className="w-4 h-4 text-[#025940] dark:text-[#b3f243] flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-bold text-[#012619] dark:text-white">
+                    {t('dashboard.hire.agreementMatch', { customer: match.customer, label: match.label })}
+                  </p>
+                  {match.reference && <p className="text-xs text-[#72A68E] mt-0.5">{match.reference}</p>}
+                  <p className="text-xs text-[#4a5e54] dark:text-gray-300 mt-1">
+                    {t('dashboard.hire.agreementMatchHint', { label: match.label })}
+                  </p>
+                </div>
+              </div>
+              {match.future && (
+                <div className="mt-2 flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-2.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-amber-800 dark:text-amber-200 leading-relaxed">
+                    {t('dashboard.hire.agreementFutureWarn', { date: euFromYmd(match.startDate) })}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Warning notice */}
           <div className="flex gap-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4">

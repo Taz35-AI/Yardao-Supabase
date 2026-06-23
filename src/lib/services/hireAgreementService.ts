@@ -60,6 +60,42 @@ export const hireAgreementService = {
     }
   },
 
+  async getAgreement(id: string): Promise<HireAgreement | null> {
+    try {
+      const { data, error } = await supabase.from(AGREEMENTS).select('*').eq('id', id).single()
+      if (error) throw error
+      return toCamel<HireAgreement>(data)
+    } catch (err) {
+      logger.error('hireAgreementService.getAgreement failed:', err)
+      return null
+    }
+  },
+
+  /** Open (scheduled/active) line for a registration — used by the yard
+   *  set-on-hire interception. Matches on the normalised registration. */
+  async findOpenLineByRegistration(
+    organizationId: string,
+    registration: string,
+  ): Promise<HireAgreementVehicle | null> {
+    if (!organizationId || !registration) return null
+    const norm = registration.toUpperCase().replace(/\s+/g, '')
+    try {
+      const { data, error } = await supabase
+        .from(LINES)
+        .select('*')
+        .eq('organization_id', organizationId)
+        .in('status', ['scheduled', 'active'])
+      if (error) throw error
+      const hit = (data ?? []).find(
+        (r) => (r.registration || '').toUpperCase().replace(/\s+/g, '') === norm,
+      )
+      return hit ? toCamel<HireAgreementVehicle>(hit) : null
+    } catch (err) {
+      logger.error('hireAgreementService.findOpenLineByRegistration failed:', err)
+      return null
+    }
+  },
+
   async createAgreement(input: {
     organizationId: string
     customerId: string

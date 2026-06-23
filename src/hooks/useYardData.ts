@@ -18,6 +18,7 @@ import { contractService } from '@/lib/contractService'
 import { buildContractColorIndex, resolveVehicleContractColor, type ContractColorIndex } from '@/lib/contractUtils'
 import { branchService } from '@/lib/services/branchService'
 import { VehicleHireService } from '@/lib/services/vehicleHireService'
+import { hireAgreementService } from '@/lib/services/hireAgreementService'
 import { activityLogService } from '@/lib/services/activityLogService'
 import { settingsService } from '@/lib/services/settingsService'
 import { vehicleServiceHistoryService } from '@/lib/services/vehicleServiceHistoryService'
@@ -813,6 +814,28 @@ export function useYardDataInternal(props?: UseYardDataProps) {
         data.hireNotes
       )
       logger.log(`Vehicle set out on hire from branch: ${branchId}`)
+
+      // 🔗 Hire Management: if this vehicle is on an open hire-agreement line,
+      // activate it so it goes live on the contract. Best-effort — never undoes
+      // the (successful) hire above.
+      try {
+        const line = await hireAgreementService.findOpenLineByRegistration(
+          userOrganizationId,
+          vehicle.registration || '',
+        )
+        if (line) {
+          await hireAgreementService.setLineOnHire({
+            organizationId: userOrganizationId,
+            lineId: line.id,
+            registration: vehicle.registration,
+            checkedInVehicleId: data.vehicleId,
+            actorId: user.uid,
+            actorName: userDisplayName,
+          })
+        }
+      } catch (linkErr) {
+        logger.error('Hire agreement link on set-out failed (non-fatal):', linkErr)
+      }
     } catch (error) {
       logger.error('Error setting vehicle out on hire:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to set vehicle out on hire'
