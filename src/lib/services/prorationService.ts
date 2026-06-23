@@ -86,6 +86,41 @@ export function computeEndDate(
   return ymd(d)
 }
 
+/**
+ * The end (exclusive) of the billing PERIOD that contains `asOf`, counting in
+ * whole weeks/months from `periodStartIso`. Used for early-return credits:
+ * weekly 23–29 returned 25 → this returns 30 (period [23,30)), so the credit is
+ * [25, 30). Returns a YYYY-MM-DD string.
+ */
+export function currentPeriodEnd(
+  periodStartIso: string,
+  rateType: HireRateType,
+  asOfIso: string,
+): string {
+  const start = toDay(periodStartIso)
+  const asOf = toDay(asOfIso)
+  if (asOf.getTime() <= start.getTime()) {
+    return ymd(advance(start, rateType, 1))
+  }
+  // Walk one period at a time until we pass asOf.
+  let periodStart = new Date(start)
+  let periodEnd = advance(periodStart, rateType, 1)
+  let guard = 0
+  while (periodEnd.getTime() <= asOf.getTime() && guard < 1000) {
+    periodStart = periodEnd
+    periodEnd = advance(periodStart, rateType, 1)
+    guard++
+  }
+  return ymd(periodEnd)
+}
+
+function advance(from: Date, rateType: HireRateType, count: number): Date {
+  const d = new Date(from)
+  if (rateType === 'weekly') d.setDate(d.getDate() + 7 * count)
+  else d.setMonth(d.getMonth() + count)
+  return d
+}
+
 function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
@@ -97,4 +132,4 @@ function ymd(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
-export const prorationService = { dailyRate, dayCount, prorate, computeEndDate }
+export const prorationService = { dailyRate, dayCount, prorate, computeEndDate, currentPeriodEnd }

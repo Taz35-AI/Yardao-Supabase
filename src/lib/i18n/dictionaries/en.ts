@@ -1218,6 +1218,28 @@ export const en = {
     labelSetting: 'What do you call a hire agreement?',
     labelSingular: 'Singular (e.g. Contract)',
     labelPlural: 'Plural (e.g. Contracts)',
+    // scheduler
+    tabSchedule: 'Schedule',
+    ganttWeek: 'Week',
+    ganttFortnight: '2 weeks',
+    ganttMonth: 'Month',
+    ganttAllCustomers: 'All customers',
+    ganttEmpty: 'Nothing scheduled',
+    ganttEmptyHint: 'Attach vehicles to an agreement and they appear here.',
+    legendScheduled: 'Scheduled',
+    legendActive: 'On hire',
+    legendOverdue: 'Overdue',
+    legendReturned: 'Returned',
+    legendSwapped: 'Swapped',
+    // line actions
+    setOnHire: 'Set on hire',
+    endHire: 'End hire',
+    onHireDone: 'Vehicle set on hire.',
+    endHireDone: 'Hire ended — credit suggested if returned early.',
+    actionFail: 'Action failed.',
+    futureWarnTitle: 'Future-dated hire',
+    futureWarnBody: '{reg} is booked to {customer} from {date}. Setting it on hire now starts it early — make sure that is intended.',
+    proceed: 'Set on hire now',
   },
   serviceBookings: {
     common: {

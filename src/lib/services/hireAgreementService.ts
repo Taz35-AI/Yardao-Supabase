@@ -8,6 +8,7 @@ import { toCamel, toCamelList } from '@/lib/dbMap'
 import { logger } from '@/lib/logger'
 import { prorationService } from '@/lib/services/prorationService'
 import { activityLogService } from '@/lib/services/activityLogService'
+import { hireCreditService } from '@/lib/services/hireCreditService'
 import type {
   HireAgreement,
   HireAgreementVehicle,
@@ -211,6 +212,98 @@ export const hireAgreementService = {
       .update({ ...updates, updated_at: nowIso() })
       .eq('id', id)
     if (error) throw error
+  },
+
+  /** Activate a line (set on hire). Stamps actual_out_at; best-effort yard stamp. */
+  async setLineOnHire(params: {
+    organizationId: string
+    lineId: string
+    registration?: string | null
+    actualOutAt?: string // ISO; defaults to now
+    checkedInVehicleId?: string | null
+    actorId?: string | null
+    actorName?: string | null
+  }): Promise<void> {
+    const outAt = params.actualOutAt || nowIso()
+    await this.updateLine(params.lineId, { status: 'active', actual_out_at: outAt })
+    if (params.checkedInVehicleId) {
+      try {
+        await supabase
+          .from('checked_in_vehicles')
+          .update({ current_agreement_line_id: params.lineId, hire_status: 'Out on Hire' })
+          .eq('id', params.checkedInVehicleId)
+      } catch (err) {
+        logger.error('setLineOnHire yard stamp failed (non-fatal):', err)
+      }
+    }
+    activityLogService.log({
+      organizationId: params.organizationId,
+      actionType: 'rental_on_hire',
+      registration: params.registration ?? null,
+      actorId: params.actorId,
+      actorName: params.actorName,
+      summary: 'Set on hire',
+      details: { lineId: params.lineId },
+    })
+  },
+
+  /**
+   * End a line (end of hire). Stamps the return, marks it returned, and SUGGESTS
+   * a calendar-accurate credit for the unused remainder of the current billing
+   * period (e.g. weekly 23–29 returned 25 → credit [25, 30)).
+   */
+  async endLine(params: {
+    organizationId: string
+    agreementId: string
+    lineId: string
+    vehicleId?: string | null
+    registration?: string | null
+    periodStart: string // line actual-out (or scheduled start) — period anchor
+    rateType: HireRateType
+    rateAmount: number
+    actualReturnAt?: string // ISO; defaults to now
+    checkedInVehicleId?: string | null
+    actorId?: string | null
+    actorName?: string | null
+  }): Promise<void> {
+    const returnAt = params.actualReturnAt || nowIso()
+    await this.updateLine(params.lineId, { status: 'returned', actual_return_at: returnAt })
+    if (params.checkedInVehicleId) {
+      try {
+        await supabase
+          .from('checked_in_vehicles')
+          .update({ current_agreement_line_id: null, hire_status: 'In Yard' })
+          .eq('id', params.checkedInVehicleId)
+      } catch (err) {
+        logger.error('endLine yard reset failed (non-fatal):', err)
+      }
+    }
+    // Suggest a prorated credit for the unused remainder of the current period.
+    const returnDay = (returnAt.length <= 10 ? returnAt : returnAt.slice(0, 10))
+    const periodEnd = prorationService.currentPeriodEnd(params.periodStart, params.rateType, returnDay)
+    if (prorationService.dayCount(returnDay, periodEnd) > 0) {
+      await hireCreditService.suggestCredit({
+        organizationId: params.organizationId,
+        agreementId: params.agreementId,
+        lineId: params.lineId,
+        vehicleId: params.vehicleId,
+        registration: params.registration,
+        reason: 'early_return',
+        periodStart: returnDay,
+        periodEnd,
+        rateType: params.rateType,
+        rateAmount: params.rateAmount,
+      })
+    }
+    activityLogService.log({
+      organizationId: params.organizationId,
+      actionType: 'rental_end',
+      registration: params.registration ?? null,
+      actorId: params.actorId,
+      actorName: params.actorName,
+      summary: 'End of hire — vehicle returned',
+      details: { lineId: params.lineId },
+    })
   },
 
   /**

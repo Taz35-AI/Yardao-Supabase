@@ -109,6 +109,69 @@ function AgreementCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
+  const actor = async () => {
+    const profile = user?.uid ? await userProfileService.getProfile(user.uid) : null
+    return { id: user?.uid || null, name: profile?.displayName || user?.email || 'Unknown' }
+  }
+
+  const todayYmd = () => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
+  const setOnHire = async (l: HireAgreementVehicle) => {
+    if (!organizationId) return
+    // Future-dated warning: starting earlier than the agreement's start date.
+    if (agreement.startDate && agreement.startDate > todayYmd()) {
+      const msg = t('hire.futureWarnBody', {
+        reg: l.registration || '',
+        customer: agreement.customerName || '',
+        date: euDate(agreement.startDate),
+      })
+      if (!window.confirm(msg)) return
+    }
+    try {
+      const a = await actor()
+      await hireAgreementService.setLineOnHire({
+        organizationId,
+        lineId: l.id,
+        registration: l.registration,
+        actorId: a.id,
+        actorName: a.name,
+      })
+      toast.success(t('hire.onHireDone'))
+      loadLines()
+      onChange()
+    } catch {
+      toast.error(t('hire.actionFail'))
+    }
+  }
+
+  const endHire = async (l: HireAgreementVehicle) => {
+    if (!organizationId) return
+    try {
+      const a = await actor()
+      const periodStart = (l.actualOutAt ? l.actualOutAt.slice(0, 10) : l.scheduledStart) || agreement.startDate
+      await hireAgreementService.endLine({
+        organizationId,
+        agreementId: agreement.id,
+        lineId: l.id,
+        vehicleId: l.vehicleId,
+        registration: l.registration,
+        periodStart,
+        rateType: agreement.rateType,
+        rateAmount: agreement.rateAmount,
+        actorId: a.id,
+        actorName: a.name,
+      })
+      toast.success(t('hire.endHireDone'))
+      loadLines()
+      onChange()
+    } catch {
+      toast.error(t('hire.actionFail'))
+    }
+  }
+
   const attach = async (v: { id: string; registration: string; make?: string; model?: string }) => {
     if (!organizationId) return
     try {
@@ -158,9 +221,15 @@ function AgreementCard({
           ) : (
             <ul className="space-y-1.5">
               {lines.map((l) => (
-                <li key={l.id} className="flex items-center justify-between text-sm rounded-lg border border-[#e2e8e5] dark:border-gray-700 px-2.5 py-1.5">
-                  <span className="font-mono font-bold text-[#012619] dark:text-white">{l.registration}</span>
-                  <span className="text-xs text-[#72A68E]">{lineStatusLabel(l.status, t)}</span>
+                <li key={l.id} className="flex items-center justify-between gap-2 text-sm rounded-lg border border-[#e2e8e5] dark:border-gray-700 px-2.5 py-1.5">
+                  <span className="font-mono font-bold text-[#012619] dark:text-white flex-shrink-0">{l.registration}</span>
+                  <span className="text-xs text-[#72A68E] flex-1">{lineStatusLabel(l.status, t)}</span>
+                  {l.status === 'scheduled' && (
+                    <button onClick={() => setOnHire(l)} className="px-2 py-1 rounded-md text-[11px] font-semibold bg-[#025940] text-white hover:bg-[#012619]">{t('hire.setOnHire')}</button>
+                  )}
+                  {l.status === 'active' && (
+                    <button onClick={() => endHire(l)} className="px-2 py-1 rounded-md text-[11px] font-semibold border border-[#e2e8e5] dark:border-gray-600 text-[#4a5e54] dark:text-gray-300 hover:border-[#72A68E]">{t('hire.endHire')}</button>
+                  )}
                 </li>
               ))}
             </ul>
