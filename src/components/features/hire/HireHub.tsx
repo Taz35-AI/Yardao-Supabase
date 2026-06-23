@@ -3,14 +3,15 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Users, FileText, CalendarRange } from 'lucide-react'
+import { Users, FileText, CalendarRange, Coins } from 'lucide-react'
 import { useHire } from '@/contexts/HireContext'
 import { useT } from '@/lib/i18n'
 import { HireCustomers } from './HireCustomers'
 import { HireAgreements } from './HireAgreements'
 import { HireGantt } from './HireGantt'
+import { HireCredits } from './HireCredits'
 
-type Tab = 'customers' | 'agreements' | 'schedule'
+type Tab = 'customers' | 'agreements' | 'schedule' | 'credits'
 
 export function HireHub() {
   const t = useT()
@@ -23,11 +24,13 @@ export function HireHub() {
         <TabBtn active={tab === 'customers'} onClick={() => setTab('customers')} icon={<Users className="w-3.5 h-3.5" />} label={t('hire.tabCustomers')} />
         <TabBtn active={tab === 'agreements'} onClick={() => setTab('agreements')} icon={<FileText className="w-3.5 h-3.5" />} label={settings.agreementLabelPlural} />
         <TabBtn active={tab === 'schedule'} onClick={() => setTab('schedule')} icon={<CalendarRange className="w-3.5 h-3.5" />} label={t('hire.tabSchedule')} />
+        <TabBtn active={tab === 'credits'} onClick={() => setTab('credits')} icon={<Coins className="w-3.5 h-3.5" />} label={t('hire.tabCredits')} />
       </div>
 
       {tab === 'customers' && <HireCustomers />}
       {tab === 'agreements' && <HireAgreements />}
       {tab === 'schedule' && <HireGantt />}
+      {tab === 'credits' && <HireCredits />}
     </div>
   )
 }

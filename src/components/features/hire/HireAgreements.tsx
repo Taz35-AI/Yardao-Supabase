@@ -14,6 +14,7 @@ import { useHire } from '@/contexts/HireContext'
 import { useT } from '@/lib/i18n'
 import type { HireAgreement, HireAgreementVehicle } from '@/types/hire'
 import { NewAgreementModal } from './NewAgreementModal'
+import { HireSwapModal } from './HireSwapModal'
 import { euDate, rateLabel } from './hireFormat'
 
 export function HireAgreements() {
@@ -97,6 +98,7 @@ function AgreementCard({
   const [open, setOpen] = useState(false)
   const [lines, setLines] = useState<HireAgreementVehicle[]>([])
   const [loaded, setLoaded] = useState(false)
+  const [swapLine, setSwapLine] = useState<HireAgreementVehicle | null>(null)
 
   const loadLines = async () => {
     if (!organizationId) return
@@ -228,13 +230,30 @@ function AgreementCard({
                     <button onClick={() => setOnHire(l)} className="px-2 py-1 rounded-md text-[11px] font-semibold bg-[#025940] text-white hover:bg-[#012619]">{t('hire.setOnHire')}</button>
                   )}
                   {l.status === 'active' && (
-                    <button onClick={() => endHire(l)} className="px-2 py-1 rounded-md text-[11px] font-semibold border border-[#e2e8e5] dark:border-gray-600 text-[#4a5e54] dark:text-gray-300 hover:border-[#72A68E]">{t('hire.endHire')}</button>
+                    <>
+                      <button onClick={() => setSwapLine(l)} className="px-2 py-1 rounded-md text-[11px] font-semibold border border-[#e2e8e5] dark:border-gray-600 text-[#4a5e54] dark:text-gray-300 hover:border-[#72A68E]">{t('hire.swap')}</button>
+                      <button onClick={() => endHire(l)} className="px-2 py-1 rounded-md text-[11px] font-semibold border border-[#e2e8e5] dark:border-gray-600 text-[#4a5e54] dark:text-gray-300 hover:border-[#72A68E]">{t('hire.endHire')}</button>
+                    </>
                   )}
                 </li>
               ))}
             </ul>
           )}
         </div>
+      )}
+
+      {swapLine && (
+        <HireSwapModal
+          organizationId={organizationId}
+          agreement={agreement}
+          fromLine={swapLine}
+          onClose={() => setSwapLine(null)}
+          onDone={() => {
+            setSwapLine(null)
+            loadLines()
+            onChange()
+          }}
+        />
       )}
     </div>
   )
