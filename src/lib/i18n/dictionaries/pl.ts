@@ -1766,7 +1766,7 @@ export const pl: DeepPartial<Dictionary> = {
     source: { fleet: 'Flota', inYard: 'Na placu' },
     btn: {
       cancel: 'Anuluj', close: 'Zamknij', delete: 'Usuń', save: 'Zapisz zmiany',
-      add: 'Dodaj', use: 'Użyj', adjust: 'Skoryguj', back: 'Wstecz', refresh: 'Odśwież',
+      add: 'Dodaj', use: 'Użyj', adjust: 'Skoryguj', back: 'Wstecz', next: 'Dalej', refresh: 'Odśwież',
     },
     tab: {
       loadOrgFail: 'Nie udało się załadować organizacji',
@@ -1904,6 +1904,7 @@ export const pl: DeepPartial<Dictionary> = {
       adding: 'Dodawanie...',
       addToStock: 'Dodaj część do magazynu',
       addPartShort: 'Dodaj część',
+      stepOf: 'Krok {step} z {total}',
     },
     edit: {
       missingInfo: 'Brak wymaganych informacji',

@@ -1791,7 +1791,7 @@ export const en = {
     source: { fleet: 'Fleet', inYard: 'In Yard' },
     btn: {
       cancel: 'Cancel', close: 'Close', delete: 'Delete', save: 'Save Changes',
-      add: 'Add', use: 'Use', adjust: 'Adjust', back: 'Back', refresh: 'Refresh',
+      add: 'Add', use: 'Use', adjust: 'Adjust', back: 'Back', next: 'Next', refresh: 'Refresh',
     },
     tab: {
       loadOrgFail: 'Failed to load organization',
@@ -1931,6 +1931,7 @@ export const en = {
       adding: 'Adding...',
       addToStock: 'Add Part to Stock',
       addPartShort: 'Add Part',
+      stepOf: 'Step {step} of {total}',
     },
     edit: {
       missingInfo: 'Missing required information',

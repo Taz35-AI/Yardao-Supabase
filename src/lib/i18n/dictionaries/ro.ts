@@ -1760,7 +1760,7 @@ export const ro: DeepPartial<Dictionary> = {
     source: { fleet: 'Flotă', inYard: 'În curte' },
     btn: {
       cancel: 'Anulează', close: 'Închide', delete: 'Șterge', save: 'Salvează modificările',
-      add: 'Adaugă', use: 'Folosește', adjust: 'Ajustează', back: 'Înapoi', refresh: 'Reîmprospătează',
+      add: 'Adaugă', use: 'Folosește', adjust: 'Ajustează', back: 'Înapoi', next: 'Înainte', refresh: 'Reîmprospătează',
     },
     tab: {
       loadOrgFail: 'Încărcarea organizației a eșuat',
@@ -1898,6 +1898,7 @@ export const ro: DeepPartial<Dictionary> = {
       adding: 'Se adaugă...',
       addToStock: 'Adaugă piesa în stoc',
       addPartShort: 'Adaugă piesă',
+      stepOf: 'Pasul {step} din {total}',
     },
     edit: {
       missingInfo: 'Lipsesc informații obligatorii',

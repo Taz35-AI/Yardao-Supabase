@@ -1765,7 +1765,7 @@ export const bg: DeepPartial<Dictionary> = {
     source: { fleet: 'Автопарк', inYard: 'В двора' },
     btn: {
       cancel: 'Отказ', close: 'Затвори', delete: 'Изтрий', save: 'Запази промените',
-      add: 'Добави', use: 'Вложи', adjust: 'Коригирай', back: 'Назад', refresh: 'Обнови',
+      add: 'Добави', use: 'Вложи', adjust: 'Коригирай', back: 'Назад', next: 'Напред', refresh: 'Обнови',
     },
     tab: {
       loadOrgFail: 'Зареждането на организацията не бе успешно',
@@ -1903,6 +1903,7 @@ export const bg: DeepPartial<Dictionary> = {
       adding: 'Добавя се...',
       addToStock: 'Добави частта в склада',
       addPartShort: 'Добави част',
+      stepOf: 'Стъпка {step} от {total}',
     },
     edit: {
       missingInfo: 'Липсва задължителна информация',

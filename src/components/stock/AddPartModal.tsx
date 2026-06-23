@@ -244,6 +244,12 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
   const [loading, setLoading] = useState(false)
   const [suppliers, setSuppliers] = useState<string[]>([])
 
+  // ── Mobile 3-step wizard (desktop keeps the full single-view form) ────────
+  const [isMobile, setIsMobile] = useState<boolean>(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+  )
+  const [step, setStep] = useState(1)
+
   const [partSearch, setPartSearch] = useState('')
   const [modelSearch, setModelSearch] = useState('')
 
@@ -291,9 +297,19 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
     fetchUserData()
   }, [user, isOpen])
 
+  // ── Track viewport so the form is a wizard on phones, full form on desktop ─
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)')
+    const update = () => setIsMobile(mq.matches)
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
+
   // ── Reset form when modal opens ───────────────────────────────────────────
   useEffect(() => {
     if (isOpen) {
+      setStep(1)
       setFormData({
         partName: '',
         partNumber: defaultPartNumber || '',
@@ -439,8 +455,47 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
     setRegSuggestions([])
   }
 
+  // ── Wizard step nav (mobile only) ─────────────────────────────────────────
+  // Step 1 = part details, 2 = stock & pricing, 3 = vehicle link + confirm.
+  const stepTitle = (s: number) =>
+    s === 1 ? t('stock.add.sectionInfo') : s === 2 ? t('stock.add.sectionPricing') : t('stock.add.sectionVehicle')
+
+  const goNext = () => {
+    if (step === 1) {
+      if (!formData.partName.trim() || !formData.partNumber.trim()) {
+        toast.error(t('stock.add.nameNumberRequired'))
+        return
+      }
+      // Fold any uncommitted make/model text into a chip (mobile keyboards
+      // often have no Enter/comma) before checking the requirement.
+      const pending = makeModelInput.trim()
+      if (pending && !makeModels.includes(pending)) {
+        setMakeModels([...makeModels, pending])
+        setMakeModelInput('')
+        setModelSearch('')
+      }
+      if (makeModels.length === 0 && !pending) {
+        toast.error(t('stock.add.makeModelRequired'))
+        return
+      }
+    }
+    setStep(s => Math.min(3, s + 1))
+  }
+
+  const goBack = () => setStep(s => Math.max(1, s - 1))
+
+  // Hide a section when on mobile and not on its step; always show on desktop.
+  const sectionCls = (s: number) => (isMobile && step !== s ? 'hidden' : '')
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    // On mobile the form spans 3 steps; Enter / submit before the last step
+    // just advances rather than saving.
+    if (isMobile && step < 3) {
+      goNext()
+      return
+    }
 
     if (!user || !organizationId) {
       toast.error(t('stock.add.authRequired'))
@@ -590,8 +645,25 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-4 sm:p-8 space-y-4 sm:space-y-8 overflow-y-auto max-h-[calc(95vh-100px)] sm:max-h-[calc(92vh-160px)] custom-scrollbar">
 
-          {/* ── Part Information Section ── */}
-          <div className="space-y-3 sm:space-y-6 group">
+          {/* Mobile wizard progress (hidden on desktop / full-form view) */}
+          {isMobile && (
+            <div className="md:hidden">
+              <div className="flex items-center gap-1.5">
+                {[1, 2, 3].map(s => (
+                  <div
+                    key={s}
+                    className={`h-1.5 flex-1 rounded-full transition-colors ${step >= s ? 'bg-[#025940]' : 'bg-gray-200 dark:bg-gray-700'}`}
+                  />
+                ))}
+              </div>
+              <p className="mt-2 text-xs font-bold text-[#025940] dark:text-[#b3f243]">
+                {t('stock.add.stepOf', { step, total: 3 })} · {stepTitle(step)}
+              </p>
+            </div>
+          )}
+
+          {/* ── Part Information Section (wizard step 1) ── */}
+          <div className={`space-y-3 sm:space-y-6 group ${sectionCls(1)}`}>
             <div className="flex items-center space-x-2 sm:space-x-3 pb-2 sm:pb-4 border-b border-gray-200 dark:border-gray-700 sm:border-b-2 relative">
               <div className="absolute bottom-0 left-0 h-0.5 w-12 sm:w-20 bg-gradient-to-r from-[#025940] to-[#72A68E] group-hover:w-24 sm:group-hover:w-40 transition-all duration-500" />
               <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-[#025940] to-[#538a72] flex items-center justify-center shadow-lg shadow-teal-500/20">
@@ -619,7 +691,6 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
                     }}
                     className="w-full px-3 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 text-gray-900 dark:text-white transition-all duration-200 font-semibold text-sm sm:text-base placeholder:text-gray-400 placeholder:font-normal"
                     placeholder={t('stock.add.partNamePlaceholder')}
-                    required
                   />
                   <datalist id="parts-list">
                     {filteredParts.map((part, index) => (
@@ -643,7 +714,6 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
                   onChange={(e) => setFormData({ ...formData, partNumber: e.target.value })}
                   className="w-full px-3 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 text-gray-900 dark:text-white transition-all duration-200 font-semibold text-sm sm:text-base placeholder:text-gray-400 placeholder:font-normal"
                   placeholder={t('stock.add.partNumberPlaceholder')}
-                  required
                 />
               </div>
             </div>
@@ -774,8 +844,8 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
             </div>
           </div>
 
-          {/* ── ONE-OFF PART SECTION ─────────────────────────────────────────────── */}
-          <div className="space-y-3 sm:space-y-4 group">
+          {/* ── ONE-OFF PART SECTION (wizard step 3) ───────────────────────────── */}
+          <div className={`space-y-3 sm:space-y-4 group ${sectionCls(3)}`}>
             <div className="flex items-center space-x-2 sm:space-x-3 pb-2 sm:pb-4 border-b border-gray-200 dark:border-gray-700 sm:border-b-2 relative">
               <div className="absolute bottom-0 left-0 h-0.5 w-12 sm:w-20 bg-gradient-to-r from-[#b3f243] to-[#72A68E] group-hover:w-24 sm:group-hover:w-40 transition-all duration-500" />
               <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-[#b3f243] to-[#72A68E] flex items-center justify-center shadow-lg">
@@ -902,8 +972,8 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
             )}
           </div>
 
-          {/* ── Stock & Pricing Section ── */}
-          <div className="space-y-3 sm:space-y-6 group">
+          {/* ── Stock & Pricing Section (wizard step 2) ── */}
+          <div className={`space-y-3 sm:space-y-6 group ${sectionCls(2)}`}>
             <div className="flex items-center space-x-2 sm:space-x-3 pb-2 sm:pb-4 border-b border-gray-200 dark:border-gray-700 sm:border-b-2 relative">
               <div className="absolute bottom-0 left-0 h-0.5 w-12 sm:w-20 bg-gradient-to-r from-[#025940] to-[#72A68E] group-hover:w-24 sm:group-hover:w-40 transition-all duration-500" />
               <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-[#025940] to-[#538a72] flex items-center justify-center shadow-lg shadow-teal-500/20">
@@ -928,7 +998,6 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
                   onFocus={(e) => e.target.select()}
                   className="w-full px-2 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 text-gray-900 dark:text-white transition-all duration-200 font-black text-lg sm:text-2xl text-center"
                   placeholder="0"
-                  required
                 />
               </div>
 
@@ -962,7 +1031,6 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
                   onFocus={(e) => e.target.select()}
                   className="w-full px-2 py-2 sm:px-5 sm:py-4 border-2 border-gray-200 dark:border-gray-700 rounded-lg sm:rounded-xl focus:border-[#025940] dark:focus:border-[#72A68E] focus:ring-2 sm:focus:ring-4 focus:ring-[#025940]/20 dark:bg-gray-800 text-gray-900 dark:text-white transition-all duration-200 font-black text-lg sm:text-2xl text-center"
                   placeholder="0.00"
-                  required
                 />
               </div>
 
@@ -986,37 +1054,78 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
           </div>
 
           {/* Action buttons */}
-          <div className="flex justify-end space-x-2 sm:space-x-4 pt-4 sm:pt-8 border-t border-gray-200 dark:border-gray-700 sm:border-t-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="group px-4 py-2 sm:px-8 sm:py-4 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg sm:rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-500 transition-all duration-200 font-bold text-sm sm:text-base"
-            >
-              <span className="group-hover:scale-110 inline-block transition-transform">{t('stock.btn.cancel')}</span>
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="group relative px-5 py-2 sm:px-10 sm:py-4 bg-gradient-to-r from-[#012619] via-[#025940] to-[#538a72] text-white rounded-lg sm:rounded-xl hover:shadow-2xl hover:shadow-teal-500/40 hover:scale-105 active:scale-100 transition-all duration-300 font-bold text-sm sm:text-base disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed overflow-hidden"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -skew-x-12 translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-1000" />
-              <span className="relative flex items-center space-x-2 sm:space-x-3">
-                {loading ? (
-                  <>
-                    <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span className="hidden sm:inline">{t('stock.add.addingPart')}</span>
-                    <span className="sm:hidden">{t('stock.add.adding')}</span>
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-4 h-4 sm:w-5 sm:h-5 group-hover:rotate-12 transition-transform" />
-                    <span className="hidden sm:inline">{t('stock.add.addToStock')}</span>
-                    <span className="sm:hidden">{t('stock.add.addPartShort')}</span>
-                  </>
-                )}
-              </span>
-            </button>
-          </div>
+          {isMobile ? (
+            /* ── Mobile wizard footer: Back/Cancel + Next/Add ── */
+            <div className="flex items-center gap-2 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <button
+                type="button"
+                onClick={step === 1 ? onClose : goBack}
+                className="px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors font-bold text-sm flex-shrink-0"
+              >
+                {step === 1 ? t('stock.btn.cancel') : t('stock.btn.back')}
+              </button>
+              {step < 3 ? (
+                <button
+                  type="button"
+                  onClick={goNext}
+                  className="flex-1 px-5 py-2.5 bg-gradient-to-r from-[#012619] via-[#025940] to-[#538a72] text-white rounded-lg font-bold text-sm transition-all active:scale-[0.99]"
+                >
+                  {t('stock.btn.next')}
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 px-5 py-2.5 bg-gradient-to-r from-[#012619] via-[#025940] to-[#538a72] text-white rounded-lg font-bold text-sm transition-all active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>{t('stock.add.adding')}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4" />
+                      <span>{t('stock.add.addPartShort')}</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          ) : (
+            /* ── Desktop footer: full single-view form ── */
+            <div className="flex justify-end space-x-2 sm:space-x-4 pt-4 sm:pt-8 border-t border-gray-200 dark:border-gray-700 sm:border-t-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="group px-4 py-2 sm:px-8 sm:py-4 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg sm:rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-500 transition-all duration-200 font-bold text-sm sm:text-base"
+              >
+                <span className="group-hover:scale-110 inline-block transition-transform">{t('stock.btn.cancel')}</span>
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="group relative px-5 py-2 sm:px-10 sm:py-4 bg-gradient-to-r from-[#012619] via-[#025940] to-[#538a72] text-white rounded-lg sm:rounded-xl hover:shadow-2xl hover:shadow-teal-500/40 hover:scale-105 active:scale-100 transition-all duration-300 font-bold text-sm sm:text-base disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed overflow-hidden"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -skew-x-12 translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-1000" />
+                <span className="relative flex items-center space-x-2 sm:space-x-3">
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span className="hidden sm:inline">{t('stock.add.addingPart')}</span>
+                      <span className="sm:hidden">{t('stock.add.adding')}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4 sm:w-5 sm:h-5 group-hover:rotate-12 transition-transform" />
+                      <span className="hidden sm:inline">{t('stock.add.addToStock')}</span>
+                      <span className="sm:hidden">{t('stock.add.addPartShort')}</span>
+                    </>
+                  )}
+                </span>
+              </button>
+            </div>
+          )}
         </form>
       </div>
 
