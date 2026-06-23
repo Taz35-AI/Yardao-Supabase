@@ -10,6 +10,7 @@ import { useHire } from '@/contexts/HireContext'
 import { useT } from '@/lib/i18n'
 import type { RentalCustomer } from '@/types/hire'
 import { AddCustomerModal } from './AddCustomerModal'
+import { CustomerHireDashboard } from './CustomerHireDashboard'
 
 type Elig = 'ok' | 'expired' | 'missing'
 
@@ -20,6 +21,7 @@ export function HireCustomers() {
   const [elig, setElig] = useState<Record<string, Elig>>({})
   const [q, setQ] = useState('')
   const [showAdd, setShowAdd] = useState(false)
+  const [dash, setDash] = useState<RentalCustomer | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -101,14 +103,21 @@ export function HireCustomers() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
           {rows.map((c) => (
-            <div key={c.id} className="rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 p-3.5">
+            <button
+              key={c.id}
+              onClick={() => setDash(c)}
+              className="text-left rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 p-3.5 hover:border-[#72A68E] transition-colors"
+            >
               <div className="flex items-center gap-2">
                 {c.isBusiness && <Building2 className="w-4 h-4 text-[#025940] dark:text-[#b3f243] flex-shrink-0" />}
                 <h3 className="font-bold text-[#012619] dark:text-white truncate">{c.companyName || c.name}</h3>
               </div>
               {c.companyName && <p className="text-xs text-[#72A68E] truncate">{c.name}</p>}
-              <div className="mt-2"><EligBadge state={elig[c.id] || 'missing'} t={t} /></div>
-            </div>
+              <div className="mt-2 flex items-center justify-between">
+                <EligBadge state={elig[c.id] || 'missing'} t={t} />
+                <span className="text-[10px] font-semibold text-[#025940] dark:text-[#b3f243]">{t('hire.openDashboard')} →</span>
+              </div>
+            </button>
           ))}
         </div>
       )}
@@ -121,6 +130,16 @@ export function HireCustomers() {
             setShowAdd(false)
             refresh()
           }}
+        />
+      )}
+
+      {dash && (
+        <CustomerHireDashboard
+          organizationId={organizationId}
+          customerId={dash.id}
+          customerName={dash.companyName || dash.name}
+          isBusiness={dash.isBusiness}
+          onClose={() => setDash(null)}
         />
       )}
     </div>
