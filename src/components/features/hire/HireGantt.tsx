@@ -20,6 +20,7 @@ export function HireGantt() {
   const [customerId, setCustomerId] = useState<string>('all')
   const [agreements, setAgreements] = useState<HireAgreement[]>([])
   const [lines, setLines] = useState<HireAgreementVehicle[]>([])
+  const [downtimeByReg, setDowntimeByReg] = useState<Record<string, string>>({}) // normReg → since (YYYY-MM-DD)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -38,9 +39,26 @@ export function HireGantt() {
       } catch {
         allLines = []
       }
+      // Off-road downtime windows (for the amber overlay).
+      const dt: Record<string, string> = {}
+      try {
+        const { data: civ } = await supabase
+          .from('checked_in_vehicles')
+          .select('registration, transfer_status, status, service_booking_id, checked_out_to_garage_at')
+          .eq('organization_id', organizationId)
+        for (const c of civ ?? []) {
+          const offroad = c.transfer_status === 'at_external_garage' || !!c.checked_out_to_garage_at || c.status === 'Repairs needed' || !!c.service_booking_id
+          if (offroad && c.checked_out_to_garage_at) {
+            dt[(c.registration || '').toUpperCase().replace(/\s+/g, '')] = String(c.checked_out_to_garage_at).slice(0, 10)
+          }
+        }
+      } catch {
+        /* none */
+      }
       if (!cancelled) {
         setAgreements(ags)
         setLines(allLines)
+        setDowntimeByReg(dt)
         setLoading(false)
       }
     })()
@@ -108,6 +126,18 @@ export function HireGantt() {
     return { left, width, tone }
   }
 
+  const downtimeBar = (l: HireAgreementVehicle) => {
+    if (l.status !== 'active') return null
+    const since = downtimeByReg[(l.registration || '').toUpperCase().replace(/\s+/g, '')]
+    if (!since) return null
+    const start = new Date(since + 'T00:00:00').getTime()
+    const cs = Math.max(start, spanStart)
+    const ce = Math.min(today0 + DAY, spanEnd)
+    if (ce <= spanStart || cs >= spanEnd) return null
+    const total = spanEnd - spanStart
+    return { left: ((cs - spanStart) / total) * 100, width: Math.max(2, ((ce - cs) / total) * 100) }
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
@@ -152,6 +182,7 @@ export function HireGantt() {
           <ul className="divide-y divide-[#e2e8e5] dark:divide-gray-700">
             {rows.map(({ line, ag }) => {
               const b = bar(line, ag)
+              const dt = downtimeBar(line)
               return (
                 <li key={line.id} className="flex items-center">
                   <div className="w-32 sm:w-44 flex-shrink-0 px-3 py-2 min-w-0">
@@ -164,6 +195,17 @@ export function HireGantt() {
                       <div className={`absolute top-1/2 -translate-y-1/2 h-5 rounded-md ${b.tone} flex items-center px-1.5 overflow-hidden`} style={{ left: `${b.left}%`, width: `${b.width}%` }} title={`${line.registration} · ${ag?.customerName || ''}`}>
                         <span className="text-[9px] font-bold text-white truncate">{line.registration}</span>
                       </div>
+                    )}
+                    {dt && (
+                      <div
+                        className="absolute top-1/2 -translate-y-1/2 h-5 rounded-md border border-amber-500"
+                        style={{
+                          left: `${dt.left}%`,
+                          width: `${dt.width}%`,
+                          backgroundImage: 'repeating-linear-gradient(45deg, rgba(245,158,11,0.55) 0, rgba(245,158,11,0.55) 4px, transparent 4px, transparent 8px)',
+                        }}
+                        title="Off-road (downtime)"
+                      />
                     )}
                   </div>
                 </li>

@@ -1221,6 +1221,14 @@ export const en = {
     labelSetting: 'What do you call a hire agreement?',
     labelSingular: 'Singular (e.g. Contract)',
     labelPlural: 'Plural (e.g. Contracts)',
+    settingsTitle: 'Hire settings',
+    settingsSaved: 'Settings saved.',
+    settings: 'Settings',
+    save: 'Save',
+    // timeline
+    tabRentals: 'Rentals',
+    tabTimeline: 'Timeline',
+    noTimeline: 'No activity yet',
     // scheduler
     tabSchedule: 'Schedule',
     ganttWeek: 'Week',
