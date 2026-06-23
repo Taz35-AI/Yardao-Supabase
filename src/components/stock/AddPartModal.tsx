@@ -609,7 +609,7 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
         <div className="absolute top-0 right-0 w-20 h-20 sm:w-32 sm:h-32 bg-gradient-to-bl from-[#72A68E]/10 to-transparent rounded-bl-full" />
 
         {/* Header */}
-        <div className="relative bg-gradient-to-br from-[#012619] via-[#025940] to-[#014030] p-4 sm:p-8 overflow-hidden">
+        <div className="relative bg-gradient-to-br from-[#012619] via-[#025940] to-[#014030] p-3 sm:p-8 overflow-hidden">
           <div className="absolute inset-0 opacity-5"
                style={{backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px'}} />
           <div className="absolute -top-20 -left-20 w-40 h-40 sm:w-64 sm:h-64 bg-[#72A68E]/20 rounded-full blur-3xl animate-pulse" />
@@ -623,18 +623,18 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
             <X className="w-4 h-4 sm:w-5 sm:h-5 text-white/80 group-hover:text-white group-hover:rotate-90 transition-all duration-300" />
           </button>
 
-          <div className="relative flex items-center space-x-3 sm:space-x-5">
+          <div className="relative flex items-center space-x-2.5 sm:space-x-5">
             <div className="relative">
-              <div className="w-12 h-12 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl bg-gradient-to-br from-[#72A68E] to-[#538a72] flex items-center justify-center shadow-2xl shadow-teal-500/40">
-                <Package className="w-6 h-6 sm:w-10 sm:h-10 text-white" />
+              <div className="w-9 h-9 sm:w-20 sm:h-20 rounded-lg sm:rounded-2xl bg-gradient-to-br from-[#72A68E] to-[#538a72] flex items-center justify-center shadow-2xl shadow-teal-500/40">
+                <Package className="w-5 h-5 sm:w-10 sm:h-10 text-white" />
               </div>
-              <div className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 w-5 h-5 sm:w-7 sm:h-7 bg-gradient-to-br from-green-400 to-green-500 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg shadow-green-500/50 animate-bounce">
-                <Sparkles className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
+              <div className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 w-4 h-4 sm:w-7 sm:h-7 bg-gradient-to-br from-green-400 to-green-500 rounded-md sm:rounded-xl flex items-center justify-center shadow-lg shadow-green-500/50 animate-bounce">
+                <Sparkles className="w-2.5 h-2.5 sm:w-4 sm:h-4 text-white" />
               </div>
             </div>
             <div className="relative z-10">
-              <h2 className="text-xl sm:text-4xl font-black text-white tracking-tight mb-0.5 sm:mb-1 drop-shadow-lg">{t('stock.add.title')}</h2>
-              <p className="text-[#C5D9D0] text-xs sm:text-sm font-medium flex items-center space-x-1 sm:space-x-2">
+              <h2 className="text-base sm:text-4xl font-black text-white tracking-tight mb-0 sm:mb-1 drop-shadow-lg">{t('stock.add.title')}</h2>
+              <p className="text-[#C5D9D0] text-xs sm:text-sm font-medium hidden sm:flex items-center space-x-1 sm:space-x-2">
                 <Zap className="w-3 h-3 sm:w-4 sm:h-4" />
                 <span>{t('stock.add.subtitle')}</span>
               </p>
@@ -662,9 +662,9 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
             </div>
           )}
 
-          {/* ── Part Information Section (wizard step 1) ── */}
-          <div className={`space-y-3 sm:space-y-6 group ${sectionCls(1)}`}>
-            <div className="flex items-center space-x-2 sm:space-x-3 pb-2 sm:pb-4 border-b border-gray-200 dark:border-gray-700 sm:border-b-2 relative">
+          {/* ── Part Information Section ── Steps 1 (name/number/make) + 2 (supplier/comments) ── */}
+          <div className="space-y-3 sm:space-y-6 group">
+            <div className={`flex items-center space-x-2 sm:space-x-3 pb-2 sm:pb-4 border-b border-gray-200 dark:border-gray-700 sm:border-b-2 relative ${sectionCls(1)}`}>
               <div className="absolute bottom-0 left-0 h-0.5 w-12 sm:w-20 bg-gradient-to-r from-[#025940] to-[#72A68E] group-hover:w-24 sm:group-hover:w-40 transition-all duration-500" />
               <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-[#025940] to-[#538a72] flex items-center justify-center shadow-lg shadow-teal-500/20">
                 <Tag className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-white" />
@@ -672,7 +672,7 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
               <h3 className="text-base sm:text-xl font-bold text-gray-900 dark:text-white tracking-tight">{t('stock.add.sectionInfo')}</h3>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
+            <div className={`grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6 ${sectionCls(1)}`}>
 
               {/* Part Name */}
               <div className="group/input">
@@ -719,7 +719,7 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
             </div>
 
             {/* Multi Make & Model */}
-            <div className="group/input">
+            <div className={`group/input ${sectionCls(1)}`}>
               <label className="block text-xs sm:text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 sm:mb-3 flex items-center space-x-2">
                 <Search className="w-3 h-3 sm:w-4 sm:h-4 text-[#025940] dark:text-[#72A68E]" />
                 <span>{t('stock.add.makeModelLabel')}</span>
@@ -788,8 +788,8 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
               </p>
             </div>
 
-            {/* Supplier */}
-            <div className="group/input">
+            {/* Supplier (wizard step 2) */}
+            <div className={`group/input ${sectionCls(2)}`}>
               <label className="block text-xs sm:text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 sm:mb-3">
                 {t('stock.add.supplierLabel')}
               </label>
@@ -826,8 +826,8 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
               </p>
             </div>
 
-            {/* Comments */}
-            <div className="group/input md:col-span-2">
+            {/* Comments (wizard step 2) */}
+            <div className={`group/input md:col-span-2 ${sectionCls(2)}`}>
               <label className="block text-xs sm:text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 sm:mb-3">
                 {t('stock.add.commentsLabel')}
               </label>
