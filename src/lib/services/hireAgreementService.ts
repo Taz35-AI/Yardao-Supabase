@@ -387,6 +387,18 @@ export const hireAgreementService = {
       swapped_to_line_id: toLineId,
     })
     await this.updateLine(toLineId, { swapped_from_line_id: input.fromLineId })
+    // 2b. Free the OUTGOING vehicle's agreement link (its line is now closed).
+    //     Its physical return to the yard is done via the normal check-in flow;
+    //     we only clear the stale link so it isn't left pointing at a dead line.
+    try {
+      await supabase
+        .from('checked_in_vehicles')
+        .update({ current_agreement_line_id: null })
+        .eq('organization_id', input.organizationId)
+        .eq('current_agreement_line_id', input.fromLineId)
+    } catch (err) {
+      logger.error('swapLine: clearing outgoing link failed (non-fatal):', err)
+    }
     // 3. Log the swap.
     try {
       await supabase.from(SWAPS).insert({

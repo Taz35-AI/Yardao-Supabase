@@ -70,6 +70,19 @@ export function HireSwapModal({
     }
   }, [q, organizationId, fromLine.registration])
 
+  // Don't allow swapping in a vehicle that's already committed to an open line.
+  const pick = async (h: Hit) => {
+    setHits([])
+    if (organizationId) {
+      const existing = await hireAgreementService.findOpenLineByRegistration(organizationId, h.registration)
+      if (existing) {
+        toast.error(t('hire.swapUnavailable', { reg: h.registration }))
+        return
+      }
+    }
+    setVehicle(h)
+  }
+
   const doSwap = async () => {
     if (!organizationId || !vehicle) {
       toast.error(t('hire.swapTo'))
@@ -136,7 +149,7 @@ export function HireSwapModal({
               {hits.length > 0 && (
                 <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-[#025940] rounded-lg shadow-lg overflow-hidden">
                   {hits.map((h) => (
-                    <button key={h.id} onMouseDown={() => { setVehicle(h); setHits([]) }} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#025940]/10 text-left">
+                    <button key={h.id} onMouseDown={() => pick(h)} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#025940]/10 text-left">
                       <Car className="w-3.5 h-3.5 text-[#72A68E]" />
                       <span className="font-mono font-bold text-sm text-[#012619] dark:text-white">{h.registration}</span>
                       <span className="text-xs text-gray-500 flex-1 truncate">{h.make} {h.model}</span>

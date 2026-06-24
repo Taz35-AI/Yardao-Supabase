@@ -1262,6 +1262,7 @@ export const en = {
     swapConfirm: 'Swap vehicle',
     swapDone: 'Vehicle swapped — replacement added to the agreement.',
     swapFail: 'Could not swap the vehicle.',
+    swapUnavailable: '{reg} is already on another hire — pick a free vehicle.',
     // credits
     tabCredits: 'Credits',
     creditsTitle: 'Suggested credits',

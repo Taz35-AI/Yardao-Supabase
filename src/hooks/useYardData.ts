@@ -857,6 +857,18 @@ export function useYardDataInternal(props?: UseYardDataProps) {
       )
       logger.log(`Vehicle returned from hire to branch: ${branchId}`)
 
+      // 🔗 Hire Management: clear any agreement link on the returned vehicle so a
+      // swapped-out (or returned) vehicle never carries a dangling link. The
+      // agreement LINE itself is closed by the swap / End-hire action. Best-effort.
+      try {
+        await supabase
+          .from('checked_in_vehicles')
+          .update({ current_agreement_line_id: null })
+          .eq('id', data.vehicleId)
+      } catch (clearErr) {
+        logger.error('Clear hire agreement link on check-in failed (non-fatal):', clearErr)
+      }
+
       // Persist the return mileage + re-assess service-due on the now-returned
       // row, mirroring a fresh check-in. Best-effort: a failure here must not
       // undo the (successful) return-from-hire above.
