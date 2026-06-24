@@ -7,7 +7,7 @@ import { CalendarRange } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
 import { toCamelList } from '@/lib/dbMap'
 import { hireAgreementService } from '@/lib/services/hireAgreementService'
-import { getDowntimeStartByReg } from '@/lib/services/hireDowntimeService'
+import { getDowntimeByReg, type DowntimeInfo } from '@/lib/services/hireDowntimeService'
 import { useHire } from '@/contexts/HireContext'
 import { useT } from '@/lib/i18n'
 import type { HireAgreement, HireAgreementVehicle } from '@/types/hire'
@@ -21,7 +21,7 @@ export function HireGantt() {
   const [customerId, setCustomerId] = useState<string>('all')
   const [agreements, setAgreements] = useState<HireAgreement[]>([])
   const [lines, setLines] = useState<HireAgreementVehicle[]>([])
-  const [downtimeByReg, setDowntimeByReg] = useState<Record<string, string>>({}) // normReg → since (YYYY-MM-DD)
+  const [downtimeByReg, setDowntimeByReg] = useState<Record<string, DowntimeInfo>>({}) // normReg → off-road window
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -42,7 +42,7 @@ export function HireGantt() {
       }
       // Off-road downtime windows (external garage, repairs OR active service
       // bookings) for the amber overlay.
-      const dt = await getDowntimeStartByReg(organizationId)
+      const dt = await getDowntimeByReg(organizationId)
       if (!cancelled) {
         setAgreements(ags)
         setLines(allLines)
@@ -116,14 +116,17 @@ export function HireGantt() {
 
   const downtimeBar = (l: HireAgreementVehicle) => {
     if (l.status !== 'active') return null
-    const since = downtimeByReg[(l.registration || '').toUpperCase().replace(/\s+/g, '')]
-    if (!since) return null
-    const start = new Date(since + 'T00:00:00').getTime()
+    const info = downtimeByReg[(l.registration || '').toUpperCase().replace(/\s+/g, '')]
+    if (!info?.since) return null
+    const start = new Date(info.since + 'T00:00:00').getTime()
+    // Off-road runs from `since` to today (ongoing); a future-dated booking shows
+    // a 1-day marker at its date.
+    const endMs = start > today0 ? start + DAY : today0 + DAY
     const cs = Math.max(start, spanStart)
-    const ce = Math.min(today0 + DAY, spanEnd)
+    const ce = Math.min(endMs, spanEnd)
     if (ce <= spanStart || cs >= spanEnd) return null
     const total = spanEnd - spanStart
-    return { left: ((cs - spanStart) / total) * 100, width: Math.max(2, ((ce - cs) / total) * 100) }
+    return { left: ((cs - spanStart) / total) * 100, width: Math.max(2, ((ce - cs) / total) * 100), label: info.label }
   }
 
   return (
@@ -186,14 +189,16 @@ export function HireGantt() {
                     )}
                     {dt && (
                       <div
-                        className="absolute top-1/2 -translate-y-1/2 h-5 rounded-md border border-amber-500"
+                        className="absolute top-1/2 -translate-y-1/2 h-5 rounded-md border border-amber-500 flex items-center px-1 overflow-hidden"
                         style={{
                           left: `${dt.left}%`,
                           width: `${dt.width}%`,
                           backgroundImage: 'repeating-linear-gradient(45deg, rgba(245,158,11,0.55) 0, rgba(245,158,11,0.55) 4px, transparent 4px, transparent 8px)',
                         }}
-                        title="Off-road (downtime)"
-                      />
+                        title={dt.label}
+                      >
+                        <span className="text-[8px] font-bold text-amber-900 dark:text-amber-100 truncate">{dt.label}</span>
+                      </div>
                     )}
                   </div>
                 </li>

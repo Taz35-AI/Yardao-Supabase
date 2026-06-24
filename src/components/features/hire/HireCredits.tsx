@@ -11,7 +11,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { hireAgreementService } from '@/lib/services/hireAgreementService'
 import { hireCreditService } from '@/lib/services/hireCreditService'
-import { getDowntimeStartByReg } from '@/lib/services/hireDowntimeService'
+import { getDowntimeByReg } from '@/lib/services/hireDowntimeService'
 import { prorationService } from '@/lib/services/prorationService'
 import { useHire } from '@/contexts/HireContext'
 import { useT } from '@/lib/i18n'
@@ -35,12 +35,19 @@ export function HireCredits() {
     if (!organizationId) return
     const lines = await hireAgreementService.getActiveLines(organizationId)
     if (lines.length === 0) return
-    const downtime = await getDowntimeStartByReg(organizationId)
-    const today = ymd(new Date())
+    const downtime = await getDowntimeByReg(organizationId)
+    const todayDate = new Date()
+    todayDate.setHours(0, 0, 0, 0)
+    const today = ymd(todayDate)
+    const tomorrowDate = new Date(todayDate)
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1)
+    const tomorrow = ymd(tomorrowDate)
     for (const l of lines) {
       if (l.status !== 'active') continue
-      const start = downtime[normReg(l.registration)]
-      if (!start || prorationService.dayCount(start, today) <= 0) continue
+      const dt = downtime[normReg(l.registration)]
+      if (!dt) continue
+      // Only price downtime that has actually started (not a future booking).
+      if (dt.since > today) continue
       await hireCreditService.suggestCredit({
         organizationId,
         agreementId: l.agreementId,
@@ -48,10 +55,11 @@ export function HireCredits() {
         vehicleId: l.vehicleId,
         registration: l.registration,
         reason: 'downtime',
-        periodStart: start,
-        periodEnd: today,
+        periodStart: dt.since,
+        periodEnd: tomorrow, // inclusive of today, so a same-day garage visit = 1 day
         rateType: (l.lineRateType || 'weekly') as 'weekly' | 'monthly',
         rateAmount: l.lineRateAmount || 0,
+        note: dt.label,
       })
     }
   }, [organizationId])
@@ -114,7 +122,7 @@ export function HireCredits() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-mono font-bold text-[#012619] dark:text-white">{c.registration || '—'}</span>
-                    <span className="text-xs text-[#72A68E]">{reasonLabel(c.reason)}</span>
+                    <span className="text-xs text-[#72A68E]">{c.notes ? `${reasonLabel(c.reason)} · ${c.notes}` : reasonLabel(c.reason)}</span>
                   </div>
                   <div className="mt-1 flex items-center gap-2 text-xs text-[#4a5e54] dark:text-gray-300">
                     <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />

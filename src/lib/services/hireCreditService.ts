@@ -60,6 +60,7 @@ export const hireCreditService = {
     periodEnd: string // YYYY-MM-DD (exclusive)
     rateType: HireRateType
     rateAmount: number
+    note?: string | null
   }): Promise<void> {
     const days = prorationService.dayCount(input.periodStart, input.periodEnd)
     if (days <= 0) return
@@ -78,6 +79,7 @@ export const hireCreditService = {
           days,
           daily_rate: days > 0 ? Math.round((estimated / days) * 100) / 100 : null,
           estimated_credit: estimated,
+          notes: input.note ?? null,
         },
         { onConflict: 'organization_id,line_id,reason,period_start', ignoreDuplicates: true },
       )
