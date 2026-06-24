@@ -343,6 +343,40 @@ export const hireAgreementService = {
   },
 
   /**
+   * Temporary return — the vehicle comes back to the yard but the hire stays
+   * active (allocation persists, line stays 'active'). Re-stamps the yard link
+   * (check-in cleared it) and logs it; downtime/credit can be reviewed later.
+   */
+  async markTempReturn(params: {
+    organizationId: string
+    lineId: string
+    registration?: string | null
+    checkedInVehicleId?: string | null
+    actorId?: string | null
+    actorName?: string | null
+  }): Promise<void> {
+    if (params.checkedInVehicleId) {
+      try {
+        await supabase
+          .from('checked_in_vehicles')
+          .update({ current_agreement_line_id: params.lineId })
+          .eq('id', params.checkedInVehicleId)
+      } catch (err) {
+        logger.error('markTempReturn relink failed (non-fatal):', err)
+      }
+    }
+    activityLogService.log({
+      organizationId: params.organizationId,
+      actionType: 'rental_temp_return',
+      registration: params.registration ?? null,
+      actorId: params.actorId,
+      actorName: params.actorName,
+      summary: 'Temporary return — vehicle in yard, allocation kept',
+      details: { lineId: params.lineId },
+    })
+  },
+
+  /**
    * Swap a vehicle on an agreement: close the outgoing line at `swappedAt`, open
    * a new line for the replacement from that date, and log it. (Insurance gating
    * + yard stamping live in the set-on-hire flow, P2+.)

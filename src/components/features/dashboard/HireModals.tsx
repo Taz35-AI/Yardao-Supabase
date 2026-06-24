@@ -13,6 +13,8 @@ import { settingsService, ServiceSettings, DEFAULT_SERVICE_SETTINGS } from '@/li
 import { mileageService } from '@/lib/services/mileageService'
 import { hireAgreementService } from '@/lib/services/hireAgreementService'
 import { hireSettingsService } from '@/lib/services/hireSettingsService'
+import { HireSwapModal } from '@/components/features/hire/HireSwapModal'
+import type { HireAgreement, HireAgreementVehicle } from '@/types/hire'
 
 const ymdToday = () => {
   const d = new Date()
@@ -257,9 +259,14 @@ export function QuickCheckInModal({
   const t = useT()
   const { user } = useAuth()
 
+  const [orgId, setOrgId] = useState<string | null>(null)
   const [settings, setSettings] = useState<ServiceSettings>(DEFAULT_SERVICE_SETTINGS)
   const [mileage, setMileage] = useState('')
   const [mileageNA, setMileageNA] = useState(false)
+  // Hire-agreement decision when the returning vehicle is on an active line.
+  const [hireLine, setHireLine] = useState<{ line: HireAgreementVehicle; agreement: HireAgreement; label: string } | null>(null)
+  const [decision, setDecision] = useState<'end' | 'temp' | 'swap'>('end')
+  const [showSwap, setShowSwap] = useState(false)
   // Floor = highest historical reading OR the vehicle's current (out-on-hire)
   // reading, whichever is higher — a returning vehicle can't have fewer miles.
   const [floor, setFloor] = useState<number | null>(null)
@@ -268,15 +275,16 @@ export function QuickCheckInModal({
   useEffect(() => {
     if (!isOpen || !user?.uid) return
     let cancelled = false
-    setMileage(''); setMileageNA(false); setFloor(null)
+    setMileage(''); setMileageNA(false); setFloor(null); setHireLine(null); setDecision('end'); setShowSwap(false)
     ;(async () => {
       try {
         const profile = await userProfileService.getProfile(user.uid)
-        const orgId = profile?.organizationId
-        if (!orgId || cancelled) return
+        const org = profile?.organizationId
+        if (!org || cancelled) return
+        setOrgId(org)
         const [svc, histFloor] = await Promise.all([
-          settingsService.getServiceSettings(orgId),
-          mileageService.getMileageFloor(orgId, vehicle.registration || ''),
+          settingsService.getServiceSettings(org),
+          mileageService.getMileageFloor(org, vehicle.registration || ''),
         ])
         if (cancelled) return
         setSettings(svc)
@@ -285,6 +293,15 @@ export function QuickCheckInModal({
           (n): n is number => typeof n === 'number',
         )
         setFloor(floors.length ? Math.max(...floors) : null)
+        // Is this vehicle on an active hire line? If so, offer end / temp / swap.
+        const line = await hireAgreementService.findOpenLineByRegistration(org, vehicle.registration || '')
+        if (line && line.status === 'active' && !cancelled) {
+          const [agreement, hs] = await Promise.all([
+            hireAgreementService.getAgreement(line.agreementId),
+            hireSettingsService.getHireSettings(org),
+          ])
+          if (agreement && !cancelled) setHireLine({ line, agreement, label: hs.agreementLabelSingular })
+        }
       } catch (err) {
         logger.error('QuickCheckIn settings/floor load failed:', err)
       }
@@ -310,8 +327,46 @@ export function QuickCheckInModal({
       alert(t('dashboard.hire.mileageTooLow', { min: floor.toLocaleString('en-GB') }))
       return
     }
+    // Swap is a two-step flow — open the swap picker; the physical return runs
+    // once the replacement is chosen (see HireSwapModal onDone below).
+    if (hireLine && decision === 'swap') {
+      setShowSwap(true)
+      return
+    }
     try {
-      await onConfirm(vehicle.id, undefined, mileageNA ? '' : mileage.trim())
+      const mi = mileageNA ? '' : mileage.trim()
+      await onConfirm(vehicle.id, undefined, mi)
+      if (hireLine && orgId) {
+        const profile = user?.uid ? await userProfileService.getProfile(user.uid) : null
+        const actorName = profile?.displayName || user?.email || 'Unknown'
+        const periodStart =
+          (hireLine.line.actualOutAt ? hireLine.line.actualOutAt.slice(0, 10) : hireLine.line.scheduledStart) ||
+          hireLine.agreement.startDate
+        if (decision === 'end') {
+          await hireAgreementService.endLine({
+            organizationId: orgId,
+            agreementId: hireLine.agreement.id,
+            lineId: hireLine.line.id,
+            vehicleId: hireLine.line.vehicleId,
+            registration: vehicle.registration,
+            periodStart,
+            rateType: (hireLine.line.lineRateType || hireLine.agreement.rateType),
+            rateAmount: hireLine.line.lineRateAmount ?? hireLine.agreement.rateAmount,
+            checkedInVehicleId: vehicle.id,
+            actorId: user?.uid || null,
+            actorName,
+          })
+        } else if (decision === 'temp') {
+          await hireAgreementService.markTempReturn({
+            organizationId: orgId,
+            lineId: hireLine.line.id,
+            registration: vehicle.registration,
+            checkedInVehicleId: vehicle.id,
+            actorId: user?.uid || null,
+            actorName,
+          })
+        }
+      }
       onClose()
     } catch (error) {
       logger.error('Error returning vehicle from hire:', error)
@@ -433,6 +488,40 @@ export function QuickCheckInModal({
             </div>
           )}
 
+          {/* 🔗 On an active hire line → choose what this check-in means */}
+          {hireLine && (
+            <div className="rounded-xl border-2 border-[#025940]/30 bg-[#025940]/5 dark:bg-[#025940]/10 p-3 space-y-2">
+              <p className="text-xs font-bold text-[#012619] dark:text-white">
+                {t('dashboard.hire.onContract', { customer: hireLine.agreement.customerName || '—', label: hireLine.label })}
+              </p>
+              <div className="grid grid-cols-3 gap-1.5">
+                {([
+                  ['end', t('dashboard.hire.choEnd')],
+                  ['temp', t('dashboard.hire.choTemp')],
+                  ['swap', t('dashboard.hire.choSwap')],
+                ] as const).map(([k, lbl]) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setDecision(k)}
+                    className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${
+                      decision === k
+                        ? 'bg-[#025940] text-white border-[#025940]'
+                        : 'bg-white dark:bg-gray-800 text-[#4a5e54] dark:text-gray-300 border-[#e2e8e5] dark:border-gray-600 hover:border-[#72A68E]'
+                    }`}
+                  >
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-[#72A68E] leading-snug">
+                {decision === 'end' ? t('dashboard.hire.choEndHint')
+                  : decision === 'temp' ? t('dashboard.hire.choTempHint')
+                    : t('dashboard.hire.choSwapHint')}
+              </p>
+            </div>
+          )}
+
           {/* Action buttons */}
           <div className="flex gap-3 pt-1">
             <Button
@@ -452,11 +541,37 @@ export function QuickCheckInModal({
               }
               className="flex-1 bg-[#025940] hover:bg-[#012619] text-white font-bold py-2.5 shadow-sm hover:shadow-md transition-all border-0 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? t('dashboard.hire.checkingIn') : t('dashboard.hire.checkInBtn')}
+              {loading
+                ? t('dashboard.hire.checkingIn')
+                : hireLine && decision === 'swap'
+                  ? t('dashboard.hire.chooseReplacementBtn')
+                  : hireLine && decision === 'temp'
+                    ? t('dashboard.hire.tempReturnBtn')
+                    : hireLine && decision === 'end'
+                      ? t('dashboard.hire.endHireBtn')
+                      : t('dashboard.hire.checkInBtn')}
             </Button>
           </div>
         </form>
       </div>
+
+      {showSwap && hireLine && (
+        <HireSwapModal
+          organizationId={orgId}
+          agreement={hireLine.agreement}
+          fromLine={hireLine.line}
+          onClose={() => setShowSwap(false)}
+          onDone={async () => {
+            setShowSwap(false)
+            try {
+              await onConfirm(vehicle.id, undefined, mileageNA ? '' : mileage.trim())
+            } catch (err) {
+              logger.error('Return after swap failed:', err)
+            }
+            onClose()
+          }}
+        />
+      )}
     </div>
   )
 }
