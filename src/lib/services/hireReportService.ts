@@ -1,14 +1,14 @@
 // src/lib/services/hireReportService.ts
-// Builds the per-customer "Rent Plan / Active Rentals" report (calendar-accurate
-// prorated amounts to date) and exports it to Excel / PDF. Reuses the app's xlsx
-// + jspdf. Defensive: missing tables → empty plan.
+// Builds the per-customer "Rent Plan / Active Rentals" report. Lists each active
+// vehicle line with its contractual weekly/monthly rate (NOT prorated) and
+// exports it to Excel / PDF. Reuses the app's xlsx + jspdf. Defensive: missing
+// tables → empty plan.
 
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
 import { downloadExcelFile } from '@/utils/excelDownload'
 import { hireAgreementService } from '@/lib/services/hireAgreementService'
 import { hireCreditService } from '@/lib/services/hireCreditService'
-import { prorationService } from '@/lib/services/prorationService'
 import type { HireAgreement, HireCredit } from '@/types/hire'
 
 export interface RentPlanRow {
@@ -17,19 +17,19 @@ export interface RentPlanRow {
   contractStart: string
   contractEnd: string
   rate: string
+  rateType: 'weekly' | 'monthly'
+  rateAmount: number
   status: string
   outDate: string
-  daysOnHire: number
-  proratedToDate: number
 }
 
 export interface RentPlan {
   customerName: string
   rows: RentPlanRow[]
   credits: HireCredit[]
-  totalProrated: number
+  weeklyTotal: number
+  monthlyTotal: number
   totalCredits: number
-  net: number
   generatedAt: string
 }
 
@@ -40,15 +40,13 @@ const euDate = (iso?: string | null) => {
   return y && m && d ? `${d}/${m}/${y}` : ''
 }
 const round2 = (n: number) => Math.round(n * 100) / 100
+const rateLabel = (type: 'weekly' | 'monthly', amount: number) => `£${amount}/${type === 'monthly' ? 'mo' : 'wk'}`
 
 export const hireReportService = {
-  /** Active-rentals plan for one customer, prorated to today. */
+  /** Active-rentals plan for one customer at the contractual rate (not prorated). */
   async buildRentPlan(organizationId: string, customerId: string, customerName: string): Promise<RentPlan> {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    const tomorrow = new Date(today)
-    tomorrow.setDate(tomorrow.getDate() + 1)
-    const tomorrowYmd = ymd(tomorrow)
 
     const rows: RentPlanRow[] = []
     const credits: HireCredit[] = []
@@ -62,18 +60,16 @@ export const hireReportService = {
           const rateType = (l.lineRateType || ag.rateType) as 'weekly' | 'monthly'
           const rateAmount = l.lineRateAmount ?? ag.rateAmount
           const startStr = (l.actualOutAt ? l.actualOutAt.slice(0, 10) : l.scheduledStart) || ag.startDate
-          const days = prorationService.dayCount(startStr, tomorrowYmd)
-          const prorated = prorationService.prorate(rateType, rateAmount, startStr, tomorrowYmd)
           rows.push({
             registration: l.registration || '—',
             agreementRef: ag.reference || ag.id.slice(0, 8),
             contractStart: euDate(ag.startDate),
             contractEnd: euDate(ag.endDate),
-            rate: `£${rateAmount}/${rateType === 'monthly' ? 'mo' : 'wk'}`,
+            rate: rateLabel(rateType, rateAmount),
+            rateType,
+            rateAmount,
             status: l.status,
             outDate: euDate(startStr),
-            daysOnHire: days,
-            proratedToDate: prorated,
           })
         }
         const agCredits = await hireCreditService.getCreditsForAgreement(organizationId, ag.id)
@@ -81,35 +77,36 @@ export const hireReportService = {
       }
     }
 
-    const totalProrated = round2(rows.reduce((s, r) => s + r.proratedToDate, 0))
+    const weeklyTotal = round2(rows.filter((r) => r.rateType === 'weekly').reduce((s, r) => s + r.rateAmount, 0))
+    const monthlyTotal = round2(rows.filter((r) => r.rateType === 'monthly').reduce((s, r) => s + r.rateAmount, 0))
     const approvedCredits = credits.filter((c) => c.status === 'approved')
     const totalCredits = round2(approvedCredits.reduce((s, c) => s + (c.estimatedCredit || 0), 0))
     return {
       customerName,
       rows,
       credits,
-      totalProrated,
+      weeklyTotal,
+      monthlyTotal,
       totalCredits,
-      net: round2(totalProrated - totalCredits),
       generatedAt: ymd(today),
     }
   },
 
   exportExcel(plan: RentPlan): Promise<void> {
-    const sheet = plan.rows.map((r) => ({
+    const sheet: Record<string, string | number>[] = plan.rows.map((r) => ({
       Registration: r.registration,
       Agreement: r.agreementRef,
       'Hire start': r.outDate,
       'Contract start': r.contractStart,
       'Contract end': r.contractEnd,
       Rate: r.rate,
-      'Days on hire': r.daysOnHire,
-      'Prorated to date (£)': r.proratedToDate,
     }))
-    sheet.push({
-      Registration: '', Agreement: '', 'Hire start': '', 'Contract start': '', 'Contract end': '',
-      Rate: 'TOTAL', 'Days on hire': '' as any, 'Prorated to date (£)': plan.totalProrated,
-    })
+    if (plan.weeklyTotal > 0) {
+      sheet.push({ Registration: '', Agreement: '', 'Hire start': '', 'Contract start': '', 'Contract end': 'WEEKLY TOTAL', Rate: `£${plan.weeklyTotal}/wk` })
+    }
+    if (plan.monthlyTotal > 0) {
+      sheet.push({ Registration: '', Agreement: '', 'Hire start': '', 'Contract start': '', 'Contract end': 'MONTHLY TOTAL', Rate: `£${plan.monthlyTotal}/mo` })
+    }
     const ws = XLSX.utils.json_to_sheet(sheet)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Active Rentals')
@@ -128,26 +125,26 @@ export const hireReportService = {
     y += 8
     doc.setFontSize(9)
     doc.setFont('helvetica', 'bold')
-    doc.text('Reg', 14, y); doc.text('Agreement', 40, y); doc.text('Out', 78, y)
-    doc.text('Rate', 104, y); doc.text('Days', 134, y); doc.text('£ to date', 158, y)
+    doc.text('Reg', 14, y); doc.text('Agreement', 44, y); doc.text('Out', 90, y)
+    doc.text('Contract end', 120, y); doc.text('Rate', 168, y)
     doc.setFont('helvetica', 'normal')
     y += 5
     for (const r of plan.rows) {
       if (y > 275) { doc.addPage(); y = 16 }
       doc.text(String(r.registration), 14, y)
-      doc.text(String(r.agreementRef), 40, y)
-      doc.text(String(r.outDate), 78, y)
-      doc.text(String(r.rate), 104, y)
-      doc.text(String(r.daysOnHire), 134, y)
-      doc.text(String(r.proratedToDate.toFixed(2)), 158, y)
+      doc.text(String(r.agreementRef), 44, y)
+      doc.text(String(r.outDate), 90, y)
+      doc.text(String(r.contractEnd || '—'), 120, y)
+      doc.text(String(r.rate), 168, y)
       y += 5
     }
     y += 3
     doc.setFont('helvetica', 'bold')
-    doc.text(`Total prorated: £${plan.totalProrated.toFixed(2)}`, 14, y); y += 5
+    if (plan.weeklyTotal > 0) { doc.text(`Weekly total: £${plan.weeklyTotal.toFixed(2)}/wk`, 14, y); y += 5 }
+    if (plan.monthlyTotal > 0) { doc.text(`Monthly total: £${plan.monthlyTotal.toFixed(2)}/mo`, 14, y); y += 5 }
     if (plan.totalCredits > 0) {
-      doc.text(`Approved credits: -£${plan.totalCredits.toFixed(2)}`, 14, y); y += 5
-      doc.text(`Net: £${plan.net.toFixed(2)}`, 14, y)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`Approved credits to apply: -£${plan.totalCredits.toFixed(2)}`, 14, y)
     }
     const safe = plan.customerName.replace(/[^a-z0-9]+/gi, '_')
     doc.save(`RentPlan_${safe}_${plan.generatedAt}.pdf`)

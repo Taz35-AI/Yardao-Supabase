@@ -4,7 +4,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { X, FileSpreadsheet, FileText, Building2, User, Loader2, Coins, Wallet, KeyRound, CalendarRange, History } from 'lucide-react'
+import { X, FileSpreadsheet, FileText, Building2, User, Loader2, Wallet, KeyRound, CalendarRange, History } from 'lucide-react'
 import { toast } from 'sonner'
 import { hireReportService, type RentPlan } from '@/lib/services/hireReportService'
 import { hireAgreementService } from '@/lib/services/hireAgreementService'
@@ -145,11 +145,13 @@ export function CustomerHireDashboard({
           ) : (
             <>
               {/* Summary KPI strip */}
-              <div className={`grid gap-2.5 ${plan.totalCredits > 0 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              <div className={`grid gap-2.5 ${plan.weeklyTotal > 0 && plan.monthlyTotal > 0 ? 'grid-cols-3' : 'grid-cols-2'}`}>
                 <StatCard tone="forest" icon={<KeyRound className="w-4 h-4" />} label={t('hire.kpiOnHire')} value={plan.rows.length} />
-                <StatCard tone="slate" icon={<Wallet className="w-4 h-4" />} label={t('hire.totalProrated')} value={`£${plan.totalProrated.toFixed(2)}`} />
-                {plan.totalCredits > 0 && (
-                  <StatCard tone="lime" icon={<Coins className="w-4 h-4" />} label={t('hire.net')} value={`£${plan.net.toFixed(2)}`} />
+                {plan.weeklyTotal > 0 && (
+                  <StatCard tone="slate" icon={<Wallet className="w-4 h-4" />} label={t('hire.weeklyTotal')} value={`£${plan.weeklyTotal.toFixed(2)}`} />
+                )}
+                {plan.monthlyTotal > 0 && (
+                  <StatCard tone="lime" icon={<Wallet className="w-4 h-4" />} label={t('hire.monthlyTotal')} value={`£${plan.monthlyTotal.toFixed(2)}`} />
                 )}
               </div>
 
@@ -159,9 +161,8 @@ export function CustomerHireDashboard({
                     <tr className="text-left text-[10px] uppercase tracking-[0.08em] text-[#72A68E] bg-[#f6f8f7] dark:bg-gray-800 border-b border-[#e2e8e5] dark:border-gray-700">
                       <th className="px-3 py-2.5 font-bold">{t('hire.colReg')}</th>
                       <th className="px-3 py-2.5 font-bold">{t('hire.colOut')}</th>
-                      <th className="px-3 py-2.5 font-bold">{t('hire.colRate')}</th>
-                      <th className="px-3 py-2.5 font-bold text-right">{t('hire.colDays')}</th>
-                      <th className="px-3 py-2.5 font-bold text-right">{t('hire.colProrated')}</th>
+                      <th className="px-3 py-2.5 font-bold">{t('hire.colEnd')}</th>
+                      <th className="px-3 py-2.5 font-bold text-right">{t('hire.colRate')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#eef2f0] dark:divide-gray-700/60">
@@ -169,32 +170,33 @@ export function CustomerHireDashboard({
                       <tr key={i} className="hover:bg-[#f6f8f7] dark:hover:bg-gray-800/50 transition-colors">
                         <td className="px-3 py-2.5 font-mono font-bold text-[#012619] dark:text-white">{r.registration}</td>
                         <td className="px-3 py-2.5 text-[#4a5e54] dark:text-gray-300">{r.outDate}</td>
-                        <td className="px-3 py-2.5 text-[#4a5e54] dark:text-gray-300">{r.rate}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums">{r.daysOnHire}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-[#012619] dark:text-white">£{r.proratedToDate.toFixed(2)}</td>
+                        <td className="px-3 py-2.5 text-[#4a5e54] dark:text-gray-300">{r.contractEnd || '—'}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-[#012619] dark:text-white">{r.rate}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
 
-              {/* Net breakdown */}
+              {/* Rate totals + any approved credits to apply */}
               <div className="rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-[#f6f8f7] dark:bg-gray-800 p-3.5 space-y-1.5 text-sm">
-                <div className="flex items-center justify-between text-[#4a5e54] dark:text-gray-300">
-                  <span>{t('hire.totalProrated')}</span>
-                  <span className="font-semibold tabular-nums text-[#012619] dark:text-white">£{plan.totalProrated.toFixed(2)}</span>
-                </div>
+                {plan.weeklyTotal > 0 && (
+                  <div className="flex items-center justify-between text-[#4a5e54] dark:text-gray-300">
+                    <span>{t('hire.weeklyTotal')}</span>
+                    <span className="font-bold tabular-nums text-[#012619] dark:text-white">£{plan.weeklyTotal.toFixed(2)}/wk</span>
+                  </div>
+                )}
+                {plan.monthlyTotal > 0 && (
+                  <div className="flex items-center justify-between text-[#4a5e54] dark:text-gray-300">
+                    <span>{t('hire.monthlyTotal')}</span>
+                    <span className="font-bold tabular-nums text-[#012619] dark:text-white">£{plan.monthlyTotal.toFixed(2)}/mo</span>
+                  </div>
+                )}
                 {plan.totalCredits > 0 && (
-                  <>
-                    <div className="flex items-center justify-between text-[#72A68E]">
-                      <span>{t('hire.approvedCredits')}</span>
-                      <span className="font-semibold tabular-nums">−£{plan.totalCredits.toFixed(2)}</span>
-                    </div>
-                    <div className="flex items-center justify-between pt-1.5 mt-0.5 border-t border-[#e2e8e5] dark:border-gray-700">
-                      <span className="font-bold text-[#012619] dark:text-white">{t('hire.net')}</span>
-                      <span className="font-extrabold tabular-nums text-[#025940] dark:text-[#b3f243]">£{plan.net.toFixed(2)}</span>
-                    </div>
-                  </>
+                  <div className="flex items-center justify-between pt-1.5 mt-0.5 border-t border-[#e2e8e5] dark:border-gray-700 text-[#72A68E]">
+                    <span>{t('hire.approvedCredits')}</span>
+                    <span className="font-semibold tabular-nums">−£{plan.totalCredits.toFixed(2)}</span>
+                  </div>
                 )}
               </div>
             </>
