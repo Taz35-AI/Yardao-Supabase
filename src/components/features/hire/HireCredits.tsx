@@ -7,11 +7,11 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Coins, AlertTriangle, Check, Ban, CheckCheck, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
-import { supabase } from '@/lib/supabaseClient'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { hireAgreementService } from '@/lib/services/hireAgreementService'
 import { hireCreditService } from '@/lib/services/hireCreditService'
+import { getDowntimeStartByReg } from '@/lib/services/hireDowntimeService'
 import { prorationService } from '@/lib/services/prorationService'
 import { useHire } from '@/contexts/HireContext'
 import { useT } from '@/lib/i18n'
@@ -29,32 +29,17 @@ export function HireCredits() {
   const [loading, setLoading] = useState(true)
   const [scanning, setScanning] = useState(false)
 
-  // Scan on-hire vehicles that are off-road → suggest downtime credits.
+  // Scan on-hire vehicles that are off-road (external garage, repairs OR an
+  // active internal/external service booking) → suggest downtime credits.
   const scanDowntime = useCallback(async () => {
     if (!organizationId) return
     const lines = await hireAgreementService.getActiveLines(organizationId)
     if (lines.length === 0) return
-    let civ: any[] = []
-    try {
-      const { data } = await supabase
-        .from('checked_in_vehicles')
-        .select('registration, transfer_status, status, service_booking_id, checked_out_to_garage_at')
-        .eq('organization_id', organizationId)
-      civ = data ?? []
-    } catch {
-      civ = []
-    }
-    const byReg = new Map<string, any>()
-    for (const c of civ) byReg.set(normReg(c.registration), c)
+    const downtime = await getDowntimeStartByReg(organizationId)
     const today = ymd(new Date())
     for (const l of lines) {
       if (l.status !== 'active') continue
-      const c = byReg.get(normReg(l.registration))
-      if (!c) continue
-      const offroad =
-        c.transfer_status === 'at_external_garage' || !!c.checked_out_to_garage_at || c.status === 'Repairs needed' || !!c.service_booking_id
-      if (!offroad) continue
-      const start = c.checked_out_to_garage_at ? c.checked_out_to_garage_at.slice(0, 10) : null
+      const start = downtime[normReg(l.registration)]
       if (!start || prorationService.dayCount(start, today) <= 0) continue
       await hireCreditService.suggestCredit({
         organizationId,

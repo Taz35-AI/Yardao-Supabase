@@ -7,6 +7,7 @@ import { CalendarRange } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
 import { toCamelList } from '@/lib/dbMap'
 import { hireAgreementService } from '@/lib/services/hireAgreementService'
+import { getDowntimeStartByReg } from '@/lib/services/hireDowntimeService'
 import { useHire } from '@/contexts/HireContext'
 import { useT } from '@/lib/i18n'
 import type { HireAgreement, HireAgreementVehicle } from '@/types/hire'
@@ -39,22 +40,9 @@ export function HireGantt() {
       } catch {
         allLines = []
       }
-      // Off-road downtime windows (for the amber overlay).
-      const dt: Record<string, string> = {}
-      try {
-        const { data: civ } = await supabase
-          .from('checked_in_vehicles')
-          .select('registration, transfer_status, status, service_booking_id, checked_out_to_garage_at')
-          .eq('organization_id', organizationId)
-        for (const c of civ ?? []) {
-          const offroad = c.transfer_status === 'at_external_garage' || !!c.checked_out_to_garage_at || c.status === 'Repairs needed' || !!c.service_booking_id
-          if (offroad && c.checked_out_to_garage_at) {
-            dt[(c.registration || '').toUpperCase().replace(/\s+/g, '')] = String(c.checked_out_to_garage_at).slice(0, 10)
-          }
-        }
-      } catch {
-        /* none */
-      }
+      // Off-road downtime windows (external garage, repairs OR active service
+      // bookings) for the amber overlay.
+      const dt = await getDowntimeStartByReg(organizationId)
       if (!cancelled) {
         setAgreements(ags)
         setLines(allLines)
