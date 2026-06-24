@@ -12,8 +12,8 @@ import { logger } from '@/lib/logger'
 
 export interface DowntimeInfo {
   since: string // YYYY-MM-DD — when the vehicle went (or is due) off-road
-  type: 'internal' | 'external'
-  label: string // e.g. "Internal garage" or "External garage: 12 High St"
+  type: 'internal' | 'external' | 'yard'
+  label: string // e.g. "Internal garage", "External garage: 12 High St", "Temporary return (in yard)"
 }
 
 const normReg = (r?: string | null) => (r || '').toUpperCase().replace(/\s+/g, '')
@@ -28,20 +28,30 @@ export async function getDowntimeByReg(organizationId: string): Promise<Record<s
     if (!out[reg] || info.since < out[reg].since) out[reg] = info
   }
 
-  // 1) External garage check-outs from the yard (stable timestamp).
+  // 1) Yard state: external garage check-outs AND temporary returns (vehicle
+  //    back in the yard but still allocated to a hire line).
   try {
     const { data } = await supabase
       .from('checked_in_vehicles')
-      .select('registration, transfer_status, checked_out_to_garage_at, external_garage_name')
+      .select('registration, transfer_status, checked_out_to_garage_at, external_garage_name, hire_status, current_agreement_line_id, check_in_time')
       .eq('organization_id', organizationId)
     for (const c of data ?? []) {
-      const off = c.transfer_status === 'at_external_garage' || !!c.checked_out_to_garage_at
-      if (!off) continue
-      consider(normReg(c.registration), {
-        since: dayOnly(c.checked_out_to_garage_at) || '',
-        type: 'external',
-        label: c.external_garage_name ? `External garage: ${c.external_garage_name}` : 'External garage',
-      })
+      const reg = normReg(c.registration)
+      if (c.transfer_status === 'at_external_garage' || c.checked_out_to_garage_at) {
+        consider(reg, {
+          since: dayOnly(c.checked_out_to_garage_at) || dayOnly(c.check_in_time) || '',
+          type: 'external',
+          label: c.external_garage_name ? `External garage: ${c.external_garage_name}` : 'External garage',
+        })
+      } else if (c.current_agreement_line_id && c.hire_status === 'In Yard') {
+        // Temporary return: customer still on the contract but the vehicle is
+        // sitting in the yard → downtime / potential credit.
+        consider(reg, {
+          since: dayOnly(c.check_in_time) || '',
+          type: 'yard',
+          label: 'Temporary return (in yard)',
+        })
+      }
     }
   } catch (err) {
     logger.error('getDowntimeByReg: yard read failed', err)
