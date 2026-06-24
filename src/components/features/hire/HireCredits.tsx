@@ -17,6 +17,7 @@ import { useHire } from '@/contexts/HireContext'
 import { useT } from '@/lib/i18n'
 import type { HireCredit, HireCreditStatus } from '@/types/hire'
 import { euDate } from './hireFormat'
+import { EmptyState } from './hireUi'
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const normReg = (r?: string | null) => (r || '').toUpperCase().replace(/\s+/g, '')
@@ -109,11 +110,7 @@ export function HireCredits() {
       {loading ? (
         <div className="py-12 text-center text-sm text-[#72A68E]">…</div>
       ) : credits.length === 0 ? (
-        <div className="rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 text-center py-12 px-6">
-          <Coins className="w-8 h-8 text-[#c8d5ce] mx-auto mb-3" />
-          <p className="text-sm font-medium text-[#012619] dark:text-white">{t('hire.noCredits')}</p>
-          <p className="text-[12.5px] text-[#72A68E] mt-1">{t('hire.noCreditsHint')}</p>
-        </div>
+        <EmptyState icon={<Coins className="w-7 h-7" />} title={t('hire.noCredits')} hint={t('hire.noCreditsHint')} />
       ) : (
         <div className="space-y-2">
           {credits.map((c) => (

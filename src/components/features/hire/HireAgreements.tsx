@@ -5,6 +5,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { FileText, Plus, Search, Car, ChevronDown } from 'lucide-react'
+import { EmptyState, PrimaryBtn, Pill } from './hireUi'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuth } from '@/contexts/AuthContext'
@@ -44,23 +45,16 @@ export function HireAgreements() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-end">
-        <button
-          onClick={() => setShowNew(true)}
-          className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-[#025940] text-white hover:bg-[#012619] transition-colors"
-        >
+        <PrimaryBtn onClick={() => setShowNew(true)}>
           <Plus className="w-4 h-4" />
           <span>{t('hire.newAgreement', { label })}</span>
-        </button>
+        </PrimaryBtn>
       </div>
 
       {loading ? (
         <div className="py-12 text-center text-sm text-[#72A68E]">…</div>
       ) : agreements.length === 0 ? (
-        <div className="rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 text-center py-12 px-6">
-          <FileText className="w-8 h-8 text-[#c8d5ce] mx-auto mb-3" />
-          <p className="text-sm font-medium text-[#012619] dark:text-white">{t('hire.emptyAgreements')}</p>
-          <p className="text-[12.5px] text-[#72A68E] mt-1">{t('hire.emptyAgreementsHint')}</p>
-        </div>
+        <EmptyState icon={<FileText className="w-7 h-7" />} title={t('hire.emptyAgreements')} hint={t('hire.emptyAgreementsHint')} />
       ) : (
         <div className="space-y-2">
           {agreements.map((a) => (
@@ -201,18 +195,19 @@ function AgreementCard({
   }
 
   return (
-    <div className="rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800">
-      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-3 p-3.5 text-left">
+    <div className="rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm hover:shadow-md transition-shadow">
+      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-3 p-4 text-left">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#025940] to-[#012619] flex items-center justify-center text-[#b3f243] flex-shrink-0">
+          <FileText className="w-5 h-5" />
+        </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-[#012619] dark:text-white truncate">{agreement.customerName || '—'}</span>
-            {agreement.reference && <span className="text-xs text-[#72A68E]">· {agreement.reference}</span>}
-          </div>
+          <span className="block font-bold text-[#012619] dark:text-white truncate leading-tight">{agreement.customerName || '—'}</span>
           <p className="text-xs text-[#72A68E] mt-0.5">
-            {euDate(agreement.startDate)} → {euDate(agreement.endDate)} · {rateLabel(agreement.rateType, agreement.rateAmount, t('hire.perWeek'), t('hire.perMonth'))}
+            {euDate(agreement.startDate)} → {euDate(agreement.endDate)}{agreement.reference ? ` · ${agreement.reference}` : ''}
           </p>
         </div>
-        <ChevronDown className={`w-4 h-4 text-[#72A68E] transition-transform ${open ? 'rotate-180' : ''}`} />
+        <Pill tone="lime">{rateLabel(agreement.rateType, agreement.rateAmount, t('hire.perWeek'), t('hire.perMonth'))}</Pill>
+        <ChevronDown className={`w-4 h-4 text-[#72A68E] transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (

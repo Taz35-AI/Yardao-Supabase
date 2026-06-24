@@ -10,6 +10,7 @@ import { hireAgreementService } from '@/lib/services/hireAgreementService'
 import { getDowntimeByReg, type DowntimeInfo } from '@/lib/services/hireDowntimeService'
 import { useHire } from '@/contexts/HireContext'
 import { useT } from '@/lib/i18n'
+import { EmptyState } from './hireUi'
 import type { HireAgreement, HireAgreementVehicle } from '@/types/hire'
 
 const DAY = 86_400_000
@@ -155,11 +156,7 @@ export function HireGantt() {
       {loading ? (
         <div className="py-12 text-center text-sm text-[#72A68E]">…</div>
       ) : rows.length === 0 ? (
-        <div className="rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 text-center py-12 px-6">
-          <CalendarRange className="w-8 h-8 text-[#c8d5ce] mx-auto mb-3" />
-          <p className="text-sm font-medium text-[#012619] dark:text-white">{t('hire.ganttEmpty')}</p>
-          <p className="text-[12.5px] text-[#72A68E] mt-1">{t('hire.ganttEmptyHint')}</p>
-        </div>
+        <EmptyState icon={<CalendarRange className="w-7 h-7" />} title={t('hire.ganttEmpty')} hint={t('hire.ganttEmptyHint')} />
       ) : (
         <div className="rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
           <div className="flex border-b border-[#e2e8e5] dark:border-gray-700 bg-[#f6f8f7] dark:bg-gray-800/60">

@@ -3,7 +3,8 @@
 'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { Users, Plus, Search, Building2, ShieldCheck, ShieldAlert, ShieldX } from 'lucide-react'
+import { Users, Plus, Search, Building2, User, ShieldCheck, ShieldAlert, ShieldX, ArrowRight } from 'lucide-react'
+import { EmptyState, PrimaryBtn } from './hireUi'
 import { supabase } from '@/lib/supabaseClient'
 import { hireCustomerService } from '@/lib/services/hireCustomerService'
 import { useHire } from '@/contexts/HireContext'
@@ -83,39 +84,41 @@ export function HireCustomers() {
             className="w-full pl-10 pr-3 py-2.5 border border-[#e2e8e5] dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-[#012619] dark:text-white text-sm font-medium placeholder:text-[#72A68E] focus:ring-2 focus:ring-[#025940]/20 focus:border-[#025940]"
           />
         </div>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-[#025940] text-white hover:bg-[#012619] transition-colors flex-shrink-0"
-        >
+        <PrimaryBtn onClick={() => setShowAdd(true)} className="flex-shrink-0">
           <Plus className="w-4 h-4" />
           <span>{t('hire.addCustomer')}</span>
-        </button>
+        </PrimaryBtn>
       </div>
 
       {loading ? (
         <div className="py-12 text-center text-sm text-[#72A68E]">…</div>
       ) : rows.length === 0 ? (
-        <div className="rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 text-center py-12 px-6">
-          <Users className="w-8 h-8 text-[#c8d5ce] mx-auto mb-3" />
-          <p className="text-sm font-medium text-[#012619] dark:text-white">{t('hire.emptyCustomers')}</p>
-          <p className="text-[12.5px] text-[#72A68E] mt-1">{t('hire.emptyCustomersHint')}</p>
-        </div>
+        <EmptyState icon={<Users className="w-7 h-7" />} title={t('hire.emptyCustomers')} hint={t('hire.emptyCustomersHint')} />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {rows.map((c) => (
             <button
               key={c.id}
               onClick={() => setDash(c)}
-              className="text-left rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 p-3.5 hover:border-[#72A68E] transition-colors"
+              className="group text-left rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 p-4 shadow-sm hover:shadow-md hover:border-[#72A68E]/60 transition-all"
             >
-              <div className="flex items-center gap-2">
-                {c.isBusiness && <Building2 className="w-4 h-4 text-[#025940] dark:text-[#b3f243] flex-shrink-0" />}
-                <h3 className="font-bold text-[#012619] dark:text-white truncate">{c.companyName || c.name}</h3>
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#025940] to-[#012619] flex items-center justify-center flex-shrink-0 text-[#b3f243]">
+                  {c.isBusiness ? <Building2 className="w-5 h-5" /> : <User className="w-5 h-5" />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-bold text-[#012619] dark:text-white truncate leading-tight">{c.companyName || c.name}</h3>
+                  {c.companyName && <p className="text-xs text-[#72A68E] truncate mt-0.5">{c.name}</p>}
+                  {c.isBusiness && (
+                    <span className="inline-block mt-1 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-[#b3f243]/25 text-[#3d6b1f] dark:text-[#b3f243]">B2B</span>
+                  )}
+                </div>
               </div>
-              {c.companyName && <p className="text-xs text-[#72A68E] truncate">{c.name}</p>}
-              <div className="mt-2 flex items-center justify-between">
+              <div className="mt-3 pt-3 border-t border-[#eef2f0] dark:border-gray-700/60 flex items-center justify-between">
                 <EligBadge state={elig[c.id] || 'missing'} t={t} />
-                <span className="text-[10px] font-semibold text-[#025940] dark:text-[#b3f243]">{t('hire.openDashboard')} →</span>
+                <span className="text-[11px] font-bold text-[#025940] dark:text-[#b3f243] inline-flex items-center gap-1 group-hover:gap-1.5 transition-all">
+                  {t('hire.openDashboard')} <ArrowRight className="w-3.5 h-3.5" />
+                </span>
               </div>
             </button>
           ))}
