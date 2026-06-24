@@ -119,7 +119,7 @@ export function HireSwapModal({
   }
 
   const inputCls =
-    'w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm'
+    'w-full px-3 py-2.5 border border-[#e2e8e5] dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-[#012619] dark:text-white text-sm focus:ring-2 focus:ring-[#025940]/20 focus:border-[#025940]'
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
@@ -131,14 +131,16 @@ export function HireSwapModal({
 
         <div className="p-4 space-y-4">
           <div className="flex items-center gap-2 text-sm">
-            <div className="flex-1 rounded-lg border border-gray-200 dark:border-gray-700 p-2.5">
-              <p className="text-[10px] uppercase tracking-wide text-[#72A68E]">{t('hire.swapFrom')}</p>
-              <p className="font-mono font-bold text-[#012619] dark:text-white">{fromLine.registration || '—'}</p>
+            <div className="flex-1 rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-[#f6f8f7] dark:bg-gray-800 p-3">
+              <p className="text-[10px] uppercase tracking-wide text-[#72A68E] font-semibold">{t('hire.swapFrom')}</p>
+              <p className="font-mono font-bold text-[#012619] dark:text-white mt-0.5">{fromLine.registration || '—'}</p>
             </div>
-            <ArrowRight className="w-5 h-5 text-[#72A68E] flex-shrink-0" />
-            <div className="flex-1 rounded-lg border-2 border-[#b3f243]/50 bg-[#b3f243]/10 p-2.5">
-              <p className="text-[10px] uppercase tracking-wide text-[#025940] dark:text-[#b3f243]">{t('hire.swapTo')}</p>
-              <p className="font-mono font-bold text-[#012619] dark:text-white">{vehicle?.registration || '…'}</p>
+            <div className="w-8 h-8 rounded-full bg-[#025940]/10 flex items-center justify-center flex-shrink-0">
+              <ArrowRight className="w-4 h-4 text-[#025940] dark:text-[#b3f243]" />
+            </div>
+            <div className="flex-1 rounded-xl border-2 border-[#b3f243]/50 bg-[#b3f243]/10 p-3">
+              <p className="text-[10px] uppercase tracking-wide text-[#025940] dark:text-[#b3f243] font-semibold">{t('hire.swapTo')}</p>
+              <p className="font-mono font-bold text-[#012619] dark:text-white mt-0.5">{vehicle?.registration || '…'}</p>
             </div>
           </div>
 
@@ -172,8 +174,8 @@ export function HireSwapModal({
           </div>
 
           <div className="flex gap-2 pt-1">
-            <button onClick={onClose} className="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-bold">{t('hire.cancel')}</button>
-            <button onClick={doSwap} disabled={saving || !vehicle} className="flex-1 px-4 py-2.5 rounded-lg bg-[#025940] hover:bg-[#012619] text-white text-sm font-bold disabled:opacity-60 inline-flex items-center justify-center gap-2">
+            <button onClick={onClose} className="px-4 py-2.5 rounded-xl border border-[#e2e8e5] dark:border-gray-600 text-[#4a5e54] dark:text-gray-300 text-sm font-bold hover:bg-[#f0f4f2] dark:hover:bg-gray-800 transition-colors">{t('hire.cancel')}</button>
+            <button onClick={doSwap} disabled={saving || !vehicle} className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-br from-[#025940] to-[#012619] text-white text-sm font-bold shadow-sm hover:shadow-md hover:shadow-[#025940]/20 active:scale-[0.98] transition-all disabled:opacity-60 disabled:active:scale-100 inline-flex items-center justify-center gap-2">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
               {saving ? t('hire.saving') : t('hire.swapConfirm')}
             </button>

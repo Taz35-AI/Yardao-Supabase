@@ -2,7 +2,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { X, Car, ArrowLeft, Calendar, User, FileText, AlertTriangle, CheckCircle, Gauge, Wrench } from 'lucide-react'
+import { X, Car, ArrowLeft, Calendar, User, FileText, AlertTriangle, CheckCircle, Gauge, Wrench, LogOut, RotateCcw, Repeat } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { CheckedInVehicle } from '@/types'
 import { logger } from '@/lib/logger'
@@ -496,20 +496,21 @@ export function QuickCheckInModal({
               </p>
               <div className="grid grid-cols-3 gap-1.5">
                 {([
-                  ['end', t('dashboard.hire.choEnd')],
-                  ['temp', t('dashboard.hire.choTemp')],
-                  ['swap', t('dashboard.hire.choSwap')],
-                ] as const).map(([k, lbl]) => (
+                  ['end', t('dashboard.hire.choEnd'), <LogOut key="i" className="w-4 h-4" />],
+                  ['temp', t('dashboard.hire.choTemp'), <RotateCcw key="i" className="w-4 h-4" />],
+                  ['swap', t('dashboard.hire.choSwap'), <Repeat key="i" className="w-4 h-4" />],
+                ] as const).map(([k, lbl, icon]) => (
                   <button
                     key={k}
                     type="button"
                     onClick={() => setDecision(k)}
-                    className={`px-2 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${
+                    className={`flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-[11px] font-bold border transition-all ${
                       decision === k
-                        ? 'bg-[#025940] text-white border-[#025940]'
+                        ? 'bg-gradient-to-br from-[#025940] to-[#012619] text-white border-transparent shadow-sm'
                         : 'bg-white dark:bg-gray-800 text-[#4a5e54] dark:text-gray-300 border-[#e2e8e5] dark:border-gray-600 hover:border-[#72A68E]'
                     }`}
                   >
+                    {icon}
                     {lbl}
                   </button>
                 ))}

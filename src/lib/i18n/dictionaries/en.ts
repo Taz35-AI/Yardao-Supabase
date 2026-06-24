@@ -1308,6 +1308,8 @@ export const en = {
     exportExcel: 'Excel',
     exportPdf: 'PDF',
     openDashboard: 'Rent plan',
+    b2bAccount: 'Business account',
+    individualAccount: 'Individual account',
   },
   serviceBookings: {
     common: {
