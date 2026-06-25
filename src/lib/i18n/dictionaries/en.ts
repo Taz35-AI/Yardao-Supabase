@@ -1221,6 +1221,7 @@ export const en = {
     noVehicles: 'No vehicles attached yet',
     attached: 'Attached {reg}.',
     attachFail: 'Could not attach the vehicle.',
+    alreadyOnHire: '{reg} is already on an open hire. Return or swap it before hiring it again.',
     lineScheduled: 'Scheduled',
     lineActive: 'On hire',
     lineReturned: 'Returned',

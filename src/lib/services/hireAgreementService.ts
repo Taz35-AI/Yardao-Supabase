@@ -205,6 +205,36 @@ export const hireAgreementService = {
     }
   },
 
+  /**
+   * Guard: a vehicle may only ever be on ONE open (scheduled/active) hire line.
+   * Throws VEHICLE_ALREADY_ON_HIRE — naming the existing customer/contract — if
+   * it's already committed elsewhere, so it can never be double-booked across
+   * two customers or two agreements.
+   */
+  async assertVehicleAvailable(
+    organizationId: string,
+    vehicleId: string,
+    registration: string,
+  ): Promise<void> {
+    const clash =
+      (await this.findOpenLineForVehicle(organizationId, vehicleId)) ||
+      (await this.findOpenLineByRegistration(organizationId, registration))
+    if (!clash) return
+    let holder = ''
+    try {
+      const ag = await this.getAgreement(clash.agreementId)
+      if (ag) holder = ag.customerName ? ` (${ag.customerName}${ag.reference ? ` · ${ag.reference}` : ''})` : ''
+    } catch {
+      /* best-effort label */
+    }
+    const err = new Error(
+      `${registration} is already on an open hire${holder}. Return or swap it before hiring it again.`,
+    ) as Error & { code?: string; clash?: HireAgreementVehicle }
+    err.code = 'VEHICLE_ALREADY_ON_HIRE'
+    err.clash = clash
+    throw err
+  },
+
   async attachVehicle(input: {
     organizationId: string
     agreementId: string
@@ -219,6 +249,8 @@ export const hireAgreementService = {
     createdBy?: string | null
     createdByName?: string | null
   }): Promise<string> {
+    // Never double-book a vehicle across customers/agreements.
+    await this.assertVehicleAvailable(input.organizationId, input.vehicleId, input.registration)
     const { data, error } = await supabase
       .from(LINES)
       .insert({

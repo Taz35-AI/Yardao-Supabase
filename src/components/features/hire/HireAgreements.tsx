@@ -189,8 +189,13 @@ function AgreementCard({
       toast.success(t('hire.attached', { reg: v.registration }))
       loadLines()
       onChange()
-    } catch {
-      toast.error(t('hire.attachFail'))
+    } catch (err) {
+      const e = err as Error & { code?: string }
+      if (e?.code === 'VEHICLE_ALREADY_ON_HIRE') {
+        toast.error(e.message || t('hire.alreadyOnHire', { reg: v.registration }))
+      } else {
+        toast.error(t('hire.attachFail'))
+      }
     }
   }
 
