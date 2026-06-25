@@ -7,6 +7,7 @@ import { usePathname } from 'next/navigation'
 import { Providers } from '@/components/Providers'
 import { SidebarProvider } from '@/contexts/SidebarContext'
 import { ServiceBookingsProvider } from '@/contexts/ServiceBookingsContext'
+import { HireProvider } from '@/contexts/HireContext'
 import { FleetDataProvider } from '@/contexts/FleetDataContext'
 import { YardDataProvider } from '@/contexts/YardDataContext'
 import { DeliveriesDefleetProvider } from '@/contexts/DeliveriesDefleetContext'
@@ -69,6 +70,7 @@ export function ConditionalProviders({ children }: ConditionalProvidersProps) {
         <FleetDataProvider>
           <YardDataProvider>
             <ServiceBookingsProvider>
+              <HireProvider>
               <DeliveriesDefleetProvider>
                 <HapticWrapper>
                   <PushNotificationProvider>
@@ -89,6 +91,7 @@ export function ConditionalProviders({ children }: ConditionalProvidersProps) {
                   </PushNotificationProvider>
                 </HapticWrapper>
               </DeliveriesDefleetProvider>
+              </HireProvider>
             </ServiceBookingsProvider>
           </YardDataProvider>
         </FleetDataProvider>

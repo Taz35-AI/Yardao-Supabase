@@ -2,7 +2,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { X, Car, ArrowLeft, Calendar, User, FileText, AlertTriangle, CheckCircle, Gauge, Wrench } from 'lucide-react'
+import { X, Car, ArrowLeft, Calendar, User, FileText, AlertTriangle, CheckCircle, Gauge, Wrench, LogOut, RotateCcw, Repeat } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { CheckedInVehicle } from '@/types'
 import { logger } from '@/lib/logger'
@@ -11,6 +11,29 @@ import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { settingsService, ServiceSettings, DEFAULT_SERVICE_SETTINGS } from '@/lib/services/settingsService'
 import { mileageService } from '@/lib/services/mileageService'
+import { hireAgreementService } from '@/lib/services/hireAgreementService'
+import { hireSettingsService } from '@/lib/services/hireSettingsService'
+import { HireSwapModal } from '@/components/features/hire/HireSwapModal'
+import { ContractIcon } from '@/components/features/hire/ContractIcon'
+import type { HireAgreement, HireAgreementVehicle } from '@/types/hire'
+
+const ymdToday = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+const euFromYmd = (iso?: string | null) => {
+  if (!iso) return ''
+  const [y, m, d] = iso.slice(0, 10).split('-')
+  return y && m && d ? `${d}/${m}/${y}` : ''
+}
+
+interface AgreementMatch {
+  customer: string
+  label: string
+  reference?: string | null
+  startDate?: string | null
+  future: boolean
+}
 
 type TFunc = (key: string, vars?: Record<string, string | number>) => string
 
@@ -61,6 +84,44 @@ export function SetOutOnHireModal({
 }: SetOutOnHireModalProps) {
 
   const t = useT()
+  const { user } = useAuth()
+  const [match, setMatch] = useState<AgreementMatch | null>(null)
+
+  // On open, see if this vehicle is on an open hire-agreement line so we can
+  // confirm "Setting up on hire with {customer}, {label}?" (+ future warning).
+  useEffect(() => {
+    if (!isOpen || !user?.uid) {
+      setMatch(null)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const profile = await userProfileService.getProfile(user.uid)
+        const orgId = profile?.organizationId
+        if (!orgId || cancelled) return
+        const line = await hireAgreementService.findOpenLineByRegistration(orgId, vehicle.registration || '')
+        if (!line || cancelled) return
+        const [agreement, settings] = await Promise.all([
+          hireAgreementService.getAgreement(line.agreementId),
+          hireSettingsService.getHireSettings(orgId),
+        ])
+        if (!agreement || cancelled) return
+        setMatch({
+          customer: agreement.customerName || '—',
+          label: settings.agreementLabelSingular,
+          reference: agreement.reference,
+          startDate: agreement.startDate,
+          future: !!agreement.startDate && agreement.startDate > ymdToday(),
+        })
+      } catch (err) {
+        logger.error('SetOutOnHireModal: agreement lookup failed', err)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, user?.uid, vehicle.registration])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -130,6 +191,32 @@ export function SetOutOnHireModal({
             </div>
           </div>
 
+          {/* 🔗 Hire-agreement match — "Setting up on hire with X, Contract Y?" */}
+          {match && (
+            <div className="rounded-xl border-2 border-[#025940]/40 bg-[#025940]/5 dark:bg-[#025940]/10 p-4">
+              <div className="flex items-start gap-3">
+                <ContractIcon className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-bold text-[#012619] dark:text-white">
+                    {t('dashboard.hire.agreementMatch', { customer: match.customer, label: match.label })}
+                  </p>
+                  {match.reference && <p className="text-xs text-[#72A68E] mt-0.5">{match.reference}</p>}
+                  <p className="text-xs text-[#4a5e54] dark:text-gray-300 mt-1">
+                    {t('dashboard.hire.agreementMatchHint', { label: match.label })}
+                  </p>
+                </div>
+              </div>
+              {match.future && (
+                <div className="mt-2 flex items-start gap-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-800 p-2.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-red-700 dark:text-red-300 leading-relaxed">
+                    {t('dashboard.hire.agreementFutureBlock', { date: euFromYmd(match.startDate) })}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Warning notice */}
           <div className="flex gap-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
             <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
@@ -150,10 +237,10 @@ export function SetOutOnHireModal({
             </Button>
             <Button
               type="submit"
-              disabled={loading}
-              className="flex-1 bg-[#025940] hover:bg-[#012619] text-white font-bold py-2.5 shadow-sm hover:shadow-md transition-all border-0"
+              disabled={loading || !!match?.future}
+              className="flex-1 bg-[#025940] hover:bg-[#012619] text-white font-bold py-2.5 shadow-sm hover:shadow-md transition-all border-0 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? t('dashboard.hire.settingOut') : t('dashboard.hire.setOutBtn')}
+              {loading ? t('dashboard.hire.settingOut') : match?.future ? t('dashboard.hire.setOutBlocked') : t('dashboard.hire.setOutBtn')}
             </Button>
           </div>
         </form>
@@ -173,9 +260,14 @@ export function QuickCheckInModal({
   const t = useT()
   const { user } = useAuth()
 
+  const [orgId, setOrgId] = useState<string | null>(null)
   const [settings, setSettings] = useState<ServiceSettings>(DEFAULT_SERVICE_SETTINGS)
   const [mileage, setMileage] = useState('')
   const [mileageNA, setMileageNA] = useState(false)
+  // Hire-agreement decision when the returning vehicle is on an active line.
+  const [hireLine, setHireLine] = useState<{ line: HireAgreementVehicle; agreement: HireAgreement; label: string } | null>(null)
+  const [decision, setDecision] = useState<'end' | 'temp' | 'swap'>('end')
+  const [showSwap, setShowSwap] = useState(false)
   // Floor = highest historical reading OR the vehicle's current (out-on-hire)
   // reading, whichever is higher — a returning vehicle can't have fewer miles.
   const [floor, setFloor] = useState<number | null>(null)
@@ -184,15 +276,16 @@ export function QuickCheckInModal({
   useEffect(() => {
     if (!isOpen || !user?.uid) return
     let cancelled = false
-    setMileage(''); setMileageNA(false); setFloor(null)
+    setMileage(''); setMileageNA(false); setFloor(null); setHireLine(null); setDecision('end'); setShowSwap(false)
     ;(async () => {
       try {
         const profile = await userProfileService.getProfile(user.uid)
-        const orgId = profile?.organizationId
-        if (!orgId || cancelled) return
+        const org = profile?.organizationId
+        if (!org || cancelled) return
+        setOrgId(org)
         const [svc, histFloor] = await Promise.all([
-          settingsService.getServiceSettings(orgId),
-          mileageService.getMileageFloor(orgId, vehicle.registration || ''),
+          settingsService.getServiceSettings(org),
+          mileageService.getMileageFloor(org, vehicle.registration || ''),
         ])
         if (cancelled) return
         setSettings(svc)
@@ -201,6 +294,20 @@ export function QuickCheckInModal({
           (n): n is number => typeof n === 'number',
         )
         setFloor(floors.length ? Math.max(...floors) : null)
+        // Is this vehicle on a hire line? Resolve it robustly so the End / Temp /
+        // Swap decision always appears: prefer the stamped yard link, then the
+        // fleet vehicle id, then the registration. Accept active OR scheduled.
+        const line =
+          (vehicle.currentAgreementLineId ? await hireAgreementService.getLineById(vehicle.currentAgreementLineId) : null) ||
+          (vehicle.vehicleId ? await hireAgreementService.findOpenLineForVehicle(org, vehicle.vehicleId) : null) ||
+          (await hireAgreementService.findOpenLineByRegistration(org, vehicle.registration || ''))
+        if (line && (line.status === 'active' || line.status === 'scheduled') && !cancelled) {
+          const [agreement, hs] = await Promise.all([
+            hireAgreementService.getAgreement(line.agreementId),
+            hireSettingsService.getHireSettings(org),
+          ])
+          if (agreement && !cancelled) setHireLine({ line, agreement, label: hs.agreementLabelSingular })
+        }
       } catch (err) {
         logger.error('QuickCheckIn settings/floor load failed:', err)
       }
@@ -226,8 +333,46 @@ export function QuickCheckInModal({
       alert(t('dashboard.hire.mileageTooLow', { min: floor.toLocaleString('en-GB') }))
       return
     }
+    // Swap is a two-step flow — open the swap picker; the physical return runs
+    // once the replacement is chosen (see HireSwapModal onDone below).
+    if (hireLine && decision === 'swap') {
+      setShowSwap(true)
+      return
+    }
     try {
-      await onConfirm(vehicle.id, undefined, mileageNA ? '' : mileage.trim())
+      const mi = mileageNA ? '' : mileage.trim()
+      await onConfirm(vehicle.id, undefined, mi)
+      if (hireLine && orgId) {
+        const profile = user?.uid ? await userProfileService.getProfile(user.uid) : null
+        const actorName = profile?.displayName || user?.email || 'Unknown'
+        const periodStart =
+          (hireLine.line.actualOutAt ? hireLine.line.actualOutAt.slice(0, 10) : hireLine.line.scheduledStart) ||
+          hireLine.agreement.startDate
+        if (decision === 'end') {
+          await hireAgreementService.endLine({
+            organizationId: orgId,
+            agreementId: hireLine.agreement.id,
+            lineId: hireLine.line.id,
+            vehicleId: hireLine.line.vehicleId,
+            registration: vehicle.registration,
+            periodStart,
+            rateType: (hireLine.line.lineRateType || hireLine.agreement.rateType),
+            rateAmount: hireLine.line.lineRateAmount ?? hireLine.agreement.rateAmount,
+            checkedInVehicleId: vehicle.id,
+            actorId: user?.uid || null,
+            actorName,
+          })
+        } else if (decision === 'temp') {
+          await hireAgreementService.markTempReturn({
+            organizationId: orgId,
+            lineId: hireLine.line.id,
+            registration: vehicle.registration,
+            checkedInVehicleId: vehicle.id,
+            actorId: user?.uid || null,
+            actorName,
+          })
+        }
+      }
       onClose()
     } catch (error) {
       logger.error('Error returning vehicle from hire:', error)
@@ -349,6 +494,41 @@ export function QuickCheckInModal({
             </div>
           )}
 
+          {/* 🔗 On an active hire line → choose what this check-in means */}
+          {hireLine && (
+            <div className="rounded-xl border-2 border-[#025940]/30 bg-[#025940]/5 dark:bg-[#025940]/10 p-3 space-y-2">
+              <p className="text-xs font-bold text-[#012619] dark:text-white">
+                {t('dashboard.hire.onContract', { customer: hireLine.agreement.customerName || '—', label: hireLine.label })}
+              </p>
+              <div className="grid grid-cols-3 gap-1.5">
+                {([
+                  ['end', t('dashboard.hire.choEnd'), <LogOut key="i" className="w-4 h-4" />],
+                  ['temp', t('dashboard.hire.choTemp'), <RotateCcw key="i" className="w-4 h-4" />],
+                  ['swap', t('dashboard.hire.choSwap'), <Repeat key="i" className="w-4 h-4" />],
+                ] as const).map(([k, lbl, icon]) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setDecision(k)}
+                    className={`flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-[11px] font-bold border transition-all ${
+                      decision === k
+                        ? 'bg-gradient-to-br from-[#025940] to-[#012619] text-white border-transparent shadow-sm'
+                        : 'bg-white dark:bg-gray-800 text-[#4a5e54] dark:text-gray-300 border-[#e2e8e5] dark:border-gray-600 hover:border-[#72A68E]'
+                    }`}
+                  >
+                    {icon}
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-[#72A68E] leading-snug">
+                {decision === 'end' ? t('dashboard.hire.choEndHint')
+                  : decision === 'temp' ? t('dashboard.hire.choTempHint')
+                    : t('dashboard.hire.choSwapHint')}
+              </p>
+            </div>
+          )}
+
           {/* Action buttons */}
           <div className="flex gap-3 pt-1">
             <Button
@@ -368,11 +548,37 @@ export function QuickCheckInModal({
               }
               className="flex-1 bg-[#025940] hover:bg-[#012619] text-white font-bold py-2.5 shadow-sm hover:shadow-md transition-all border-0 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? t('dashboard.hire.checkingIn') : t('dashboard.hire.checkInBtn')}
+              {loading
+                ? t('dashboard.hire.checkingIn')
+                : hireLine && decision === 'swap'
+                  ? t('dashboard.hire.chooseReplacementBtn')
+                  : hireLine && decision === 'temp'
+                    ? t('dashboard.hire.tempReturnBtn')
+                    : hireLine && decision === 'end'
+                      ? t('dashboard.hire.endHireBtn')
+                      : t('dashboard.hire.checkInBtn')}
             </Button>
           </div>
         </form>
       </div>
+
+      {showSwap && hireLine && (
+        <HireSwapModal
+          organizationId={orgId}
+          agreement={hireLine.agreement}
+          fromLine={hireLine.line}
+          onClose={() => setShowSwap(false)}
+          onDone={async () => {
+            setShowSwap(false)
+            try {
+              await onConfirm(vehicle.id, undefined, mileageNA ? '' : mileage.trim())
+            } catch (err) {
+              logger.error('Return after swap failed:', err)
+            }
+            onClose()
+          }}
+        />
+      )}
     </div>
   )
 }

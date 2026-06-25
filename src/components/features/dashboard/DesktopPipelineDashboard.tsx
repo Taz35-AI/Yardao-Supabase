@@ -15,13 +15,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Search, CheckCircle, Clock, Wrench, XCircle, Truck, ChevronDown, ChevronRight,
-  ArrowRight, Activity, Plus, CalendarPlus, Download, X,
+  ArrowRight, Activity, Plus, CalendarPlus, Download, X, Building2,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { CheckedInVehicle } from '@/types'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { activityLogService, type ActivityRecord } from '@/lib/services/activityLogService'
+import { hireAgreementService } from '@/lib/services/hireAgreementService'
 import { buildVocab, parseQuery, matchesQuery, vehicleBucket, type StatusBucket } from '@/lib/search/smartYardSearch'
 // The old desktop cards view — reused as the "drill-in" destination when a
 // status's "Open full list" is clicked.
@@ -127,7 +128,7 @@ function locationState(v: CheckedInVehicle): { label: string; color: string; bg:
 // One compact vehicle row used in queues and search results.
 // `showStatus` adds the status pill — essential in search results (which span
 // every status), redundant inside a single-status queue column.
-function VRow({ v, onClick, showStatus }: { v: CheckedInVehicle; onClick: () => void; showStatus?: boolean }) {
+function VRow({ v, onClick, showStatus, customerName }: { v: CheckedInVehicle; onClick: () => void; showStatus?: boolean; customerName?: string }) {
   const days = (v as any).hireStatus === 'Out on Hire' ? daysSince((v as any).hiredAt) : daysSince(v.createdAt)
   const mot = daysUntil(v.motExpiry)
   const tax = daysUntil(v.taxExpiry)
@@ -157,6 +158,12 @@ function VRow({ v, onClick, showStatus }: { v: CheckedInVehicle; onClick: () => 
               : 'text-[10px] font-extrabold rounded-full px-2 py-0.5 inline-flex items-center gap-1 whitespace-nowrap'}
             style={{ color: st.color, background: st.bg, border: st.emphasis ? `1.5px solid ${st.color}` : undefined }}>
             <span className={st.emphasis ? 'w-2 h-2 rounded-full' : 'w-1.5 h-1.5 rounded-full'} style={{ background: st.color }} />{st.label}
+          </span>
+        )}
+        {v.hireStatus === 'Out on Hire' && customerName && (
+          <span className="text-[11px] font-bold text-[#0a6b4d] inline-flex items-center gap-1 whitespace-nowrap max-w-[200px] truncate">
+            <Building2 className="w-3 h-3 flex-shrink-0" />
+            <span className="truncate">{customerName}</span>
           </span>
         )}
         {flag && (
@@ -190,6 +197,27 @@ export function DesktopPipelineDashboard({
   // (cockpit counts, queues, breakdowns, search, drill-in).
   // Working set = everything (in yard + on hire) so search spans all statuses.
   const all = useMemo(() => [...vehicles, ...outOnHireVehicles], [vehicles, outOnHireVehicles])
+
+  // Resolve contract → hire customer for any on-hire vehicle (one batched query),
+  // so reg lookups / lists show who a vehicle is currently out with.
+  const [hireCustomerByLine, setHireCustomerByLine] = useState<Record<string, string>>({})
+  const lineKey = useMemo(
+    () => all.map(v => v.currentAgreementLineId).filter(Boolean).sort().join(','),
+    [all],
+  )
+  useEffect(() => {
+    const orgId = all.find(v => v.organizationId)?.organizationId
+    const lineIds = lineKey ? lineKey.split(',') : []
+    if (!orgId || lineIds.length === 0) { setHireCustomerByLine({}); return }
+    let cancelled = false
+    hireAgreementService.getCustomerNamesByLineIds(orgId, lineIds).then(m => {
+      if (!cancelled) setHireCustomerByLine(m)
+    })
+    return () => { cancelled = true }
+  }, [lineKey, all])
+  const customerForVehicle = (v: CheckedInVehicle): string | undefined =>
+    (v.currentAgreementLineId && hireCustomerByLine[v.currentAgreementLineId]) || undefined
+
   // Everything below the size facet derives from this scoped set.
   const scoped = useMemo(() => sizeFilter ? all.filter(v => (v.size || '').trim().toLowerCase() === sizeFilter.toLowerCase()) : all, [all, sizeFilter])
   const vocab = useMemo(() => buildVocab(all), [all])
@@ -472,7 +500,7 @@ export function DesktopPipelineDashboard({
               <p className="text-sm text-[#6f8177] py-8 text-center">No vehicles{!parsed.isEmpty ? ` match “${query}”` : ''}.</p>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6">
-                {displayList.slice(0, 50).map(v => <VRow key={v.id} v={v} onClick={() => onViewVehicle(v)} showStatus />)}
+                {displayList.slice(0, 50).map(v => <VRow key={v.id} v={v} onClick={() => onViewVehicle(v)} showStatus customerName={customerForVehicle(v)} />)}
               </div>
             )}
             {displayList.length > 50 && <p className="text-[11px] text-[#9bafa5] mt-2 text-center">Showing first 50 of {displayList.length}.</p>}
@@ -495,7 +523,7 @@ export function DesktopPipelineDashboard({
                       {list.length === 0 ? (
                         <p className="text-[12px] text-[#9bafa5] py-5 text-center">Nothing here</p>
                       ) : (
-                        list.slice(0, 3).map(v => <VRow key={v.id} v={v} onClick={() => onViewVehicle(v)} />)
+                        list.slice(0, 3).map(v => <VRow key={v.id} v={v} onClick={() => onViewVehicle(v)} customerName={customerForVehicle(v)} />)
                       )}
                     </div>
                     <button type="button" onClick={() => openFull(b)} className="mt-3 w-full text-[11px] font-extrabold text-[#285b44] border border-dashed border-[#cbd9d1] rounded-lg py-2 hover:bg-[#f0f7f0] flex items-center justify-center gap-1">

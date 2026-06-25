@@ -13,6 +13,7 @@ import { NotificationBell } from '@/components/common/NotificationBell'
 import { BranchSelector } from '@/components/navigation/BranchSelector'
 import { useT } from '@/lib/i18n'
 import { userProfileService } from '@/lib/firestore'
+import { useHireAccess } from '@/hooks/useHireAccess'
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics'
 
 import {
@@ -143,6 +144,7 @@ export function Navigation() {
     { href: '/reports',            label: 'Reports',              labelKey: 'nav.reports',        icon: ReportsIcon,    active: pathname === '/reports'            || pathname.startsWith('/reports'),            group: 'main',       requiresAdmin: true  },
     { href: '/fleet',              label: 'Fleet',                labelKey: 'nav.fleet',          icon: FleetIcon,      active: pathname === '/fleet'              || pathname.startsWith('/fleet'),              group: 'main',       requiresAdmin: true  },
     { href: '/service-bookings',   label: 'Service',              labelKey: 'nav.service',        icon: ServiceIcon,    active: pathname === '/service-bookings'   || pathname.startsWith('/service-bookings'),   group: 'operations', requiresAdmin: false },
+    { href: '/hire',               label: 'Hire',                 labelKey: 'hire.navTitle',       icon: CarIcon,        active: pathname === '/hire'               || pathname.startsWith('/hire'),               group: 'operations', requiresAdmin: false },
     { href: '/customers',          label: 'Garage Customers',     labelKey: 'nav.customers',      icon: CustomersIcon,  active: pathname === '/customers'          || pathname.startsWith('/customers'),          group: 'operations', requiresAdmin: true  },
     { href: '/deliveries-defleet', label: 'Deliveries & Defleet', labelKey: 'nav.deliveries',     icon: DeliveriesIcon, active: pathname === '/deliveries-defleet' || pathname.startsWith('/deliveries-defleet'), group: 'operations', requiresAdmin: true  },
     { href: '/checkout-history',   label: 'Checkout',             labelKey: 'nav.checkout',       icon: CheckoutIcon,   active: pathname === '/checkout-history'   || pathname.startsWith('/checkout-history'),   group: 'operations', requiresAdmin: true  },
@@ -153,9 +155,13 @@ export function Navigation() {
     { href: '/settings',           label: 'Settings',             labelKey: 'nav.settings',       icon: SettingsIcon,   active: pathname === '/settings'           || pathname.startsWith('/settings'),           group: 'account',    requiresAdmin: false },
   ]
 
-  const navItems = userRole === 'admin'
+  // Hire is owner + chosen-admins only — hide it for everyone else (and while
+  // access is still resolving, to avoid flashing it to staff).
+  const hireAccess = useHireAccess()
+  const navItems = (userRole === 'admin'
     ? allNavItems
     : allNavItems.filter(item => !item.requiresAdmin)
+  ).filter(item => item.href !== '/hire' || hireAccess.allowed)
 
   const primaryNavItems   = navItems.filter(item => item.group === 'main')
   const secondaryNavItems = navItems.filter(item => item.group === 'operations')
