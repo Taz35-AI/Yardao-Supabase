@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { downloadExcelFile } from '@/utils/excelDownload'
 import { hireAgreementService } from '@/lib/services/hireAgreementService'
 import { hireCreditService } from '@/lib/services/hireCreditService'
+import type { ContractSchedule } from '@/lib/services/hireScheduleService'
 import type { HireAgreement, HireCredit } from '@/types/hire'
 
 export interface RentPlanRow {
@@ -216,5 +217,39 @@ export const hireReportService = {
     }
     const safe = plan.customerName.replace(/[^a-z0-9]+/gi, '_')
     doc.save(`RentPlan_${safe}_${plan.generatedAt}.pdf`)
+  },
+
+  /**
+   * Export a contract's billing schedule to Excel: one row per (period, vehicle)
+   * with days + amount, a subtotal row per period, and a grand total.
+   */
+  exportScheduleExcel(schedule: ContractSchedule, meta: { reference: string; customerName: string }): Promise<void> {
+    const freq = schedule.rateType === 'weekly' ? '/wk' : '/4wk'
+    const sheet: Record<string, string | number>[] = []
+    for (const p of schedule.periods) {
+      if (p.vehicles.length === 0) {
+        sheet.push({ Period: p.index, 'Period start': euDate(p.start), 'Period end': euDate(p.end), Registration: '—', Days: 0, 'Amount (£)': 0, Note: '' })
+      }
+      for (const v of p.vehicles) {
+        sheet.push({
+          Period: p.index,
+          'Period start': euDate(p.start),
+          'Period end': euDate(p.end),
+          Registration: v.registration,
+          Days: v.days,
+          'Amount (£)': v.amount,
+          Note: v.swapNote || (v.isPartial ? 'Part period' : ''),
+        })
+      }
+      sheet.push({ Period: '', 'Period start': '', 'Period end': '', Registration: '', Days: 'Period total', 'Amount (£)': p.total, Note: '' })
+    }
+    sheet.push({ Period: '', 'Period start': '', 'Period end': '', Registration: '', Days: 'GRAND TOTAL', 'Amount (£)': schedule.grandTotal, Note: `Rate £${schedule.rateAmount}${freq}/vehicle` })
+
+    const ws = XLSX.utils.json_to_sheet(sheet)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Schedule')
+    const safeRef = (meta.reference || 'contract').replace(/[^a-z0-9]+/gi, '_')
+    const safeCust = (meta.customerName || '').replace(/[^a-z0-9]+/gi, '_')
+    return downloadExcelFile(wb, `Schedule_${safeCust}_${safeRef}.xlsx`)
   },
 }

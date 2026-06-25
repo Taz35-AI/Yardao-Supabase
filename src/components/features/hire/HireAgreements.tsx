@@ -4,7 +4,7 @@
 'use client'
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, Search, Car, ChevronDown, Pencil, Trash2, X, Check } from 'lucide-react'
+import { Plus, Search, Car, ChevronDown, Pencil, Trash2, X, Check, CalendarClock } from 'lucide-react'
 import { EmptyState, PrimaryBtn, Pill } from './hireUi'
 import { ContractIcon } from './ContractIcon'
 import { toast } from 'sonner'
@@ -23,6 +23,7 @@ import type { CheckedInVehicle } from '@/types'
 import type { HireAgreement, HireAgreementVehicle } from '@/types/hire'
 import { NewAgreementModal } from './NewAgreementModal'
 import { HireSwapModal } from './HireSwapModal'
+import { HireScheduleModal } from './HireScheduleModal'
 import { SetOutOnHireModal } from '@/components/features/dashboard/HireModals'
 import { euDate, rateLabel } from './hireFormat'
 
@@ -102,6 +103,7 @@ function AgreementCard({
   const [loaded, setLoaded] = useState(false)
   const [swapLine, setSwapLine] = useState<HireAgreementVehicle | null>(null)
   const [showEdit, setShowEdit] = useState(false)
+  const [showSchedule, setShowSchedule] = useState(false)
   // Set-on-hire goes through the normal yard "Set out on hire" modal so the
   // insurance gate + yard status flip run exactly as they do in the yard.
   const [hireVehicle, setHireVehicle] = useState<CheckedInVehicle | null>(null)
@@ -402,6 +404,9 @@ function AgreementCard({
           </div>
         </button>
         <Pill tone="lime">{rateLabel(agreement.rateType, agreement.rateAmount, t('hire.perWeek'), t('hire.perMonth'))}</Pill>
+        <button onClick={() => setShowSchedule(true)} title={t('hire.scheduleShort')} className="p-1.5 rounded-lg text-[#72A68E] hover:text-[#025940] hover:bg-[#f0f4f2] dark:hover:bg-gray-700 transition-colors flex-shrink-0">
+          <CalendarClock className="w-4 h-4" />
+        </button>
         <button onClick={() => setShowEdit(true)} title={t('hire.editAgreementShort')} className="p-1.5 rounded-lg text-[#72A68E] hover:text-[#025940] hover:bg-[#f0f4f2] dark:hover:bg-gray-700 transition-colors flex-shrink-0">
           <Pencil className="w-4 h-4" />
         </button>
@@ -484,6 +489,14 @@ function AgreementCard({
             loadLines()
             onChange()
           }}
+        />
+      )}
+
+      {showSchedule && (
+        <HireScheduleModal
+          organizationId={organizationId}
+          agreement={agreement}
+          onClose={() => setShowSchedule(false)}
         />
       )}
     </div>
