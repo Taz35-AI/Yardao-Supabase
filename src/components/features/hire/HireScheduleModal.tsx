@@ -70,7 +70,7 @@ export function HireScheduleModal({
             <div className="min-w-0">
               <h2 className="text-base font-bold text-white truncate leading-tight">{t('hire.scheduleTitle')}</h2>
               <p className="text-[11px] text-[#72A68E] mt-0.5 truncate">
-                {agreement.reference || agreement.customerName || '—'} · {freqLabel} · {euDate(agreement.startDate)} → {euDate(agreement.endDate)}
+                {agreement.reference || agreement.customerName || '—'} · {freqLabel} · {euDate(agreement.startDate)} → {agreement.isRolling ? t('hire.rolling') : euDate(agreement.endDate)}
               </p>
             </div>
           </div>

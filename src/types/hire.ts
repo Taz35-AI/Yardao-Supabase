@@ -60,6 +60,8 @@ export interface HireAgreement {
   rateAmount: number
   /** Weekly only: weekday to bill on (0=Sun…6=Sat). null = same as start day. */
   chargeDay?: number | null
+  /** Rolling/flexi: 4-week minimum then open-ended (no fixed end_date). */
+  isRolling?: boolean
   currency: string
   status: HireAgreementStatus
   notes?: string | null

@@ -43,6 +43,10 @@ export interface ContractSchedule {
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 const dayOnly = (v?: string | null) => (v ? String(v).slice(0, 10) : null)
+const maxStr = (a: string, b: string) => (a > b ? a : b)
+const ymdOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+/** Rolling/flexi contracts have a 4-week minimum term. */
+const ROLLING_MIN_DAYS = 28
 
 function addDays(iso: string, n: number): string {
   const d = new Date(iso + 'T00:00:00')
@@ -56,18 +60,40 @@ function addDays(iso: string, n: number): string {
 export function buildContractSchedule(
   agreement: HireAgreement,
   lines: HireAgreementVehicle[],
+  asOf: Date = new Date(),
 ): ContractSchedule {
   const rateType = agreement.rateType
   const rateAmount = agreement.rateAmount
   const periodDays = rateType === 'weekly' ? 7 : 28
   const start = agreement.startDate
-  const end =
-    agreement.endDate ||
-    prorationService.computeEndDate(start, agreement.durationValue, agreement.durationUnit)
+  const isRolling = !!agreement.isRolling
 
   const regByLine = new Map(lines.map((l) => [l.id, l.registration || '—']))
   // Cancelled lines that never went out don't bill; everything else can.
   const billable = lines.filter((l) => l.status !== 'cancelled' || l.actualOutAt)
+  const lineOut = (l: HireAgreementVehicle) => dayOnly(l.actualOutAt) || l.scheduledStart || start
+
+  // ── Horizon ('end' of the grid) ───────────────────────────────────────────
+  // Fixed term: the contract end date. Rolling: open-ended, so project to today
+  // + 2 periods (show upcoming charges), but always far enough to cover the
+  // 4-week minimum and any vehicle still billing (incl. an early return that
+  // still owes through its minimum term).
+  let end: string
+  if (isRolling) {
+    const today = ymdOf(asOf)
+    const lookahead = addDays(today, 2 * periodDays)
+    let horizon = maxStr(lookahead, addDays(start, ROLLING_MIN_DAYS))
+    for (const l of billable) {
+      const ret = dayOnly(l.actualReturnAt)
+      const cand = ret ? maxStr(ret, addDays(lineOut(l), ROLLING_MIN_DAYS)) : lookahead
+      if (cand > horizon) horizon = cand
+    }
+    end = horizon
+  } else {
+    end =
+      agreement.endDate ||
+      prorationService.computeEndDate(start, agreement.durationValue, agreement.durationUnit)
+  }
 
   // ── Build the period windows ──────────────────────────────────────────────
   // Weekly contracts can bill on a fixed weekday (chargeDay): window 1 is a stub
@@ -98,8 +124,12 @@ export function buildContractSchedule(
     const pdays = prorationService.dayCount(wStart, wEnd)
     const vehicles: SchedulePeriodVehicle[] = []
     for (const l of billable) {
-      const vStart = dayOnly(l.actualOutAt) || l.scheduledStart || start
-      const vEnd = dayOnly(l.actualReturnAt) || end
+      const vStart = lineOut(l)
+      const ret = dayOnly(l.actualReturnAt)
+      // Rolling: an early return still owes through the 4-week minimum.
+      const vEnd = isRolling
+        ? (ret ? maxStr(ret, addDays(vStart, ROLLING_MIN_DAYS)) : end)
+        : (ret || end)
       const oStart = vStart > wStart ? vStart : wStart
       const oEnd = vEnd < wEnd ? vEnd : wEnd
       const days = prorationService.dayCount(oStart, oEnd)
@@ -107,7 +137,6 @@ export function buildContractSchedule(
       const amount = prorationService.prorate(rateType, rateAmount, oStart, oEnd)
 
       let swapNote: string | undefined
-      const ret = dayOnly(l.actualReturnAt)
       if (l.swappedToLineId && ret && ret > wStart && ret <= wEnd) {
         swapNote = `→ ${regByLine.get(l.swappedToLineId) || ''}`.trim()
       } else if (l.swappedFromLineId && vStart >= wStart && vStart < wEnd) {

@@ -45,6 +45,7 @@ export function NewAgreementModal({
   const [rateType, setRateType] = useState<HireRateType>(src?.rateType || 'weekly')
   const [rateAmount, setRateAmount] = useState(src ? String(src.rateAmount) : '')
   const [chargeDay, setChargeDay] = useState<number | null>(src?.chargeDay ?? null)
+  const [isRolling, setIsRolling] = useState<boolean>(src?.isRolling ?? false)
   const [eligible, setEligible] = useState<'unknown' | 'ok' | 'blocked'>('unknown')
   const [saving, setSaving] = useState(false)
 
@@ -130,6 +131,7 @@ export function NewAgreementModal({
           rateType,
           rateAmount: amt,
           chargeDay,
+          isRolling,
         })
       } else {
         await hireAgreementService.createAgreement({
@@ -143,6 +145,7 @@ export function NewAgreementModal({
           rateType,
           rateAmount: amt,
           chargeDay,
+          isRolling,
           createdBy: user?.uid || null,
           createdByName: profile?.displayName || user?.email || 'Unknown',
         })
@@ -189,20 +192,33 @@ export function NewAgreementModal({
             <input value={reference} onChange={(e) => setReference(e.target.value)} className={inputCls} />
           </div>
 
+          {/* Rolling / flexi toggle */}
+          <label className="flex items-center gap-2.5 rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-[#f6f8f7] dark:bg-gray-800/50 px-3 py-2.5 cursor-pointer select-none">
+            <input type="checkbox" checked={isRolling} onChange={(e) => setIsRolling(e.target.checked)} className="w-4 h-4 accent-[#025940]" />
+            <span className="min-w-0">
+              <span className="block text-sm font-bold text-[#012619] dark:text-white">{t('hire.rollingToggle')}</span>
+              <span className="block text-[11px] text-[#72A68E]">{t('hire.rollingHint')}</span>
+            </span>
+          </label>
+
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">{t('hire.startDate')}</label>
               <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={inputCls} />
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">{t('hire.duration')}</label>
-              <div className="flex gap-1.5">
-                <input type="number" min="1" value={durationValue} onChange={(e) => setDurationValue(e.target.value)} className={`${inputCls} w-20`} />
-                <select value={durationUnit} onChange={(e) => setDurationUnit(e.target.value as HireDurationUnit)} className={inputCls}>
-                  <option value="weeks">{t('hire.weeks')}</option>
-                  <option value="months">{t('hire.months')}</option>
-                </select>
-              </div>
+              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">{isRolling ? t('hire.minTerm') : t('hire.duration')}</label>
+              {isRolling ? (
+                <div className={`${inputCls} flex items-center text-[#72A68E] cursor-not-allowed`}>{t('hire.rollingMin')}</div>
+              ) : (
+                <div className="flex gap-1.5">
+                  <input type="number" min="1" value={durationValue} onChange={(e) => setDurationValue(e.target.value)} className={`${inputCls} w-20`} />
+                  <select value={durationUnit} onChange={(e) => setDurationUnit(e.target.value as HireDurationUnit)} className={inputCls}>
+                    <option value="weeks">{t('hire.weeks')}</option>
+                    <option value="months">{t('hire.months')}</option>
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 
@@ -241,9 +257,11 @@ export function NewAgreementModal({
             </div>
           )}
 
-          {endDate && (
+          {isRolling ? (
+            <p className="text-xs text-[#72A68E]">{t('hire.endsOn')}: <span className="font-semibold text-[#025940] dark:text-[#b3f243]">{t('hire.rollingEnds')}</span></p>
+          ) : endDate ? (
             <p className="text-xs text-[#72A68E]">{t('hire.endsOn')}: <span className="font-semibold text-[#012619] dark:text-white">{euDate(endDate)}</span></p>
-          )}
+          ) : null}
 
           <div className="flex gap-2 pt-1">
             <button onClick={onClose} className="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-bold">{t('hire.cancel')}</button>

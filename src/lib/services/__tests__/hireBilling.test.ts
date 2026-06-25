@@ -103,5 +103,31 @@ ok('currentPeriodEnd weekly', prorationService.currentPeriodEnd('2026-06-01', 'w
   ok('F: a swap note is shown', hasSwapNote)
 }
 
+// ── ROLLING contracts (4-week minimum, open-ended) ───────────────────────────
+const asOf = new Date('2026-06-15T00:00:00')
+// G: rolling, still on hire → projects to today + horizon, 4 weeks visible
+{
+  const ag = AG({ startDate: '2026-06-01', isRolling: true, endDate: null, rateAmount: 100, rateType: 'weekly' })
+  const s = buildContractSchedule(ag, [LINE({ actualOutAt: '2026-06-01T00:00:00' })], asOf)
+  const billed = s.periods.reduce((n, p) => n + (p.vehicles[0]?.days ?? 0), 0)
+  ok('G: rolling projects ~28 days from start', billed === 28, `got ${billed}`)
+  ok('G: grand total ~400', approx(s.grandTotal, 400), `got ${s.grandTotal}`)
+}
+// H: rolling, returned INSIDE the 4-week minimum → still billed the full 28 days
+{
+  const ag = AG({ startDate: '2026-06-01', isRolling: true, endDate: null, rateAmount: 100, rateType: 'weekly' })
+  const s = buildContractSchedule(ag, [LINE({ actualOutAt: '2026-06-01T00:00:00', actualReturnAt: '2026-06-10T00:00:00', status: 'returned' })], asOf)
+  const billed = s.periods.reduce((n, p) => n + (p.vehicles[0]?.days ?? 0), 0)
+  ok('H: early return still bills the 4-week minimum (28d)', billed === 28, `got ${billed}`)
+  ok('H: grand total = 28 days (400)', approx(s.grandTotal, 400), `got ${s.grandTotal}`)
+}
+// I: rolling, returned AFTER the minimum → billed actual days
+{
+  const ag = AG({ startDate: '2026-06-01', isRolling: true, endDate: null, rateAmount: 100, rateType: 'weekly' })
+  const s = buildContractSchedule(ag, [LINE({ actualOutAt: '2026-06-01T00:00:00', actualReturnAt: '2026-07-05T00:00:00', status: 'returned' })], new Date('2026-07-10T00:00:00'))
+  const billed = s.periods.reduce((n, p) => n + (p.vehicles[0]?.days ?? 0), 0)
+  ok('I: late return bills actual 34 days', billed === 34, `got ${billed}`)
+}
+
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail === 0 ? 0 : 1)
