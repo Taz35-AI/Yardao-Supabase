@@ -100,7 +100,7 @@ export const hireReportService = {
               registration: l.registration || '—',
               agreementRef: ag.reference || ag.id.slice(0, 8),
               contractStart: euDate(ag.startDate),
-              contractEnd: euDate(ag.endDate),
+              contractEnd: ag.isRolling ? 'Rolling' : euDate(ag.endDate),
               rate: rateLabel(rateType, rateAmount),
               rateType,
               rateAmount,

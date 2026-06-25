@@ -138,12 +138,18 @@ export const hireAgreementService = {
     rateType: HireRateType
     rateAmount: number
     chargeDay?: number | null
+    isRolling?: boolean
     currency?: string
     notes?: string | null
     createdBy?: string | null
     createdByName?: string | null
   }): Promise<string> {
-    const endDate = prorationService.computeEndDate(input.startDate, input.durationValue, input.durationUnit)
+    // Rolling/flexi: 4-week minimum term, no fixed end. Store the minimum in
+    // duration and leave end_date null.
+    const rolling = !!input.isRolling
+    const durationValue = rolling ? 4 : input.durationValue
+    const durationUnit: HireDurationUnit = rolling ? 'weeks' : input.durationUnit
+    const endDate = rolling ? null : prorationService.computeEndDate(input.startDate, input.durationValue, input.durationUnit)
     const { data, error } = await supabase
       .from(AGREEMENTS)
       .insert({
@@ -154,9 +160,10 @@ export const hireAgreementService = {
         branch_id: input.branchId ?? null,
         branch_name: input.branchName ?? null,
         start_date: input.startDate,
-        duration_value: input.durationValue,
-        duration_unit: input.durationUnit,
+        duration_value: durationValue,
+        duration_unit: durationUnit,
         end_date: endDate,
+        is_rolling: rolling,
         rate_type: input.rateType,
         rate_amount: input.rateAmount,
         charge_day: input.rateType === 'weekly' ? input.chargeDay ?? null : null,
@@ -281,16 +288,21 @@ export const hireAgreementService = {
     rateType: HireRateType
     rateAmount: number
     chargeDay?: number | null
+    isRolling?: boolean
   }): Promise<void> {
-    const endDate = prorationService.computeEndDate(input.startDate, input.durationValue, input.durationUnit)
+    const rolling = !!input.isRolling
+    const durationValue = rolling ? 4 : input.durationValue
+    const durationUnit: HireDurationUnit = rolling ? 'weeks' : input.durationUnit
+    const endDate = rolling ? null : prorationService.computeEndDate(input.startDate, input.durationValue, input.durationUnit)
     const { error } = await supabase
       .from(AGREEMENTS)
       .update({
         reference: input.reference ?? null,
         start_date: input.startDate,
-        duration_value: input.durationValue,
-        duration_unit: input.durationUnit,
+        duration_value: durationValue,
+        duration_unit: durationUnit,
         end_date: endDate,
+        is_rolling: rolling,
         rate_type: input.rateType,
         rate_amount: input.rateAmount,
         charge_day: input.rateType === 'weekly' ? input.chargeDay ?? null : null,

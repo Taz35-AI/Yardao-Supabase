@@ -308,7 +308,7 @@ function StatementView({ groups, t }: { groups: StatementGroup[] | null; t: (k: 
             <div className="flex items-center gap-2 px-3 py-2.5 bg-[#f6f8f7] dark:bg-gray-800 border-b border-[#e2e8e5] dark:border-gray-700">
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-bold text-[#012619] dark:text-white truncate">{agreement.reference || t('hire.agreement')}</p>
-                <p className="text-[11px] text-[#72A68E]">{euDate(agreement.startDate)} → {euDate(agreement.endDate)}</p>
+                <p className="text-[11px] text-[#72A68E]">{euDate(agreement.startDate)} → {agreement.isRolling ? t('hire.rolling') : euDate(agreement.endDate)}</p>
               </div>
               <Pill tone="lime">{rateLabel(agreement.rateType, agreement.rateAmount, t('hire.perWeek'), t('hire.perMonth'))}</Pill>
               <Pill tone={st.tone}>{st.label}</Pill>

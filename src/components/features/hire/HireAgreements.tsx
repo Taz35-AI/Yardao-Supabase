@@ -491,7 +491,7 @@ function AgreementCard({
           <div className="min-w-0 flex-1">
             <span className="block font-bold text-[#012619] dark:text-white truncate leading-tight">{agreement.customerName || '—'}</span>
             <p className="text-xs text-[#72A68E] mt-0.5 truncate">
-              {euDate(agreement.startDate)} → {euDate(agreement.endDate)}{agreement.reference ? ` · ${agreement.reference}` : ''}
+              {euDate(agreement.startDate)} → {agreement.isRolling ? t('hire.rolling') : euDate(agreement.endDate)}{agreement.reference ? ` · ${agreement.reference}` : ''}
             </p>
           </div>
         </button>

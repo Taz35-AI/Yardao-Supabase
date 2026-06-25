@@ -147,7 +147,10 @@ export function HireGantt() {
     const endStr = l.actualReturnAt || l.scheduledEnd || ag?.endDate
     if (!startStr) return null
     const start = new Date(startStr.length <= 10 ? startStr + 'T00:00:00' : startStr).getTime()
-    const end = endStr ? new Date(endStr.length <= 10 ? endStr + 'T00:00:00' : endStr).getTime() : start + 2 * DAY
+    // No end (rolling / ongoing active hire) → extend the bar across the window.
+    const end = endStr
+      ? new Date(endStr.length <= 10 ? endStr + 'T00:00:00' : endStr).getTime()
+      : l.status === 'active' ? winEnd : start + 2 * DAY
     if (end <= winStart || start >= winEnd) return null
     const cs = Math.max(start, winStart)
     const ce = Math.min(Math.max(end, cs + DAY), winEnd)
