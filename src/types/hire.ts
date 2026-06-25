@@ -133,10 +133,13 @@ export interface HireSettings {
   agreementLabelSingular: string
   agreementLabelPlural: string
   prorationBasis: 'calendar'
+  /** UIDs (besides the org owner) allowed to see/use the Hire section. */
+  accessUserIds: string[]
 }
 
 export const DEFAULT_HIRE_SETTINGS: HireSettings = {
   agreementLabelSingular: 'Hire Agreement',
   agreementLabelPlural: 'Hire Agreements',
   prorationBasis: 'calendar',
+  accessUserIds: [],
 }

@@ -73,25 +73,13 @@ export const hireAgreementService = {
     const ids = lineIds.filter(Boolean)
     if (!organizationId || ids.length === 0) return out
     try {
-      const { data: lines, error: lerr } = await supabase
-        .from(LINES)
-        .select('id, agreement_id')
-        .eq('organization_id', organizationId)
-        .in('id', ids)
-      if (lerr) throw lerr
-      const agIds = Array.from(new Set((lines ?? []).map((l) => l.agreement_id).filter(Boolean)))
-      if (agIds.length === 0) return out
-      const { data: ags, error: aerr } = await supabase
-        .from(AGREEMENTS)
-        .select('id, customer_name')
-        .eq('organization_id', organizationId)
-        .in('id', agIds)
-      if (aerr) throw aerr
-      const nameByAg: Record<string, string> = {}
-      for (const a of ags ?? []) nameByAg[a.id] = a.customer_name || ''
-      for (const l of lines ?? []) {
-        const nm = nameByAg[l.agreement_id]
-        if (nm) out[l.id] = nm
+      // SECURITY DEFINER RPC (migration 0050): returns ONLY line_id -> customer
+      // name for the caller's org, so non-hire staff still get the yard chip even
+      // though the rental_* tables themselves are locked to granted users.
+      const { data, error } = await supabase.rpc('hire_customer_names_for_lines', { line_ids: ids })
+      if (error) throw error
+      for (const r of (data ?? []) as { line_id: string; customer_name: string | null }[]) {
+        if (r.customer_name) out[r.line_id] = r.customer_name
       }
     } catch (err) {
       logger.error('hireAgreementService.getCustomerNamesByLineIds failed:', err)

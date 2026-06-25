@@ -2,15 +2,26 @@
 // Hire Management — P1 shell.
 'use client'
 
-import React from 'react'
+import React, { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { Navigation } from '@/components/Navigation'
-import { Car } from 'lucide-react'
+import { Car, Lock } from 'lucide-react'
 import { HireHub } from '@/components/features/hire/HireHub'
+import { useHireAccess } from '@/hooks/useHireAccess'
 import { useT } from '@/lib/i18n'
 
 export default function HirePage() {
   const t = useT()
+  const router = useRouter()
+  const { loading, allowed } = useHireAccess()
+
+  // Not on the allow-list → bounce back to the yard (defence in depth; the
+  // rental_* tables are also locked by RLS in migration 0050).
+  useEffect(() => {
+    if (!loading && !allowed) router.replace('/dashboard')
+  }, [loading, allowed, router])
+
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-[#f6f8f7] dark:bg-gray-900">
@@ -31,7 +42,19 @@ export default function HirePage() {
               </div>
             </div>
           </div>
-          <HireHub />
+          {loading ? (
+            <div className="py-20 text-center text-sm text-[#72A68E]">…</div>
+          ) : allowed ? (
+            <HireHub />
+          ) : (
+            <div className="py-20 flex flex-col items-center text-center">
+              <div className="w-14 h-14 rounded-2xl bg-[#025940]/8 flex items-center justify-center text-[#72A68E] mb-3">
+                <Lock className="w-7 h-7" />
+              </div>
+              <p className="text-sm font-bold text-[#012619] dark:text-white">{t('hire.accessDeniedTitle')}</p>
+              <p className="text-[12.5px] text-[#72A68E] mt-1 max-w-sm">{t('hire.accessDeniedHint')}</p>
+            </div>
+          )}
         </div>
       </div>
     </ProtectedRoute>

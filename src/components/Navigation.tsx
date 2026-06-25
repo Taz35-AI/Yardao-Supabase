@@ -13,6 +13,7 @@ import { NotificationBell } from '@/components/common/NotificationBell'
 import { BranchSelector } from '@/components/navigation/BranchSelector'
 import { useT } from '@/lib/i18n'
 import { userProfileService } from '@/lib/firestore'
+import { useHireAccess } from '@/hooks/useHireAccess'
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics'
 
 import {
@@ -154,9 +155,13 @@ export function Navigation() {
     { href: '/settings',           label: 'Settings',             labelKey: 'nav.settings',       icon: SettingsIcon,   active: pathname === '/settings'           || pathname.startsWith('/settings'),           group: 'account',    requiresAdmin: false },
   ]
 
-  const navItems = userRole === 'admin'
+  // Hire is owner + chosen-admins only — hide it for everyone else (and while
+  // access is still resolving, to avoid flashing it to staff).
+  const hireAccess = useHireAccess()
+  const navItems = (userRole === 'admin'
     ? allNavItems
     : allNavItems.filter(item => !item.requiresAdmin)
+  ).filter(item => item.href !== '/hire' || hireAccess.allowed)
 
   const primaryNavItems   = navItems.filter(item => item.group === 'main')
   const secondaryNavItems = navItems.filter(item => item.group === 'operations')

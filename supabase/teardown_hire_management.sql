@@ -25,6 +25,10 @@ alter table public.checked_in_vehicles
 alter table public.organization_settings
   drop column if exists hire_settings;
 
+-- access-control functions (migration 0050)
+drop function if exists public.hire_customer_names_for_lines(uuid[]);
+drop function if exists public.can_access_hire();
+
 -- verify nothing remains (expect 0 rows)
 select table_name from information_schema.tables
 where table_schema = 'public' and table_name like 'rental_%';
