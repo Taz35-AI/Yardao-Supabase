@@ -304,9 +304,16 @@ async function fetchMotHistory(
     ? v.motTests
     : []
   // Newest test first — sort defensively by completedDate descending.
-  const latest = [...tests].sort((a, b) =>
+  const sorted = [...tests].sort((a, b) =>
     String(b.completedDate || '').localeCompare(String(a.completedDate || '')),
-  )[0]
+  )
+  const latest = sorted[0]
+  // The MOT expiry ONLY appears on PASS tests. If the most recent test is a
+  // fail / retest it has no expiryDate, so use the newest test that actually
+  // carries one (the latest pass). For vehicles not yet MOT'd (under 3 years)
+  // fall back to the first-MOT due date the API returns at vehicle level.
+  const latestWithExpiry = sorted.find((tt) => tt.expiryDate)
+  const motExpiry = normDate(latestWithExpiry?.expiryDate) || normDate(v.motTestDueDate)
 
   return {
     make: v.make ?? '',
@@ -315,7 +322,7 @@ async function fetchMotHistory(
     fuelType: v.fuelType ?? '',
     engineCapacity: v.engineSize ? Number(v.engineSize) || null : null,
     motStatus: latest?.testResult ?? '',
-    motExpiry: normDate(latest?.expiryDate),
+    motExpiry,
     mileage: latest?.odometerValue ? Number(latest.odometerValue) || null : null,
     mileageUnit: latest?.odometerUnit ?? '',
     firstUsedDate: normDate(v.firstUsedDate),
