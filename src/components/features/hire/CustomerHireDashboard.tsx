@@ -4,7 +4,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { X, FileSpreadsheet, FileText, Building2, User, Loader2, Wallet, KeyRound, CalendarRange, History, ClipboardList } from 'lucide-react'
+import { X, FileSpreadsheet, FileText, User, Loader2, Wallet, KeyRound, CalendarRange, History, ClipboardList } from 'lucide-react'
 import { toast } from 'sonner'
 import { hireReportService, type RentPlan } from '@/lib/services/hireReportService'
 import { hireAgreementService } from '@/lib/services/hireAgreementService'
@@ -121,9 +121,13 @@ export function CustomerHireDashboard({
       <div className="relative bg-white dark:bg-gray-900 w-full sm:max-w-4xl sm:rounded-2xl rounded-t-2xl border border-[#025940]/20 max-h-[92vh] overflow-y-auto">
         <div className="sticky top-0 z-10 bg-gradient-to-br from-[#012619] to-[#025940] px-4 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-[#b3f243]/15 border border-[#b3f243]/30 flex items-center justify-center flex-shrink-0 text-[#b3f243]">
-              {isBusiness ? <Building2 className="w-[18px] h-[18px]" /> : <User className="w-[18px] h-[18px]" />}
-            </div>
+            {isBusiness ? (
+              <img src="/b2b.png" alt="B2B" className="w-9 h-9 rounded-xl object-contain bg-white p-1 flex-shrink-0" />
+            ) : (
+              <div className="w-9 h-9 rounded-xl bg-[#b3f243]/15 border border-[#b3f243]/30 flex items-center justify-center flex-shrink-0 text-[#b3f243]">
+                <User className="w-[18px] h-[18px]" />
+              </div>
+            )}
             <div className="min-w-0">
               <h2 className="text-base font-bold text-white truncate leading-tight">{customerName}</h2>
               <p className="text-[11px] text-[#72A68E] mt-0.5">{isBusiness ? t('hire.b2bAccount') : t('hire.individualAccount')}</p>

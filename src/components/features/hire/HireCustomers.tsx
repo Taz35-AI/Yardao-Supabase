@@ -3,7 +3,7 @@
 'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { Users, Plus, Search, Building2, User, ShieldCheck, ShieldAlert, ShieldX, ArrowRight, Pencil, Trash2 } from 'lucide-react'
+import { Users, Plus, Search, User, ShieldCheck, ShieldAlert, ShieldX, ArrowRight, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { EmptyState, PrimaryBtn } from './hireUi'
 import { supabase } from '@/lib/supabaseClient'
@@ -125,9 +125,13 @@ export function HireCustomers() {
               </div>
               <button onClick={() => setDash(c)} className="w-full text-left">
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#025940] to-[#012619] flex items-center justify-center flex-shrink-0 text-[#b3f243]">
-                    {c.isBusiness ? <Building2 className="w-5 h-5" /> : <User className="w-5 h-5" />}
-                  </div>
+                  {c.isBusiness ? (
+                    <img src="/b2b.png" alt="B2B" className="w-10 h-10 rounded-xl object-contain bg-white dark:bg-gray-700 ring-1 ring-[#e2e8e5] dark:ring-gray-600 p-1 flex-shrink-0" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#025940] to-[#012619] flex items-center justify-center flex-shrink-0 text-[#b3f243]">
+                      <User className="w-5 h-5" />
+                    </div>
+                  )}
                   <div className="min-w-0 flex-1 pr-12">
                     <h3 className="font-bold text-[#012619] dark:text-white truncate leading-tight">{c.companyName || c.name}</h3>
                     {c.companyName && <p className="text-xs text-[#72A68E] truncate mt-0.5">{c.name}</p>}
