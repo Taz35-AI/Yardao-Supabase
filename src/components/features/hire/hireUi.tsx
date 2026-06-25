@@ -4,6 +4,10 @@
 
 import React from 'react'
 
+/** Shared premium input/select styling for all hire forms. */
+export const fieldCls =
+  'w-full px-3 py-2.5 rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 text-[#012619] dark:text-white text-sm placeholder:text-[#9db0a6] focus:ring-2 focus:ring-[#025940]/25 focus:border-[#025940] outline-none transition'
+
 type Tone = 'forest' | 'lime' | 'amber' | 'red' | 'sky' | 'slate'
 
 // Per-tone: soft card gradient, gradient icon badge (white icon), glow blob.
