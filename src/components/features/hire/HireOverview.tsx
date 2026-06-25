@@ -4,7 +4,7 @@
 'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { KeyRound, FileText, Clock, AlertTriangle, Users, Wallet, Building2, User, ShieldAlert, RefreshCw } from 'lucide-react'
+import { KeyRound, FileText, Clock, AlertTriangle, Users, Wallet, Building2, User, ShieldAlert, ShieldCheck, ShieldX, RefreshCw, ChevronRight, ChevronDown } from 'lucide-react'
 import { hireAgreementService } from '@/lib/services/hireAgreementService'
 import { hireCustomerService } from '@/lib/services/hireCustomerService'
 import { useHire } from '@/contexts/HireContext'
@@ -39,6 +39,14 @@ export function HireOverview() {
   const [insByCustomer, setInsByCustomer] = useState<Record<string, string | null>>({})
   const [loading, setLoading] = useState(true)
   const [renewTarget, setRenewTarget] = useState<HireAgreement | null>(null)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const toggleRow = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
 
   useEffect(() => {
     if (!organizationId) return
@@ -91,6 +99,14 @@ export function HireOverview() {
       return r
     }
 
+    // Per-customer vehicle list (active first, then reserved) for the drill-down.
+    const detail = new Map<string, { line: HireAgreementVehicle; ag?: HireAgreement; reserved: boolean }[]>()
+    const pushDetail = (cid: string, v: { line: HireAgreementVehicle; ag?: HireAgreement; reserved: boolean }) => {
+      const arr = detail.get(cid) || []
+      arr.push(v)
+      detail.set(cid, arr)
+    }
+
     for (const l of active) {
       const ag = l.agreementId ? agById.get(l.agreementId) : undefined
       const r = rowFor(ag?.customerId, ag)
@@ -100,10 +116,19 @@ export function HireOverview() {
       const amt = l.lineRateAmount ?? ag?.rateAmount ?? 0
       if (type === 'weekly') r.weekly += amt
       else r.monthly += amt
+      pushDetail(ag?.customerId || 'unknown', { line: l, ag, reserved: false })
     }
     for (const l of scheduled) {
       const ag = l.agreementId ? agById.get(l.agreementId) : undefined
       rowFor(ag?.customerId, ag).reserved++
+      pushDetail(ag?.customerId || 'unknown', { line: l, ag, reserved: true })
+    }
+
+    // Insurance status per customer (ok / expired / missing).
+    const insStatus = new Map<string, 'ok' | 'expired' | 'missing'>()
+    for (const c of customers) {
+      const exp = insByCustomer[c.id]
+      insStatus.set(c.id, !exp ? 'missing' : exp < today ? 'expired' : 'ok')
     }
 
     const rowList = Array.from(rows.values()).sort((a, b) => b.onHire - a.onHire || b.reserved - a.reserved)
@@ -150,6 +175,8 @@ export function HireOverview() {
 
     return {
       rows: rowList,
+      detailByCustomer: detail,
+      insStatusByCustomer: insStatus,
       endsByCustomer,
       expiringContracts,
       insuranceExpiring,
@@ -261,12 +288,21 @@ export function HireOverview() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#eef2f0] dark:divide-gray-700/60">
-                {data.rows.map((r) => (
-                  <tr key={r.customerId} className="hover:bg-[#f6f8f7] dark:hover:bg-gray-800/50 transition-colors">
+                {data.rows.map((r) => {
+                  const open = expanded.has(r.customerId)
+                  const ins = data.insStatusByCustomer.get(r.customerId)
+                  const detail = data.detailByCustomer.get(r.customerId) || []
+                  return (
+                  <React.Fragment key={r.customerId}>
+                  <tr onClick={() => toggleRow(r.customerId)} className="hover:bg-[#f6f8f7] dark:hover:bg-gray-800/50 transition-colors cursor-pointer">
                     <td className="px-3 py-2.5">
                       <span className="inline-flex items-center gap-1.5 font-semibold text-[#012619] dark:text-white">
+                        {open ? <ChevronDown className="w-3.5 h-3.5 text-[#72A68E]" /> : <ChevronRight className="w-3.5 h-3.5 text-[#72A68E]" />}
                         {r.isBusiness ? <Building2 className="w-3.5 h-3.5 text-[#72A68E]" /> : <User className="w-3.5 h-3.5 text-[#72A68E]" />}
                         {r.name}
+                        {ins === 'ok' && <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" aria-label={t('hire.eligible')} />}
+                        {ins === 'expired' && <ShieldX className="w-3.5 h-3.5 text-amber-500" aria-label={t('hire.expired')} />}
+                        {ins === 'missing' && <ShieldX className="w-3.5 h-3.5 text-red-500" aria-label={t('hire.missing')} />}
                       </span>
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums font-bold text-[#012619] dark:text-white">{r.onHire}</td>
@@ -276,7 +312,54 @@ export function HireOverview() {
                     <td className="px-3 py-2.5 text-right tabular-nums text-[#4a5e54] dark:text-gray-300">{r.weekly > 0 ? `£${r.weekly.toFixed(0)}` : '—'}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-[#4a5e54] dark:text-gray-300">{r.monthly > 0 ? `£${r.monthly.toFixed(0)}` : '—'}</td>
                   </tr>
-                ))}
+                  {open && (
+                    <tr className="bg-[#f9fbfa] dark:bg-gray-800/40">
+                      <td colSpan={7} className="px-3 py-2">
+                        {detail.length === 0 ? (
+                          <p className="text-[12px] text-[#72A68E] py-1">{t('hire.ovNoVehicles')}</p>
+                        ) : (
+                          <div className="rounded-lg border border-[#e2e8e5] dark:border-gray-700 overflow-hidden">
+                            <table className="w-full text-[12.5px]">
+                              <thead>
+                                <tr className="text-left text-[9px] uppercase tracking-wide text-[#72A68E] bg-[#f1f5f3] dark:bg-gray-800">
+                                  <th className="px-2.5 py-1.5 font-bold">{t('hire.colReg')}</th>
+                                  <th className="px-2.5 py-1.5 font-bold">{t('hire.colModel')}</th>
+                                  <th className="px-2.5 py-1.5 font-bold">{t('hire.ovColContract')}</th>
+                                  <th className="px-2.5 py-1.5 font-bold">{t('hire.colOut')}</th>
+                                  <th className="px-2.5 py-1.5 font-bold">{t('hire.colEnd')}</th>
+                                  <th className="px-2.5 py-1.5 font-bold text-right">{t('hire.colRate')}</th>
+                                  <th className="px-2.5 py-1.5 font-bold text-right">{t('hire.colStatus')}</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-[#eef2f0] dark:divide-gray-700/60">
+                                {detail.map(({ line, ag, reserved }) => {
+                                  const type = line.lineRateType || ag?.rateType || 'weekly'
+                                  const amt = line.lineRateAmount ?? ag?.rateAmount ?? 0
+                                  const outStr = line.actualOutAt ? line.actualOutAt.slice(0, 10) : line.scheduledStart
+                                  return (
+                                    <tr key={line.id}>
+                                      <td className="px-2.5 py-1.5 font-mono font-bold text-[#012619] dark:text-white">{line.registration || '—'}</td>
+                                      <td className="px-2.5 py-1.5 text-[#4a5e54] dark:text-gray-300">{line.model || '—'}</td>
+                                      <td className="px-2.5 py-1.5 text-[#4a5e54] dark:text-gray-300">{ag?.reference || '—'}</td>
+                                      <td className="px-2.5 py-1.5 text-[#4a5e54] dark:text-gray-300">{outStr ? euDate(outStr) : '—'}</td>
+                                      <td className="px-2.5 py-1.5 text-[#4a5e54] dark:text-gray-300">{ag?.endDate ? euDate(ag.endDate) : '—'}</td>
+                                      <td className="px-2.5 py-1.5 text-right tabular-nums font-semibold text-[#012619] dark:text-white">£{amt}{type === 'weekly' ? '/wk' : '/4wk'}</td>
+                                      <td className="px-2.5 py-1.5 text-right">
+                                        <Pill tone={reserved ? 'sky' : 'green'}>{reserved ? t('hire.lineScheduled') : t('hire.lineActive')}</Pill>
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
+                  )
+                })}
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-[#e2e8e5] dark:border-gray-700 bg-[#f6f8f7] dark:bg-gray-800 font-bold">

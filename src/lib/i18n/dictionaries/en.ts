@@ -1184,6 +1184,8 @@ export const en = {
     ovColOnHire: 'On hire',
     ovColContracts: 'Contracts',
     ovColEnds: 'Ends',
+    ovColContract: 'Contract',
+    ovNoVehicles: 'No vehicles for this customer.',
     ovTotal: 'Total',
     ovEmpty: 'No vehicles currently on hire.',
     ovExpiringContracts: 'Contracts expiring soon',
