@@ -360,6 +360,46 @@ function AgreementCard({
     onChange()
   }
 
+  // Import vehicles that are ALREADY on hire (backdated). Creates active lines
+  // from `outDate` and marks the yard rows Out on Hire.
+  const importBatch = async (
+    vehicles: { id: string; registration: string; make?: string; model?: string }[],
+    outDate: string,
+  ) => {
+    if (!organizationId || vehicles.length === 0) return
+    const a = await actor()
+    let ok = 0
+    const failures: string[] = []
+    for (const v of vehicles) {
+      try {
+        await hireAgreementService.importOnHireVehicle({
+          organizationId,
+          agreementId: agreement.id,
+          vehicleId: v.id,
+          registration: v.registration,
+          make: v.make,
+          model: v.model,
+          scheduledStart: agreement.startDate,
+          scheduledEnd: agreement.endDate ?? null,
+          rateType: agreement.rateType,
+          rateAmount: agreement.rateAmount,
+          outDate,
+          createdBy: a.id,
+          createdByName: a.name,
+          actorId: a.id,
+          actorName: a.name,
+        })
+        ok++
+      } catch {
+        failures.push(v.registration)
+      }
+    }
+    if (ok > 0) toast.success(t('hire.importedBatch', { count: ok }))
+    if (failures.length) toast.error(t('hire.attachedSkipped', { regs: failures.join(', ') }))
+    loadLines()
+    onChange()
+  }
+
   const removeLine = async (l: HireAgreementVehicle) => {
     if (!organizationId) return
     if (!window.confirm(t('hire.removeLineConfirm', { reg: l.registration || '' }))) return
@@ -420,7 +460,12 @@ function AgreementCard({
 
       {open && (
         <div className="border-t border-[#e2e8e5] dark:border-gray-700 p-3.5 space-y-3">
-          <VehicleAttach organizationId={organizationId} existingRegs={lines.map((l) => (l.registration || '').toUpperCase().replace(/\s+/g, ''))} onComplete={attachBatch} />
+          <VehicleAttach
+            organizationId={organizationId}
+            existingRegs={lines.map((l) => (l.registration || '').toUpperCase().replace(/\s+/g, ''))}
+            defaultOutDate={agreement.startDate}
+            onComplete={(vehicles, opts) => (opts.alreadyOnHire ? importBatch(vehicles, opts.outDate) : attachBatch(vehicles))}
+          />
           {lines.length === 0 ? (
             <p className="text-xs text-[#72A68E]">{t('hire.noVehicles')}</p>
           ) : (
@@ -510,17 +555,21 @@ type VehicleHit = { id: string; registration: string; make?: string; model?: str
 function VehicleAttach({
   organizationId,
   existingRegs,
+  defaultOutDate,
   onComplete,
 }: {
   organizationId: string | null
   existingRegs: string[]
-  onComplete: (vehicles: VehicleHit[]) => Promise<void>
+  defaultOutDate: string
+  onComplete: (vehicles: VehicleHit[], opts: { alreadyOnHire: boolean; outDate: string }) => Promise<void>
 }) {
   const t = useT()
   const [q, setQ] = useState('')
   const [hits, setHits] = useState<VehicleHit[]>([])
   const [staged, setStaged] = useState<VehicleHit[]>([])
   const [busy, setBusy] = useState(false)
+  const [alreadyOnHire, setAlreadyOnHire] = useState(false)
+  const [outDate, setOutDate] = useState(defaultOutDate || '')
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const norm = (r?: string) => (r || '').toUpperCase().replace(/\s+/g, '')
 
@@ -567,9 +616,13 @@ function VehicleAttach({
 
   const complete = async () => {
     if (staged.length === 0) return
+    if (alreadyOnHire && !outDate) {
+      toast.error(t('hire.onHireSinceRequired'))
+      return
+    }
     setBusy(true)
     try {
-      await onComplete(staged)
+      await onComplete(staged, { alreadyOnHire, outDate })
       setStaged([])
     } finally {
       setBusy(false)
@@ -620,12 +673,28 @@ function VehicleAttach({
               </span>
             ))}
           </div>
+
+          {/* Import existing hires: mark as already on hire, backdated */}
+          <div className="rounded-lg border border-[#cdd9d2] dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-2 space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" checked={alreadyOnHire} onChange={(e) => setAlreadyOnHire(e.target.checked)} className="w-4 h-4 accent-[#025940]" />
+              <span className="text-xs font-semibold text-[#012619] dark:text-white">{t('hire.alreadyOnHireToggle')}</span>
+            </label>
+            {alreadyOnHire && (
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold text-[#72A68E] flex-shrink-0">{t('hire.onHireSince')}</span>
+                <input type="date" value={outDate} onChange={(e) => setOutDate(e.target.value)} className="px-2 py-1.5 border border-[#e2e8e5] dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-[#012619] dark:text-white text-xs" />
+              </div>
+            )}
+            {alreadyOnHire && <p className="text-[10px] text-[#72A68E] leading-snug">{t('hire.alreadyOnHireHint')}</p>}
+          </div>
+
           <button
             onClick={complete}
             disabled={busy}
             className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-white bg-gradient-to-br from-[#025940] to-[#012619] shadow-sm hover:shadow-md active:scale-[0.98] transition-all disabled:opacity-60"
           >
-            <Check className="w-4 h-4" /> {t('hire.addVehiclesBtn', { count: staged.length })}
+            <Check className="w-4 h-4" /> {alreadyOnHire ? t('hire.importVehiclesBtn', { count: staged.length }) : t('hire.addVehiclesBtn', { count: staged.length })}
           </button>
         </div>
       )}

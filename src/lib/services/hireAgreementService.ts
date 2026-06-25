@@ -10,6 +10,7 @@ import { prorationService } from '@/lib/services/prorationService'
 import { activityLogService } from '@/lib/services/activityLogService'
 import { hireCreditService } from '@/lib/services/hireCreditService'
 import { VehicleHireService } from '@/lib/services/vehicleHireService'
+import { branchService } from '@/lib/services/branchService'
 import type {
   HireAgreement,
   HireAgreementVehicle,
@@ -307,6 +308,128 @@ export const hireAgreementService = {
       .eq('organization_id', organizationId)
       .eq('id', lineId)
     if (error) throw error
+  },
+
+  /**
+   * IMPORT an existing hire: attach a vehicle as ALREADY on hire from a backdated
+   * date. Creates an ACTIVE line stamped at `outDate`, and reconciles the yard:
+   *   • existing row out on hire → just link it
+   *   • existing row in yard     → flip to Out on Hire (backdated) + link
+   *   • no row (pre-Yardao)      → create one at the main branch, Out on Hire + link
+   * Double-booking guard still applies. Used to onboard contracts that already
+   * existed before / outside Yardao.
+   */
+  async importOnHireVehicle(input: {
+    organizationId: string
+    agreementId: string
+    vehicleId: string
+    registration: string
+    make?: string | null
+    model?: string | null
+    scheduledStart?: string | null
+    scheduledEnd?: string | null
+    rateType: HireRateType
+    rateAmount: number
+    outDate: string // YYYY-MM-DD — the real on-hire start
+    createdBy?: string | null
+    createdByName?: string | null
+    actorId?: string | null
+    actorName?: string | null
+  }): Promise<void> {
+    await this.assertVehicleAvailable(input.organizationId, input.vehicleId, input.registration)
+    const outIso = `${input.outDate}T00:00:00`
+
+    // 1) Create the line directly as ACTIVE, backdated.
+    const { data: lineRow, error: lineErr } = await supabase
+      .from(LINES)
+      .insert({
+        organization_id: input.organizationId,
+        agreement_id: input.agreementId,
+        vehicle_id: input.vehicleId,
+        registration: input.registration,
+        make: input.make ?? null,
+        model: input.model ?? null,
+        scheduled_start: input.scheduledStart ?? input.outDate,
+        scheduled_end: input.scheduledEnd ?? null,
+        actual_out_at: outIso,
+        status: 'active',
+        line_rate_type: input.rateType,
+        line_rate_amount: input.rateAmount,
+        created_by: input.createdBy ?? null,
+        created_by_name: input.createdByName ?? null,
+      })
+      .select('id')
+      .single()
+    if (lineErr) throw lineErr
+    const lineId = lineRow.id as string
+
+    // 2) Reconcile the yard row.
+    try {
+      const norm = input.registration.toUpperCase().replace(/\s+/g, '')
+      const { data: all } = await supabase
+        .from('checked_in_vehicles')
+        .select('id, registration, hire_status, original_status, status')
+        .eq('organization_id', input.organizationId)
+      const row = (all ?? []).find((r) => (r.registration || '').toUpperCase().replace(/\s+/g, '') === norm)
+      if (row) {
+        await supabase
+          .from('checked_in_vehicles')
+          .update({
+            hire_status: 'Out on Hire',
+            current_agreement_line_id: lineId,
+            hired_at: input.outDate,
+            hired_by: input.actorId ?? null,
+            hired_by_name: input.actorName ?? null,
+            original_status: row.original_status ?? row.status ?? null,
+            updated_at: nowIso(),
+          })
+          .eq('id', row.id)
+      } else {
+        // No yard row (vehicle predates Yardao) → create one at the main branch.
+        const { data: fleet } = await supabase.from('vehicles').select('*').eq('id', input.vehicleId).maybeSingle()
+        const branches = await branchService.getBranches(input.organizationId)
+        const main = branches.find((b) => b.isMain) || branches[0]
+        await supabase.from('checked_in_vehicles').insert({
+          vehicle_id: input.vehicleId,
+          registration: (input.registration || '').toUpperCase(),
+          make: fleet?.make ?? input.make ?? '',
+          model: fleet?.model ?? input.model ?? '',
+          colour: fleet?.colour ?? '',
+          size: fleet?.size ?? '',
+          status: 'Ready',
+          mileage: '',
+          insurance_status: fleet?.insurance_status ?? null,
+          mot_expiry: fleet?.mot_expiry ?? null,
+          tax_expiry: fleet?.tax_expiry ?? null,
+          contract: fleet?.contract ?? null,
+          contract_color: fleet?.contract_color ?? null,
+          branch_id: main?.id ?? null,
+          hire_status: 'Out on Hire',
+          original_status: 'Ready',
+          hired_at: input.outDate,
+          hired_by: input.actorId ?? null,
+          hired_by_name: input.actorName ?? null,
+          current_agreement_line_id: lineId,
+          user_id: input.actorId ?? null,
+          organization_id: input.organizationId,
+          created_at: outIso,
+          updated_at: nowIso(),
+          check_in_time: outIso,
+        })
+      }
+    } catch (err) {
+      logger.error('importOnHireVehicle: yard reconcile failed (non-fatal):', err)
+    }
+
+    activityLogService.log({
+      organizationId: input.organizationId,
+      actionType: 'rental_on_hire',
+      registration: input.registration,
+      actorId: input.actorId,
+      actorName: input.actorName,
+      summary: `Imported as already on hire from ${input.outDate}`,
+      details: { lineId, imported: true },
+    })
   },
 
   // ── Vehicle lines ─────────────────────────────────────────────────────────
