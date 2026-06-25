@@ -1,21 +1,18 @@
 // src/lib/services/prorationService.ts
-// Calendar-accurate proration for hire billing. Pure functions (no I/O) so the
-// math is testable and identical everywhere.
+// Proration for hire billing. Pure functions (no I/O) so the math is testable
+// and identical everywhere.
 //
 //   weekly  → daily rate = weekly / 7
-//   monthly → daily rate = monthly / (days in THAT calendar month)
+//   monthly → daily rate = monthly / 28   ("a month" = a flat 4 weeks)
 //
-// A span that crosses months is summed day-by-day using each day's own month
-// length, so a day in February costs slightly more than a day in March.
+// A "monthly" period is treated as a flat 4-week (28-day) block, NOT a calendar
+// month, so the daily rate is constant and easy to reconcile.
 
 import type { HireRateType } from '@/types/hire'
 
 const DAY_MS = 86_400_000
-
-function daysInMonth(year: number, monthIndex0: number): number {
-  // monthIndex0: 0=Jan … 11=Dec. Day 0 of next month = last day of this month.
-  return new Date(year, monthIndex0 + 1, 0).getDate()
-}
+/** A "month" in hire billing = a flat 4 weeks. */
+export const MONTH_DAYS = 28
 
 /** Parse a YYYY-MM-DD (or ISO datetime) to a local midnight Date. */
 function toDay(value: string): Date {
@@ -26,10 +23,9 @@ function toDay(value: string): Date {
 }
 
 /** The cost of a SINGLE day under the given rate. */
-export function dailyRate(rateType: HireRateType, rateAmount: number, onDay: Date): number {
+export function dailyRate(rateType: HireRateType, rateAmount: number, _onDay?: Date): number {
   if (!Number.isFinite(rateAmount) || rateAmount <= 0) return 0
-  if (rateType === 'weekly') return rateAmount / 7
-  return rateAmount / daysInMonth(onDay.getFullYear(), onDay.getMonth())
+  return rateType === 'weekly' ? rateAmount / 7 : rateAmount / MONTH_DAYS
 }
 
 /**
@@ -44,9 +40,8 @@ export function dayCount(startIso: string, endIso: string): number {
 }
 
 /**
- * Calendar-accurate charge for [start, end) (end exclusive). Sums each day's
- * own daily rate, so month-length differences are respected for monthly rates.
- * Returns a value rounded to 2dp.
+ * Charge for [start, end) (end exclusive). Daily rate is flat (weekly/7 or
+ * monthly/28), so it's just rate × days. Returns a value rounded to 2dp.
  */
 export function prorate(
   rateType: HireRateType,
@@ -56,17 +51,8 @@ export function prorate(
 ): number {
   const days = dayCount(startIso, endIso)
   if (days <= 0) return 0
-  if (rateType === 'weekly') {
-    return round2((rateAmount / 7) * days)
-  }
-  // monthly: walk day-by-day so each day uses its month's length
-  let total = 0
-  const cursor = toDay(startIso)
-  for (let i = 0; i < days; i++) {
-    total += dailyRate('monthly', rateAmount, cursor)
-    cursor.setDate(cursor.getDate() + 1)
-  }
-  return round2(total)
+  const perDay = rateType === 'weekly' ? rateAmount / 7 : rateAmount / MONTH_DAYS
+  return round2(perDay * days)
 }
 
 /** Add a duration to a start date → end date (YYYY-MM-DD), end-exclusive style
@@ -77,11 +63,8 @@ export function computeEndDate(
   unit: 'weeks' | 'months',
 ): string {
   const d = toDay(startIso)
-  if (unit === 'weeks') {
-    d.setDate(d.getDate() + durationValue * 7)
-  } else {
-    d.setMonth(d.getMonth() + durationValue)
-  }
+  // weeks → ×7 days; "months" → ×28 days (a flat 4-week block).
+  d.setDate(d.getDate() + durationValue * (unit === 'weeks' ? 7 : MONTH_DAYS))
   // The agreement runs [start, end); store the day the period ends.
   return ymd(d)
 }
@@ -116,8 +99,8 @@ export function currentPeriodEnd(
 
 function advance(from: Date, rateType: HireRateType, count: number): Date {
   const d = new Date(from)
-  if (rateType === 'weekly') d.setDate(d.getDate() + 7 * count)
-  else d.setMonth(d.getMonth() + count)
+  // weekly period = 7 days; monthly period = 28 days (a flat 4 weeks).
+  d.setDate(d.getDate() + (rateType === 'weekly' ? 7 : MONTH_DAYS) * count)
   return d
 }
 

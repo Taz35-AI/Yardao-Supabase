@@ -207,7 +207,7 @@ export function CustomerHireDashboard({
                 {plan.monthlyTotal > 0 && (
                   <div className="flex items-center justify-between text-[#4a5e54] dark:text-gray-300">
                     <span>{t('hire.monthlyTotal')}</span>
-                    <span className="font-bold tabular-nums text-[#012619] dark:text-white">£{plan.monthlyTotal.toFixed(2)}/mo</span>
+                    <span className="font-bold tabular-nums text-[#012619] dark:text-white">£{plan.monthlyTotal.toFixed(2)}/4wk</span>
                   </div>
                 )}
                 {plan.totalCredits > 0 && (

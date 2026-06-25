@@ -45,7 +45,7 @@ const euDate = (iso?: string | null) => {
   return y && m && d ? `${d}/${m}/${y}` : ''
 }
 const round2 = (n: number) => Math.round(n * 100) / 100
-const rateLabel = (type: 'weekly' | 'monthly', amount: number) => `£${amount}/${type === 'monthly' ? 'mo' : 'wk'}`
+const rateLabel = (type: 'weekly' | 'monthly', amount: number) => `£${amount}/${type === 'monthly' ? '4wk' : 'wk'}`
 
 export const hireReportService = {
   /** Batch-fetch size / colour / MOT / tax for a set of vehicle ids. */
@@ -166,7 +166,7 @@ export const hireReportService = {
       sheet.push({ ...blank, 'Contract end': 'WEEKLY TOTAL', Rate: `£${plan.weeklyTotal}/wk` })
     }
     if (plan.monthlyTotal > 0) {
-      sheet.push({ ...blank, 'Contract end': 'MONTHLY TOTAL', Rate: `£${plan.monthlyTotal}/mo` })
+      sheet.push({ ...blank, 'Contract end': '4-WEEKLY TOTAL', Rate: `£${plan.monthlyTotal}/4wk` })
     }
     const ws = XLSX.utils.json_to_sheet(sheet)
     const wb = XLSX.utils.book_new()
@@ -208,7 +208,7 @@ export const hireReportService = {
     y += 3
     doc.setFont('helvetica', 'bold')
     if (plan.weeklyTotal > 0) { doc.text(`Weekly total: £${plan.weeklyTotal.toFixed(2)}/wk`, 14, y); y += 5 }
-    if (plan.monthlyTotal > 0) { doc.text(`Monthly total: £${plan.monthlyTotal.toFixed(2)}/mo`, 14, y); y += 5 }
+    if (plan.monthlyTotal > 0) { doc.text(`4-weekly total: £${plan.monthlyTotal.toFixed(2)}/4wk`, 14, y); y += 5 }
     if (plan.totalCredits > 0) {
       doc.setFont('helvetica', 'normal')
       doc.text(`Approved credits to apply: -£${plan.totalCredits.toFixed(2)}`, 14, y)
