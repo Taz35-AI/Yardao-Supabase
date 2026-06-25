@@ -176,6 +176,95 @@ export const hireAgreementService = {
     if (error) throw error
   },
 
+  /**
+   * Edit a contract's core details and CASCADE the single contract rate to every
+   * vehicle line (the rate is always per-vehicle and identical across the
+   * contract). End date is recomputed from start + duration.
+   */
+  async updateAgreementDetails(input: {
+    organizationId: string
+    agreementId: string
+    reference?: string | null
+    startDate: string
+    durationValue: number
+    durationUnit: HireDurationUnit
+    rateType: HireRateType
+    rateAmount: number
+  }): Promise<void> {
+    const endDate = prorationService.computeEndDate(input.startDate, input.durationValue, input.durationUnit)
+    const { error } = await supabase
+      .from(AGREEMENTS)
+      .update({
+        reference: input.reference ?? null,
+        start_date: input.startDate,
+        duration_value: input.durationValue,
+        duration_unit: input.durationUnit,
+        end_date: endDate,
+        rate_type: input.rateType,
+        rate_amount: input.rateAmount,
+        updated_at: nowIso(),
+      })
+      .eq('organization_id', input.organizationId)
+      .eq('id', input.agreementId)
+    if (error) throw error
+    // Cascade the contract rate to all vehicle lines (every vehicle = full rate).
+    const { error: lerr } = await supabase
+      .from(LINES)
+      .update({ line_rate_type: input.rateType, line_rate_amount: input.rateAmount, updated_at: nowIso() })
+      .eq('organization_id', input.organizationId)
+      .eq('agreement_id', input.agreementId)
+    if (lerr) throw lerr
+  },
+
+  /**
+   * Delete a whole contract. Lines, swaps and credits cascade via FK; we first
+   * clear any yard links that point at this contract's lines (plain column, no FK).
+   */
+  async deleteAgreement(organizationId: string, agreementId: string): Promise<void> {
+    try {
+      const { data: lines } = await supabase
+        .from(LINES)
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('agreement_id', agreementId)
+      const ids = (lines ?? []).map((l) => l.id)
+      if (ids.length) {
+        await supabase
+          .from('checked_in_vehicles')
+          .update({ current_agreement_line_id: null })
+          .eq('organization_id', organizationId)
+          .in('current_agreement_line_id', ids)
+      }
+    } catch (err) {
+      logger.error('deleteAgreement: clearing yard links failed (non-fatal):', err)
+    }
+    const { error } = await supabase
+      .from(AGREEMENTS)
+      .delete()
+      .eq('organization_id', organizationId)
+      .eq('id', agreementId)
+    if (error) throw error
+  },
+
+  /** Remove a single vehicle line from a contract (clears its yard link first). */
+  async removeLine(organizationId: string, lineId: string): Promise<void> {
+    try {
+      await supabase
+        .from('checked_in_vehicles')
+        .update({ current_agreement_line_id: null })
+        .eq('organization_id', organizationId)
+        .eq('current_agreement_line_id', lineId)
+    } catch (err) {
+      logger.error('removeLine: clearing yard link failed (non-fatal):', err)
+    }
+    const { error } = await supabase
+      .from(LINES)
+      .delete()
+      .eq('organization_id', organizationId)
+      .eq('id', lineId)
+    if (error) throw error
+  },
+
   // ── Vehicle lines ─────────────────────────────────────────────────────────
   async getLines(organizationId: string, agreementId: string): Promise<HireAgreementVehicle[]> {
     if (!organizationId || !agreementId) return []

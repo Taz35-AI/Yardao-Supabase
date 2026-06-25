@@ -169,6 +169,7 @@ export function CustomerHireDashboard({
                 <table className="w-full text-sm whitespace-nowrap">
                   <thead>
                     <tr className="text-left text-[10px] uppercase tracking-[0.08em] text-[#72A68E] bg-[#f6f8f7] dark:bg-gray-800 border-b border-[#e2e8e5] dark:border-gray-700">
+                      <th className="px-3 py-2.5 font-bold">{t('hire.colContract')}</th>
                       <th className="px-3 py-2.5 font-bold">{t('hire.colReg')}</th>
                       <th className="px-3 py-2.5 font-bold">{t('hire.colSize')}</th>
                       <th className="px-3 py-2.5 font-bold">{t('hire.colColour')}</th>
@@ -182,6 +183,7 @@ export function CustomerHireDashboard({
                   <tbody className="divide-y divide-[#eef2f0] dark:divide-gray-700/60">
                     {plan.rows.map((r, i) => (
                       <tr key={i} className="hover:bg-[#f6f8f7] dark:hover:bg-gray-800/50 transition-colors">
+                        <td className="px-3 py-2.5 text-[#4a5e54] dark:text-gray-300">{r.agreementRef || '—'}</td>
                         <td className="px-3 py-2.5 font-mono font-bold text-[#012619] dark:text-white">{r.registration}</td>
                         <td className="px-3 py-2.5 text-[#4a5e54] dark:text-gray-300">{r.size || '—'}</td>
                         <td className="px-3 py-2.5 text-[#4a5e54] dark:text-gray-300">{r.colour || '—'}</td>

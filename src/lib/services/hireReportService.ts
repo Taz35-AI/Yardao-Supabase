@@ -176,9 +176,9 @@ export const hireReportService = {
   },
 
   exportPdf(plan: RentPlan): void {
-    // Landscape to fit Reg / Size / Colour / MOT / Tax / Out / End / Rate.
+    // Landscape to fit Contract / Reg / Size / Colour / MOT / Tax / Out / End / Rate.
     const doc = new jsPDF({ orientation: 'landscape' })
-    const X = { reg: 14, size: 48, colour: 78, mot: 112, tax: 142, out: 172, end: 202, rate: 250 }
+    const X = { contract: 14, reg: 50, size: 80, colour: 104, mot: 130, tax: 156, out: 182, end: 208, rate: 262 }
     let y = 16
     doc.setFontSize(16)
     doc.text(`Rent Plan — ${plan.customerName}`, 14, y)
@@ -188,13 +188,14 @@ export const hireReportService = {
     y += 8
     doc.setFontSize(9)
     doc.setFont('helvetica', 'bold')
-    doc.text('Reg', X.reg, y); doc.text('Size', X.size, y); doc.text('Colour', X.colour, y)
-    doc.text('MOT', X.mot, y); doc.text('Tax', X.tax, y); doc.text('Out', X.out, y)
-    doc.text('Contract end', X.end, y); doc.text('Rate', X.rate, y)
+    doc.text('Contract', X.contract, y); doc.text('Reg', X.reg, y); doc.text('Size', X.size, y)
+    doc.text('Colour', X.colour, y); doc.text('MOT', X.mot, y); doc.text('Tax', X.tax, y)
+    doc.text('Out', X.out, y); doc.text('End', X.end, y); doc.text('Rate', X.rate, y)
     doc.setFont('helvetica', 'normal')
     y += 5
     for (const r of plan.rows) {
       if (y > 190) { doc.addPage(); y = 16 }
+      doc.text(String(r.agreementRef || '—'), X.contract, y)
       doc.text(String(r.registration), X.reg, y)
       doc.text(String(r.size || '—'), X.size, y)
       doc.text(String(r.colour || '—'), X.colour, y)

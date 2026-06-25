@@ -4,7 +4,7 @@
 'use client'
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, Search, Car, ChevronDown } from 'lucide-react'
+import { Plus, Search, Car, ChevronDown, Pencil, Trash2, X, Check } from 'lucide-react'
 import { EmptyState, PrimaryBtn, Pill } from './hireUi'
 import { ContractIcon } from './ContractIcon'
 import { toast } from 'sonner'
@@ -101,6 +101,7 @@ function AgreementCard({
   const [lines, setLines] = useState<HireAgreementVehicle[]>([])
   const [loaded, setLoaded] = useState(false)
   const [swapLine, setSwapLine] = useState<HireAgreementVehicle | null>(null)
+  const [showEdit, setShowEdit] = useState(false)
   // Set-on-hire goes through the normal yard "Set out on hire" modal so the
   // insurance gate + yard status flip run exactly as they do in the yard.
   const [hireVehicle, setHireVehicle] = useState<CheckedInVehicle | null>(null)
@@ -322,54 +323,97 @@ function AgreementCard({
     }
   }
 
-  const attach = async (v: { id: string; registration: string; make?: string; model?: string }) => {
+  // Attach a whole batch of vehicles in one go. Each vehicle gets the FULL
+  // contract rate (rates are never split across vehicles).
+  const attachBatch = async (vehicles: { id: string; registration: string; make?: string; model?: string }[]) => {
+    if (!organizationId || vehicles.length === 0) return
+    const profile = user?.uid ? await userProfileService.getProfile(user.uid) : null
+    const createdByName = profile?.displayName || user?.email || 'Unknown'
+    let ok = 0
+    const failures: string[] = []
+    for (const v of vehicles) {
+      try {
+        await hireAgreementService.attachVehicle({
+          organizationId,
+          agreementId: agreement.id,
+          vehicleId: v.id,
+          registration: v.registration,
+          make: v.make,
+          model: v.model,
+          scheduledStart: agreement.startDate,
+          scheduledEnd: agreement.endDate ?? null,
+          rateType: agreement.rateType,
+          rateAmount: agreement.rateAmount,
+          createdBy: user?.uid || null,
+          createdByName,
+        })
+        ok++
+      } catch {
+        failures.push(v.registration)
+      }
+    }
+    if (ok > 0) toast.success(t('hire.attachedBatch', { count: ok }))
+    if (failures.length) toast.error(t('hire.attachedSkipped', { regs: failures.join(', ') }))
+    loadLines()
+    onChange()
+  }
+
+  const removeLine = async (l: HireAgreementVehicle) => {
     if (!organizationId) return
+    if (!window.confirm(t('hire.removeLineConfirm', { reg: l.registration || '' }))) return
     try {
-      const profile = user?.uid ? await userProfileService.getProfile(user.uid) : null
-      await hireAgreementService.attachVehicle({
-        organizationId,
-        agreementId: agreement.id,
-        vehicleId: v.id,
-        registration: v.registration,
-        make: v.make,
-        model: v.model,
-        scheduledStart: agreement.startDate,
-        scheduledEnd: agreement.endDate ?? null,
-        rateType: agreement.rateType,
-        rateAmount: agreement.rateAmount,
-        createdBy: user?.uid || null,
-        createdByName: profile?.displayName || user?.email || 'Unknown',
-      })
-      toast.success(t('hire.attached', { reg: v.registration }))
+      await hireAgreementService.removeLine(organizationId, l.id)
+      toast.success(t('hire.removeLineDone', { reg: l.registration || '' }))
       loadLines()
       onChange()
-    } catch (err) {
-      const e = err as Error & { code?: string }
-      if (e?.code === 'VEHICLE_ALREADY_ON_HIRE') {
-        toast.error(e.message || t('hire.alreadyOnHire', { reg: v.registration }))
-      } else {
-        toast.error(t('hire.attachFail'))
-      }
+    } catch {
+      toast.error(t('hire.actionFail'))
+    }
+  }
+
+  const deleteAgreement = async () => {
+    if (!organizationId) return
+    const activeCount = lines.filter((l) => l.status === 'active').length
+    const msg = activeCount > 0
+      ? t('hire.deleteAgreementActiveConfirm', { count: activeCount })
+      : t('hire.deleteAgreementConfirm', { customer: agreement.customerName || '' })
+    if (!window.confirm(msg)) return
+    try {
+      await hireAgreementService.deleteAgreement(organizationId, agreement.id)
+      toast.success(t('hire.deleteAgreementDone'))
+      onChange()
+    } catch {
+      toast.error(t('hire.actionFail'))
     }
   }
 
   return (
     <div className="rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm hover:shadow-md transition-shadow">
-      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-3 p-4 text-left">
-        <ContractIcon className="w-10 h-10 flex-shrink-0 drop-shadow-sm" />
-        <div className="min-w-0 flex-1">
-          <span className="block font-bold text-[#012619] dark:text-white truncate leading-tight">{agreement.customerName || '—'}</span>
-          <p className="text-xs text-[#72A68E] mt-0.5">
-            {euDate(agreement.startDate)} → {euDate(agreement.endDate)}{agreement.reference ? ` · ${agreement.reference}` : ''}
-          </p>
-        </div>
+      <div className="w-full flex items-center gap-2 sm:gap-3 p-4">
+        <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+          <ContractIcon className="w-10 h-10 flex-shrink-0 drop-shadow-sm" />
+          <div className="min-w-0 flex-1">
+            <span className="block font-bold text-[#012619] dark:text-white truncate leading-tight">{agreement.customerName || '—'}</span>
+            <p className="text-xs text-[#72A68E] mt-0.5 truncate">
+              {euDate(agreement.startDate)} → {euDate(agreement.endDate)}{agreement.reference ? ` · ${agreement.reference}` : ''}
+            </p>
+          </div>
+        </button>
         <Pill tone="lime">{rateLabel(agreement.rateType, agreement.rateAmount, t('hire.perWeek'), t('hire.perMonth'))}</Pill>
-        <ChevronDown className={`w-4 h-4 text-[#72A68E] transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`} />
-      </button>
+        <button onClick={() => setShowEdit(true)} title={t('hire.editAgreementShort')} className="p-1.5 rounded-lg text-[#72A68E] hover:text-[#025940] hover:bg-[#f0f4f2] dark:hover:bg-gray-700 transition-colors flex-shrink-0">
+          <Pencil className="w-4 h-4" />
+        </button>
+        <button onClick={deleteAgreement} title={t('hire.deleteAgreementShort')} className="p-1.5 rounded-lg text-[#72A68E] hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0">
+          <Trash2 className="w-4 h-4" />
+        </button>
+        <button onClick={() => setOpen((o) => !o)} className="p-1.5 flex-shrink-0">
+          <ChevronDown className={`w-4 h-4 text-[#72A68E] transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
 
       {open && (
         <div className="border-t border-[#e2e8e5] dark:border-gray-700 p-3.5 space-y-3">
-          <VehicleAttach organizationId={organizationId} onPick={attach} />
+          <VehicleAttach organizationId={organizationId} existingRegs={lines.map((l) => (l.registration || '').toUpperCase().replace(/\s+/g, ''))} onComplete={attachBatch} />
           {lines.length === 0 ? (
             <p className="text-xs text-[#72A68E]">{t('hire.noVehicles')}</p>
           ) : (
@@ -387,6 +431,9 @@ function AgreementCard({
                       <button onClick={() => endHire(l)} className="px-2 py-1 rounded-md text-[11px] font-semibold border border-[#e2e8e5] dark:border-gray-600 text-[#4a5e54] dark:text-gray-300 hover:border-[#72A68E]">{t('hire.endHire')}</button>
                     </>
                   )}
+                  <button onClick={() => removeLine(l)} title={t('hire.removeLine')} className="p-1 rounded-md text-[#72A68E] hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </li>
               ))}
             </ul>
@@ -423,26 +470,49 @@ function AgreementCard({
           onConfirm={confirmSetOnHire}
         />
       )}
+
+      {showEdit && (
+        <NewAgreementModal
+          organizationId={organizationId}
+          label={agreement.reference || t('hire.agreement')}
+          editing={agreement}
+          onClose={() => setShowEdit(false)}
+          onSaved={() => {
+            setShowEdit(false)
+            loadLines()
+            onChange()
+          }}
+        />
+      )}
     </div>
   )
 }
 
+type VehicleHit = { id: string; registration: string; make?: string; model?: string }
+
+// Batch add: search a reg → click to stage it, search the next, stage it, …
+// then "Add N vehicles" attaches the whole list at once.
 function VehicleAttach({
   organizationId,
-  onPick,
+  existingRegs,
+  onComplete,
 }: {
   organizationId: string | null
-  onPick: (v: { id: string; registration: string; make?: string; model?: string }) => void
+  existingRegs: string[]
+  onComplete: (vehicles: VehicleHit[]) => Promise<void>
 }) {
   const t = useT()
   const [q, setQ] = useState('')
-  const [hits, setHits] = useState<{ id: string; registration: string; make?: string; model?: string }[]>([])
+  const [hits, setHits] = useState<VehicleHit[]>([])
+  const [staged, setStaged] = useState<VehicleHit[]>([])
+  const [busy, setBusy] = useState(false)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const norm = (r?: string) => (r || '').toUpperCase().replace(/\s+/g, '')
 
   useEffect(() => {
     if (!organizationId) return
     if (debounce.current) clearTimeout(debounce.current)
-    const term = q.trim().toUpperCase().replace(/\s+/g, '')
+    const term = norm(q)
     if (term.length < 3) {
       setHits([])
       return
@@ -455,7 +525,7 @@ function VehicleAttach({
           .eq('organization_id', organizationId)
         setHits(
           (data ?? [])
-            .filter((d) => (d.registration || '').toUpperCase().replace(/\s+/g, '').includes(term))
+            .filter((d) => norm(d.registration).includes(term))
             .slice(0, 6),
         )
       } catch {
@@ -467,30 +537,81 @@ function VehicleAttach({
     }
   }, [q, organizationId])
 
+  const stage = (h: VehicleHit) => {
+    const n = norm(h.registration)
+    if (existingRegs.includes(n)) {
+      toast.error(t('hire.alreadyOnContract', { reg: h.registration }))
+      return
+    }
+    setStaged((prev) => (prev.some((s) => s.id === h.id) ? prev : [...prev, h]))
+    setQ('')
+    setHits([])
+  }
+
+  const unstage = (id: string) => setStaged((prev) => prev.filter((s) => s.id !== id))
+
+  const complete = async () => {
+    if (staged.length === 0) return
+    setBusy(true)
+    try {
+      await onComplete(staged)
+      setStaged([])
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
-    <div className="relative">
+    <div className="space-y-2">
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#72A68E]" />
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value.toUpperCase())}
-          placeholder={t('hire.vehicleSearch')}
-          className="w-full pl-10 pr-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm font-mono"
-        />
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#72A68E]" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value.toUpperCase())}
+            placeholder={t('hire.vehicleSearch')}
+            className="w-full pl-10 pr-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm font-mono"
+          />
+        </div>
+        {hits.length > 0 && (
+          <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-[#025940] rounded-lg shadow-lg overflow-hidden">
+            {hits.map((h) => {
+              const already = existingRegs.includes(norm(h.registration)) || staged.some((s) => s.id === h.id)
+              return (
+                <button
+                  key={h.id}
+                  onMouseDown={() => stage(h)}
+                  disabled={already}
+                  className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#025940]/10 text-left disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Car className="w-3.5 h-3.5 text-[#72A68E]" />
+                  <span className="font-mono font-bold text-sm text-[#012619] dark:text-white">{h.registration}</span>
+                  <span className="text-xs text-gray-500 flex-1 truncate">{h.make} {h.model}</span>
+                  {already ? <span className="text-[10px] text-[#72A68E]">{t('hire.added')}</span> : <Plus className="w-3.5 h-3.5 text-[#025940]" />}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
-      {hits.length > 0 && (
-        <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-[#025940] rounded-lg shadow-lg overflow-hidden">
-          {hits.map((h) => (
-            <button
-              key={h.id}
-              onMouseDown={() => { onPick(h); setQ(''); setHits([]) }}
-              className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#025940]/10 text-left"
-            >
-              <Car className="w-3.5 h-3.5 text-[#72A68E]" />
-              <span className="font-mono font-bold text-sm text-[#012619] dark:text-white">{h.registration}</span>
-              <span className="text-xs text-gray-500 flex-1 truncate">{h.make} {h.model}</span>
-            </button>
-          ))}
+
+      {staged.length > 0 && (
+        <div className="rounded-lg border border-[#e2e8e5] dark:border-gray-700 bg-[#f6f8f7] dark:bg-gray-800/50 p-2 space-y-2">
+          <div className="flex flex-wrap gap-1.5">
+            {staged.map((s) => (
+              <span key={s.id} className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-md bg-white dark:bg-gray-700 border border-[#e2e8e5] dark:border-gray-600 text-xs">
+                <span className="font-mono font-bold text-[#012619] dark:text-white">{s.registration}</span>
+                <button onClick={() => unstage(s.id)} className="p-0.5 rounded text-[#72A68E] hover:text-red-600"><X className="w-3 h-3" /></button>
+              </span>
+            ))}
+          </div>
+          <button
+            onClick={complete}
+            disabled={busy}
+            className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-white bg-gradient-to-br from-[#025940] to-[#012619] shadow-sm hover:shadow-md active:scale-[0.98] transition-all disabled:opacity-60"
+          >
+            <Check className="w-4 h-4" /> {t('hire.addVehiclesBtn', { count: staged.length })}
+          </button>
         </div>
       )}
     </div>

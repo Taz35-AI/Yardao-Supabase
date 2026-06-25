@@ -3,7 +3,8 @@
 'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { Users, Plus, Search, Building2, User, ShieldCheck, ShieldAlert, ShieldX, ArrowRight } from 'lucide-react'
+import { Users, Plus, Search, Building2, User, ShieldCheck, ShieldAlert, ShieldX, ArrowRight, Pencil, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { EmptyState, PrimaryBtn } from './hireUi'
 import { supabase } from '@/lib/supabaseClient'
 import { hireCustomerService } from '@/lib/services/hireCustomerService'
@@ -22,8 +23,21 @@ export function HireCustomers() {
   const [elig, setElig] = useState<Record<string, Elig>>({})
   const [q, setQ] = useState('')
   const [showAdd, setShowAdd] = useState(false)
+  const [editCustomer, setEditCustomer] = useState<RentalCustomer | null>(null)
   const [dash, setDash] = useState<RentalCustomer | null>(null)
   const [loading, setLoading] = useState(true)
+
+  const deleteCustomer = async (c: RentalCustomer) => {
+    if (!organizationId) return
+    if (!window.confirm(t('hire.deleteCustomerConfirm', { name: c.companyName || c.name }))) return
+    try {
+      await hireCustomerService.deleteCustomer(organizationId, c.id)
+      toast.success(t('hire.deleteCustomerDone', { name: c.companyName || c.name }))
+      refresh()
+    } catch {
+      toast.error(t('hire.actionFail'))
+    }
+  }
 
   useEffect(() => {
     if (!organizationId) return
@@ -97,30 +111,39 @@ export function HireCustomers() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {rows.map((c) => (
-            <button
+            <div
               key={c.id}
-              onClick={() => setDash(c)}
-              className="group text-left rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 p-4 shadow-sm hover:shadow-md hover:border-[#72A68E]/60 transition-all"
+              className="group relative rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 p-4 shadow-sm hover:shadow-md hover:border-[#72A68E]/60 transition-all"
             >
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#025940] to-[#012619] flex items-center justify-center flex-shrink-0 text-[#b3f243]">
-                  {c.isBusiness ? <Building2 className="w-5 h-5" /> : <User className="w-5 h-5" />}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h3 className="font-bold text-[#012619] dark:text-white truncate leading-tight">{c.companyName || c.name}</h3>
-                  {c.companyName && <p className="text-xs text-[#72A68E] truncate mt-0.5">{c.name}</p>}
-                  {c.isBusiness && (
-                    <span className="inline-block mt-1 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-[#b3f243]/25 text-[#3d6b1f] dark:text-[#b3f243]">B2B</span>
-                  )}
-                </div>
+              <div className="absolute top-2.5 right-2.5 z-10 flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                <button onClick={() => setEditCustomer(c)} title={t('hire.editCustomerShort')} className="p-1.5 rounded-lg bg-white/90 dark:bg-gray-700 text-[#72A68E] hover:text-[#025940] shadow-sm border border-[#e2e8e5] dark:border-gray-600">
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => deleteCustomer(c)} title={t('hire.deleteCustomerShort')} className="p-1.5 rounded-lg bg-white/90 dark:bg-gray-700 text-[#72A68E] hover:text-red-600 shadow-sm border border-[#e2e8e5] dark:border-gray-600">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
-              <div className="mt-3 pt-3 border-t border-[#eef2f0] dark:border-gray-700/60 flex items-center justify-between">
-                <EligBadge state={elig[c.id] || 'missing'} t={t} />
-                <span className="text-[11px] font-bold text-[#025940] dark:text-[#b3f243] inline-flex items-center gap-1 group-hover:gap-1.5 transition-all">
-                  {t('hire.openDashboard')} <ArrowRight className="w-3.5 h-3.5" />
-                </span>
-              </div>
-            </button>
+              <button onClick={() => setDash(c)} className="w-full text-left">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#025940] to-[#012619] flex items-center justify-center flex-shrink-0 text-[#b3f243]">
+                    {c.isBusiness ? <Building2 className="w-5 h-5" /> : <User className="w-5 h-5" />}
+                  </div>
+                  <div className="min-w-0 flex-1 pr-12">
+                    <h3 className="font-bold text-[#012619] dark:text-white truncate leading-tight">{c.companyName || c.name}</h3>
+                    {c.companyName && <p className="text-xs text-[#72A68E] truncate mt-0.5">{c.name}</p>}
+                    {c.isBusiness && (
+                      <span className="inline-block mt-1 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-[#b3f243]/25 text-[#3d6b1f] dark:text-[#b3f243]">B2B</span>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-[#eef2f0] dark:border-gray-700/60 flex items-center justify-between">
+                  <EligBadge state={elig[c.id] || 'missing'} t={t} />
+                  <span className="text-[11px] font-bold text-[#025940] dark:text-[#b3f243] inline-flex items-center gap-1 group-hover:gap-1.5 transition-all">
+                    {t('hire.openDashboard')} <ArrowRight className="w-3.5 h-3.5" />
+                  </span>
+                </div>
+              </button>
+            </div>
           ))}
         </div>
       )}
@@ -131,6 +154,18 @@ export function HireCustomers() {
           onClose={() => setShowAdd(false)}
           onSaved={() => {
             setShowAdd(false)
+            refresh()
+          }}
+        />
+      )}
+
+      {editCustomer && (
+        <AddCustomerModal
+          organizationId={organizationId}
+          editing={editCustomer}
+          onClose={() => setEditCustomer(null)}
+          onSaved={() => {
+            setEditCustomer(null)
             refresh()
           }}
         />

@@ -5,6 +5,7 @@
 import { supabase } from '@/lib/supabaseClient'
 import { toCamel, toCamelList } from '@/lib/dbMap'
 import { logger } from '@/lib/logger'
+import { hireAgreementService } from '@/lib/services/hireAgreementService'
 import type { RentalCustomer, RentalCustomerDocument } from '@/types/hire'
 
 const CUSTOMERS = 'rental_customers'
@@ -86,6 +87,24 @@ export const hireCustomerService = {
       .from(CUSTOMERS)
       .update({ ...updates, updated_at: nowIso() })
       .eq('id', id)
+    if (error) throw error
+  },
+
+  /**
+   * Permanently delete a hire customer and EVERYTHING under them: their contracts
+   * (which cascade lines/swaps/credits) and documents. Yard links are cleared by
+   * deleteAgreement. Use for cleaning up test data.
+   */
+  async deleteCustomer(organizationId: string, customerId: string): Promise<void> {
+    const agreements = await hireAgreementService.getAgreementsForCustomer(organizationId, customerId)
+    for (const a of agreements) {
+      await hireAgreementService.deleteAgreement(organizationId, a.id)
+    }
+    const { error } = await supabase
+      .from(CUSTOMERS)
+      .delete()
+      .eq('organization_id', organizationId)
+      .eq('id', customerId)
     if (error) throw error
   },
 

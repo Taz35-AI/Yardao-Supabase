@@ -10,24 +10,28 @@ import { userProfileService } from '@/lib/firestore'
 import { hireCustomerService } from '@/lib/services/hireCustomerService'
 import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
+import type { RentalCustomer } from '@/types/hire'
 
 export function AddCustomerModal({
   organizationId,
+  editing,
   onClose,
   onSaved,
 }: {
   organizationId: string | null
+  editing?: RentalCustomer | null
   onClose: () => void
   onSaved: () => void
 }) {
   const t = useT()
   const { user } = useAuth()
-  const [name, setName] = useState('')
-  const [isBusiness, setIsBusiness] = useState(true)
-  const [company, setCompany] = useState('')
-  const [contact, setContact] = useState('')
-  const [phone, setPhone] = useState('')
-  const [email, setEmail] = useState('')
+  const isEdit = !!editing
+  const [name, setName] = useState(editing?.name || '')
+  const [isBusiness, setIsBusiness] = useState(editing ? editing.isBusiness : true)
+  const [company, setCompany] = useState(editing?.companyName || '')
+  const [contact, setContact] = useState(editing?.contactName || '')
+  const [phone, setPhone] = useState(editing?.phone || '')
+  const [email, setEmail] = useState(editing?.email || '')
   const [insRef, setInsRef] = useState('')
   const [insExpiry, setInsExpiry] = useState('')
   const [saving, setSaving] = useState(false)
@@ -44,6 +48,22 @@ export function AddCustomerModal({
     try {
       const profile = user?.uid ? await userProfileService.getProfile(user.uid) : null
       const actorName = profile?.displayName || user?.email || 'Unknown'
+
+      // Edit mode: update the existing customer's core fields and finish.
+      if (isEdit && editing) {
+        await hireCustomerService.updateCustomer(editing.id, {
+          name: name.trim(),
+          is_business: isBusiness,
+          company_name: isBusiness ? company.trim() || null : null,
+          contact_name: contact.trim() || null,
+          phone: phone.trim() || null,
+          email: email.trim() || null,
+        })
+        toast.success(t('hire.customerSaved'))
+        onSaved()
+        return
+      }
+
       const customerId = await hireCustomerService.createCustomer({
         organizationId,
         name: name.trim(),
@@ -80,7 +100,7 @@ export function AddCustomerModal({
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
       <div className="relative bg-white dark:bg-gray-900 w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl border border-[#025940]/20 max-h-[92vh] overflow-y-auto">
         <div className="sticky top-0 bg-gradient-to-br from-[#012619] to-[#025940] px-4 py-3 flex items-center justify-between">
-          <h2 className="text-base font-bold text-white">{t('hire.newCustomer')}</h2>
+          <h2 className="text-base font-bold text-white">{isEdit ? t('hire.editCustomer') : t('hire.newCustomer')}</h2>
           <button onClick={onClose} className="p-1.5 hover:bg-white/15 rounded-lg"><X className="w-4 h-4 text-white" /></button>
         </div>
 
@@ -103,7 +123,8 @@ export function AddCustomerModal({
           </div>
           <Field label={t('hire.custEmail')}><input value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} /></Field>
 
-          {/* Insurance */}
+          {/* Insurance — only on create (manage docs from the customer screen) */}
+          {!isEdit && (
           <div className="mt-1 p-3 rounded-lg border border-[#b3f243]/40 bg-[#b3f243]/5">
             <p className="flex items-center gap-1.5 text-xs font-bold text-[#025940] dark:text-[#b3f243] mb-2">
               <ShieldCheck className="w-3.5 h-3.5" /> {t('hire.insuranceSection')}
@@ -113,12 +134,13 @@ export function AddCustomerModal({
               <Field label={t('hire.insuranceExpiry')}><input type="date" value={insExpiry} onChange={(e) => setInsExpiry(e.target.value)} className={inputCls} /></Field>
             </div>
           </div>
+          )}
 
           <div className="flex gap-2 pt-1">
             <button onClick={onClose} className="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-bold">{t('hire.cancel')}</button>
             <button onClick={save} disabled={saving} className="flex-1 px-4 py-2.5 rounded-lg bg-[#025940] hover:bg-[#012619] text-white text-sm font-bold disabled:opacity-60 inline-flex items-center justify-center gap-2">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              {saving ? t('hire.saving') : t('hire.create')}
+              {saving ? t('hire.saving') : isEdit ? t('hire.save') : t('hire.create')}
             </button>
           </div>
         </div>
