@@ -3,12 +3,13 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { Users, CalendarRange, Coins, Settings, KeyRound, AlertTriangle, Clock } from 'lucide-react'
+import { Users, CalendarRange, Coins, Settings, KeyRound, AlertTriangle, Clock, LayoutDashboard } from 'lucide-react'
 import { ContractIcon } from './ContractIcon'
 import { useHire } from '@/contexts/HireContext'
 import { hireAgreementService } from '@/lib/services/hireAgreementService'
 import { hireCustomerService } from '@/lib/services/hireCustomerService'
 import { useT } from '@/lib/i18n'
+import { HireOverview } from './HireOverview'
 import { HireCustomers } from './HireCustomers'
 import { HireAgreements } from './HireAgreements'
 import { HireGantt } from './HireGantt'
@@ -16,14 +17,14 @@ import { HireCredits } from './HireCredits'
 import { HireSettingsModal } from './HireSettingsModal'
 import { StatCard } from './hireUi'
 
-type Tab = 'customers' | 'agreements' | 'schedule' | 'credits'
+type Tab = 'overview' | 'customers' | 'agreements' | 'schedule' | 'credits'
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 export function HireHub() {
   const t = useT()
   const { settings, organizationId, refreshKey } = useHire()
-  const [tab, setTab] = useState<Tab>('customers')
+  const [tab, setTab] = useState<Tab>('overview')
   const [showSettings, setShowSettings] = useState(false)
   const [stats, setStats] = useState({ onHire: 0, overdue: 0, reserved: 0, customers: 0 })
 
@@ -50,6 +51,7 @@ export function HireHub() {
   }, [organizationId, refreshKey])
 
   const tabs: { key: Tab; icon: React.ReactNode; label: string }[] = [
+    { key: 'overview', icon: <LayoutDashboard className="w-4 h-4" />, label: t('hire.tabOverview') },
     { key: 'customers', icon: <Users className="w-4 h-4" />, label: t('hire.tabCustomers') },
     { key: 'agreements', icon: <ContractIcon className="w-4 h-4" />, label: settings.agreementLabelPlural },
     { key: 'schedule', icon: <CalendarRange className="w-4 h-4" />, label: t('hire.tabSchedule') },
@@ -94,6 +96,7 @@ export function HireHub() {
         </button>
       </div>
 
+      {tab === 'overview' && <HireOverview />}
       {tab === 'customers' && <HireCustomers />}
       {tab === 'agreements' && <HireAgreements />}
       {tab === 'schedule' && <HireGantt />}
