@@ -13,6 +13,16 @@ import { useT } from '@/lib/i18n'
 import { euDate } from './hireFormat'
 import { StatCard, EmptyState } from './hireUi'
 
+// True if a dd/mm/yyyy date string is before today (expired MOT / tax).
+const isPast = (eu: string): boolean => {
+  const [d, m, y] = (eu || '').split('/')
+  if (!d || !m || !y) return false
+  const dt = new Date(Number(y), Number(m) - 1, Number(d))
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return dt < today
+}
+
 export function CustomerHireDashboard({
   organizationId,
   customerId,
@@ -87,7 +97,7 @@ export function CustomerHireDashboard({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
-      <div className="relative bg-white dark:bg-gray-900 w-full sm:max-w-2xl sm:rounded-2xl rounded-t-2xl border border-[#025940]/20 max-h-[92vh] overflow-y-auto">
+      <div className="relative bg-white dark:bg-gray-900 w-full sm:max-w-4xl sm:rounded-2xl rounded-t-2xl border border-[#025940]/20 max-h-[92vh] overflow-y-auto">
         <div className="sticky top-0 z-10 bg-gradient-to-br from-[#012619] to-[#025940] px-4 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 rounded-xl bg-[#b3f243]/15 border border-[#b3f243]/30 flex items-center justify-center flex-shrink-0 text-[#b3f243]">
@@ -155,11 +165,15 @@ export function CustomerHireDashboard({
                 )}
               </div>
 
-              <div className="rounded-xl border border-[#e2e8e5] dark:border-gray-700 overflow-hidden shadow-sm">
-                <table className="w-full text-sm">
+              <div className="rounded-xl border border-[#e2e8e5] dark:border-gray-700 overflow-x-auto shadow-sm">
+                <table className="w-full text-sm whitespace-nowrap">
                   <thead>
                     <tr className="text-left text-[10px] uppercase tracking-[0.08em] text-[#72A68E] bg-[#f6f8f7] dark:bg-gray-800 border-b border-[#e2e8e5] dark:border-gray-700">
                       <th className="px-3 py-2.5 font-bold">{t('hire.colReg')}</th>
+                      <th className="px-3 py-2.5 font-bold">{t('hire.colSize')}</th>
+                      <th className="px-3 py-2.5 font-bold">{t('hire.colColour')}</th>
+                      <th className="px-3 py-2.5 font-bold">{t('hire.colMot')}</th>
+                      <th className="px-3 py-2.5 font-bold">{t('hire.colTax')}</th>
                       <th className="px-3 py-2.5 font-bold">{t('hire.colOut')}</th>
                       <th className="px-3 py-2.5 font-bold">{t('hire.colEnd')}</th>
                       <th className="px-3 py-2.5 font-bold text-right">{t('hire.colRate')}</th>
@@ -169,6 +183,10 @@ export function CustomerHireDashboard({
                     {plan.rows.map((r, i) => (
                       <tr key={i} className="hover:bg-[#f6f8f7] dark:hover:bg-gray-800/50 transition-colors">
                         <td className="px-3 py-2.5 font-mono font-bold text-[#012619] dark:text-white">{r.registration}</td>
+                        <td className="px-3 py-2.5 text-[#4a5e54] dark:text-gray-300">{r.size || '—'}</td>
+                        <td className="px-3 py-2.5 text-[#4a5e54] dark:text-gray-300">{r.colour || '—'}</td>
+                        <td className={`px-3 py-2.5 tabular-nums ${isPast(r.motExpiry) ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-[#4a5e54] dark:text-gray-300'}`}>{r.motExpiry || '—'}</td>
+                        <td className={`px-3 py-2.5 tabular-nums ${isPast(r.taxExpiry) ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-[#4a5e54] dark:text-gray-300'}`}>{r.taxExpiry || '—'}</td>
                         <td className="px-3 py-2.5 text-[#4a5e54] dark:text-gray-300">{r.outDate}</td>
                         <td className="px-3 py-2.5 text-[#4a5e54] dark:text-gray-300">{r.contractEnd || '—'}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-[#012619] dark:text-white">{r.rate}</td>

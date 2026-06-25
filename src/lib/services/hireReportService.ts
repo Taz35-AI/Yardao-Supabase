@@ -6,6 +6,7 @@
 
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
+import { supabase } from '@/lib/supabaseClient'
 import { downloadExcelFile } from '@/utils/excelDownload'
 import { hireAgreementService } from '@/lib/services/hireAgreementService'
 import { hireCreditService } from '@/lib/services/hireCreditService'
@@ -21,6 +22,10 @@ export interface RentPlanRow {
   rateAmount: number
   status: string
   outDate: string
+  size: string
+  colour: string
+  motExpiry: string
+  taxExpiry: string
 }
 
 export interface RentPlan {
@@ -43,6 +48,29 @@ const round2 = (n: number) => Math.round(n * 100) / 100
 const rateLabel = (type: 'weekly' | 'monthly', amount: number) => `£${amount}/${type === 'monthly' ? 'mo' : 'wk'}`
 
 export const hireReportService = {
+  /** Batch-fetch size / colour / MOT / tax for a set of vehicle ids. */
+  async fetchVehicleDetail(
+    organizationId: string,
+    vehicleIds: string[],
+  ): Promise<Record<string, { size?: string; colour?: string; motExpiry?: string; taxExpiry?: string }>> {
+    const map: Record<string, { size?: string; colour?: string; motExpiry?: string; taxExpiry?: string }> = {}
+    if (!organizationId || vehicleIds.length === 0) return map
+    try {
+      const { data, error } = await supabase
+        .from('vehicles')
+        .select('id, size, colour, mot_expiry, tax_expiry')
+        .eq('organization_id', organizationId)
+        .in('id', vehicleIds)
+      if (error) throw error
+      for (const v of data ?? []) {
+        map[v.id] = { size: v.size, colour: v.colour, motExpiry: v.mot_expiry, taxExpiry: v.tax_expiry }
+      }
+    } catch {
+      /* missing/locked table → no detail, rows just show blanks */
+    }
+    return map
+  },
+
   /** Active-rentals plan for one customer at the contractual rate (not prorated). */
   async buildRentPlan(organizationId: string, customerId: string, customerName: string): Promise<RentPlan> {
     const today = new Date()
@@ -51,6 +79,10 @@ export const hireReportService = {
     const rows: RentPlanRow[] = []
     const credits: HireCredit[] = []
     let agreements: HireAgreement[] = []
+    // Build the active lines first so we can batch-fetch vehicle detail in one go.
+    type Pending = { row: RentPlanRow; vehicleId: string | null }
+    const pending: Pending[] = []
+    const vehicleIds = new Set<string>()
     if (organizationId && customerId) {
       agreements = await hireAgreementService.getAgreementsForCustomer(organizationId, customerId)
       for (const ag of agreements) {
@@ -60,21 +92,42 @@ export const hireReportService = {
           const rateType = (l.lineRateType || ag.rateType) as 'weekly' | 'monthly'
           const rateAmount = l.lineRateAmount ?? ag.rateAmount
           const startStr = (l.actualOutAt ? l.actualOutAt.slice(0, 10) : l.scheduledStart) || ag.startDate
-          rows.push({
-            registration: l.registration || '—',
-            agreementRef: ag.reference || ag.id.slice(0, 8),
-            contractStart: euDate(ag.startDate),
-            contractEnd: euDate(ag.endDate),
-            rate: rateLabel(rateType, rateAmount),
-            rateType,
-            rateAmount,
-            status: l.status,
-            outDate: euDate(startStr),
+          if (l.vehicleId) vehicleIds.add(l.vehicleId)
+          pending.push({
+            vehicleId: l.vehicleId || null,
+            row: {
+              registration: l.registration || '—',
+              agreementRef: ag.reference || ag.id.slice(0, 8),
+              contractStart: euDate(ag.startDate),
+              contractEnd: euDate(ag.endDate),
+              rate: rateLabel(rateType, rateAmount),
+              rateType,
+              rateAmount,
+              status: l.status,
+              outDate: euDate(startStr),
+              size: '',
+              colour: '',
+              motExpiry: '',
+              taxExpiry: '',
+            },
           })
         }
         const agCredits = await hireCreditService.getCreditsForAgreement(organizationId, ag.id)
         credits.push(...agCredits)
       }
+    }
+
+    // Decorate each row with the vehicle's size / colour / MOT / tax (one query).
+    const detail = await this.fetchVehicleDetail(organizationId, Array.from(vehicleIds))
+    for (const p of pending) {
+      const d = p.vehicleId ? detail[p.vehicleId] : undefined
+      if (d) {
+        p.row.size = d.size || ''
+        p.row.colour = d.colour || ''
+        p.row.motExpiry = euDate(d.motExpiry)
+        p.row.taxExpiry = euDate(d.taxExpiry)
+      }
+      rows.push(p.row)
     }
 
     const weeklyTotal = round2(rows.filter((r) => r.rateType === 'weekly').reduce((s, r) => s + r.rateAmount, 0))
@@ -93,8 +146,16 @@ export const hireReportService = {
   },
 
   exportExcel(plan: RentPlan): Promise<void> {
+    const blank = {
+      Registration: '', Size: '', Colour: '', MOT: '', Tax: '', Agreement: '',
+      'Hire start': '', 'Contract start': '', 'Contract end': '', Rate: '',
+    }
     const sheet: Record<string, string | number>[] = plan.rows.map((r) => ({
       Registration: r.registration,
+      Size: r.size,
+      Colour: r.colour,
+      MOT: r.motExpiry,
+      Tax: r.taxExpiry,
       Agreement: r.agreementRef,
       'Hire start': r.outDate,
       'Contract start': r.contractStart,
@@ -102,10 +163,10 @@ export const hireReportService = {
       Rate: r.rate,
     }))
     if (plan.weeklyTotal > 0) {
-      sheet.push({ Registration: '', Agreement: '', 'Hire start': '', 'Contract start': '', 'Contract end': 'WEEKLY TOTAL', Rate: `£${plan.weeklyTotal}/wk` })
+      sheet.push({ ...blank, 'Contract end': 'WEEKLY TOTAL', Rate: `£${plan.weeklyTotal}/wk` })
     }
     if (plan.monthlyTotal > 0) {
-      sheet.push({ Registration: '', Agreement: '', 'Hire start': '', 'Contract start': '', 'Contract end': 'MONTHLY TOTAL', Rate: `£${plan.monthlyTotal}/mo` })
+      sheet.push({ ...blank, 'Contract end': 'MONTHLY TOTAL', Rate: `£${plan.monthlyTotal}/mo` })
     }
     const ws = XLSX.utils.json_to_sheet(sheet)
     const wb = XLSX.utils.book_new()
@@ -115,7 +176,9 @@ export const hireReportService = {
   },
 
   exportPdf(plan: RentPlan): void {
-    const doc = new jsPDF()
+    // Landscape to fit Reg / Size / Colour / MOT / Tax / Out / End / Rate.
+    const doc = new jsPDF({ orientation: 'landscape' })
+    const X = { reg: 14, size: 48, colour: 78, mot: 112, tax: 142, out: 172, end: 202, rate: 250 }
     let y = 16
     doc.setFontSize(16)
     doc.text(`Rent Plan — ${plan.customerName}`, 14, y)
@@ -125,17 +188,21 @@ export const hireReportService = {
     y += 8
     doc.setFontSize(9)
     doc.setFont('helvetica', 'bold')
-    doc.text('Reg', 14, y); doc.text('Agreement', 44, y); doc.text('Out', 90, y)
-    doc.text('Contract end', 120, y); doc.text('Rate', 168, y)
+    doc.text('Reg', X.reg, y); doc.text('Size', X.size, y); doc.text('Colour', X.colour, y)
+    doc.text('MOT', X.mot, y); doc.text('Tax', X.tax, y); doc.text('Out', X.out, y)
+    doc.text('Contract end', X.end, y); doc.text('Rate', X.rate, y)
     doc.setFont('helvetica', 'normal')
     y += 5
     for (const r of plan.rows) {
-      if (y > 275) { doc.addPage(); y = 16 }
-      doc.text(String(r.registration), 14, y)
-      doc.text(String(r.agreementRef), 44, y)
-      doc.text(String(r.outDate), 90, y)
-      doc.text(String(r.contractEnd || '—'), 120, y)
-      doc.text(String(r.rate), 168, y)
+      if (y > 190) { doc.addPage(); y = 16 }
+      doc.text(String(r.registration), X.reg, y)
+      doc.text(String(r.size || '—'), X.size, y)
+      doc.text(String(r.colour || '—'), X.colour, y)
+      doc.text(String(r.motExpiry || '—'), X.mot, y)
+      doc.text(String(r.taxExpiry || '—'), X.tax, y)
+      doc.text(String(r.outDate), X.out, y)
+      doc.text(String(r.contractEnd || '—'), X.end, y)
+      doc.text(String(r.rate), X.rate, y)
       y += 5
     }
     y += 3
