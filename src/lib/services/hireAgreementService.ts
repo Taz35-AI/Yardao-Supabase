@@ -826,17 +826,32 @@ export const hireAgreementService = {
       swapped_to_line_id: toLineId,
     })
     await this.updateLine(toLineId, { swapped_from_line_id: input.fromLineId })
-    // 2b. Free the OUTGOING vehicle's agreement link (its line is now closed).
-    //     Its physical return to the yard is done via the normal check-in flow;
-    //     we only clear the stale link so it isn't left pointing at a dead line.
+    // 2b. RETURN the outgoing vehicle to the yard. A swap means the customer
+    //     handed it back, so it must never be left "Out on Hire" with no contract
+    //     link (that's a limbo state). Proper check-in (hire_status → In Yard,
+    //     original status restored) for any still-out row, then clear the link.
     try {
+      const { data: outRows } = await supabase
+        .from('checked_in_vehicles')
+        .select('id, hire_status')
+        .eq('organization_id', input.organizationId)
+        .eq('current_agreement_line_id', input.fromLineId)
+      for (const r of outRows ?? []) {
+        if (r.hire_status === 'Out on Hire') {
+          try {
+            await VehicleHireService.quickCheckIn(r.id, input.performedBy || '', input.performedByName || 'System')
+          } catch (err) {
+            logger.error('swapLine: returning outgoing vehicle to yard failed (non-fatal):', err)
+          }
+        }
+      }
       await supabase
         .from('checked_in_vehicles')
         .update({ current_agreement_line_id: null })
         .eq('organization_id', input.organizationId)
         .eq('current_agreement_line_id', input.fromLineId)
     } catch (err) {
-      logger.error('swapLine: clearing outgoing link failed (non-fatal):', err)
+      logger.error('swapLine: returning/clearing outgoing vehicle failed (non-fatal):', err)
     }
     // 3. Log the swap.
     try {
