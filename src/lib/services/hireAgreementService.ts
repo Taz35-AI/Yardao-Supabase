@@ -556,6 +556,19 @@ export const hireAgreementService = {
     }
   },
 
+  /** Fetch a single line by id (used by check-in to resolve the stamped link). */
+  async getLineById(id: string): Promise<HireAgreementVehicle | null> {
+    if (!id) return null
+    try {
+      const { data, error } = await supabase.from(LINES).select('*').eq('id', id).single()
+      if (error) throw error
+      return toCamel<HireAgreementVehicle>(data)
+    } catch (err) {
+      logger.error('hireAgreementService.getLineById failed:', err)
+      return null
+    }
+  },
+
   /** Find the open line for a vehicle (used by the set-on-hire interception). */
   async findOpenLineForVehicle(
     organizationId: string,

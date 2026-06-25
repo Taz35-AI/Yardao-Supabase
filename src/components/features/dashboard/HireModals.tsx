@@ -294,9 +294,14 @@ export function QuickCheckInModal({
           (n): n is number => typeof n === 'number',
         )
         setFloor(floors.length ? Math.max(...floors) : null)
-        // Is this vehicle on an active hire line? If so, offer end / temp / swap.
-        const line = await hireAgreementService.findOpenLineByRegistration(org, vehicle.registration || '')
-        if (line && line.status === 'active' && !cancelled) {
+        // Is this vehicle on a hire line? Resolve it robustly so the End / Temp /
+        // Swap decision always appears: prefer the stamped yard link, then the
+        // fleet vehicle id, then the registration. Accept active OR scheduled.
+        const line =
+          (vehicle.currentAgreementLineId ? await hireAgreementService.getLineById(vehicle.currentAgreementLineId) : null) ||
+          (vehicle.vehicleId ? await hireAgreementService.findOpenLineForVehicle(org, vehicle.vehicleId) : null) ||
+          (await hireAgreementService.findOpenLineByRegistration(org, vehicle.registration || ''))
+        if (line && (line.status === 'active' || line.status === 'scheduled') && !cancelled) {
           const [agreement, hs] = await Promise.all([
             hireAgreementService.getAgreement(line.agreementId),
             hireSettingsService.getHireSettings(org),
