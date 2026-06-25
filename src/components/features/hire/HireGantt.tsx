@@ -23,7 +23,7 @@ const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] // getDay() 0=Sun
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 const DAY_W: Record<View, number> = { day: 280, week: 132, month: 40, '3months': 22 }
-const LEFT_W = 372 // sum of the four left columns
+const LEFT_W = 300 // sum of the three left columns (Reg / Size / Model)
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const startOfDay = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
@@ -224,8 +224,8 @@ export function HireGantt() {
             {/* Header */}
             <div className="flex sticky top-0 z-20">
               <div className="sticky left-0 z-30 flex bg-[#f6f8f7] dark:bg-gray-800 border-b border-r border-[#e2e8e5] dark:border-gray-700" style={{ width: LEFT_W }}>
-                {[t('hire.colReg'), t('hire.ovColGroup'), t('hire.colModel'), t('hire.ganttCurrent')].map((h, i) => (
-                  <div key={i} className="px-2 py-2 text-[10px] uppercase tracking-wide font-bold text-[#72A68E]" style={{ width: [90, 70, 100, 112][i] }}>{h}</div>
+                {[t('hire.colReg'), t('hire.colSize'), t('hire.colModel')].map((h, i) => (
+                  <div key={i} className="px-2 py-2 text-[10px] uppercase tracking-wide font-bold text-[#72A68E]" style={{ width: [100, 90, 110][i] }}>{h}</div>
                 ))}
               </div>
               <div className="flex bg-[#f6f8f7] dark:bg-gray-800 border-b border-[#e2e8e5] dark:border-gray-700" style={{ width: gridW }}>
@@ -246,10 +246,9 @@ export function HireGantt() {
               return (
                 <div key={line.id} className="flex border-b border-[#eef2f0] dark:border-gray-700/60">
                   <div className="sticky left-0 z-10 flex items-center bg-white dark:bg-gray-800 border-r border-[#e2e8e5] dark:border-gray-700" style={{ width: LEFT_W, height: ROW_H }}>
-                    <span className="px-2 font-mono font-bold text-[11px] text-[#012619] dark:text-white truncate" style={{ width: 90 }}>{line.registration || '—'}</span>
-                    <span className="px-2 text-[11px] text-[#4a5e54] dark:text-gray-300 truncate" style={{ width: 70 }}>{vm?.group || '—'}</span>
-                    <span className="px-2 text-[11px] text-[#4a5e54] dark:text-gray-300 truncate" style={{ width: 100 }}>{vm?.model || line.model || '—'}</span>
-                    <span className="px-2 text-[11px] text-[#72A68E] truncate" style={{ width: 112 }}>{vm?.location || '—'}</span>
+                    <span className="px-2 font-mono font-bold text-[11px] text-[#012619] dark:text-white truncate" style={{ width: 100 }}>{line.registration || '—'}</span>
+                    <span className="px-2 text-[11px] text-[#4a5e54] dark:text-gray-300 truncate" style={{ width: 90 }}>{vm?.group || '—'}</span>
+                    <span className="px-2 text-[11px] text-[#4a5e54] dark:text-gray-300 truncate" style={{ width: 110 }}>{vm?.model || line.model || '—'}</span>
                   </div>
                   <div className="relative" style={{ width: gridW, height: ROW_H }}>
                     {/* grid background */}
