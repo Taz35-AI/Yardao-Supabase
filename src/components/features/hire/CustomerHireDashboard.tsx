@@ -4,14 +4,17 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { X, FileSpreadsheet, FileText, Building2, User, Loader2, Wallet, KeyRound, CalendarRange, History } from 'lucide-react'
+import { X, FileSpreadsheet, FileText, Building2, User, Loader2, Wallet, KeyRound, CalendarRange, History, ClipboardList } from 'lucide-react'
 import { toast } from 'sonner'
 import { hireReportService, type RentPlan } from '@/lib/services/hireReportService'
 import { hireAgreementService } from '@/lib/services/hireAgreementService'
 import { activityLogService, type ActivityRecord } from '@/lib/services/activityLogService'
 import { useT } from '@/lib/i18n'
-import { euDate } from './hireFormat'
-import { StatCard, EmptyState } from './hireUi'
+import { euDate, rateLabel } from './hireFormat'
+import { StatCard, EmptyState, Pill } from './hireUi'
+import type { HireAgreement, HireAgreementVehicle } from '@/types/hire'
+
+type StatementGroup = { agreement: HireAgreement; lines: HireAgreementVehicle[] }
 
 // True if a dd/mm/yyyy date string is before today (expired MOT / tax).
 const isPast = (eu: string): boolean => {
@@ -39,8 +42,9 @@ export function CustomerHireDashboard({
   const t = useT()
   const [plan, setPlan] = useState<RentPlan | null>(null)
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<'rentals' | 'timeline'>('rentals')
+  const [view, setView] = useState<'rentals' | 'statement' | 'timeline'>('rentals')
   const [timeline, setTimeline] = useState<ActivityRecord[] | null>(null)
+  const [statement, setStatement] = useState<StatementGroup[] | null>(null)
 
   useEffect(() => {
     if (!organizationId) return
@@ -77,6 +81,23 @@ export function CustomerHireDashboard({
       cancelled = true
     }
   }, [view, timeline, organizationId, customerId])
+
+  // Full statement: EVERY contract (active, ended, expired, cancelled) + every
+  // vehicle line (current and past) with its out/return dates. Loaded on demand.
+  useEffect(() => {
+    if (view !== 'statement' || statement !== null || !organizationId) return
+    let cancelled = false
+    ;(async () => {
+      const ags = await hireAgreementService.getAgreementsForCustomer(organizationId, customerId)
+      const groups = await Promise.all(
+        ags.map(async (ag) => ({ agreement: ag, lines: await hireAgreementService.getLines(organizationId, ag.id) })),
+      )
+      if (!cancelled) setStatement(groups)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [view, statement, organizationId, customerId])
 
   const exportExcel = async () => {
     if (!plan) return
@@ -115,6 +136,7 @@ export function CustomerHireDashboard({
           <div className="flex items-center justify-between gap-2">
             <div className="flex gap-1 bg-[#f6f8f7] dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-700 rounded-xl p-1">
               <button onClick={() => setView('rentals')} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${view === 'rentals' ? 'bg-gradient-to-br from-[#025940] to-[#012619] text-white shadow-sm' : 'text-[#72A68E] hover:text-[#025940]'}`}><KeyRound className="w-3.5 h-3.5" />{t('hire.tabRentals')}</button>
+              <button onClick={() => setView('statement')} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${view === 'statement' ? 'bg-gradient-to-br from-[#025940] to-[#012619] text-white shadow-sm' : 'text-[#72A68E] hover:text-[#025940]'}`}><ClipboardList className="w-3.5 h-3.5" />{t('hire.tabStatement')}</button>
               <button onClick={() => setView('timeline')} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${view === 'timeline' ? 'bg-gradient-to-br from-[#025940] to-[#012619] text-white shadow-sm' : 'text-[#72A68E] hover:text-[#025940]'}`}><History className="w-3.5 h-3.5" />{t('hire.tabTimeline')}</button>
             </div>
             {view === 'rentals' && (
@@ -148,6 +170,8 @@ export function CustomerHireDashboard({
                 ))}
               </ul>
             )
+          ) : view === 'statement' ? (
+            <StatementView groups={statement} t={t} />
           ) : loading ? (
             <div className="py-10 text-center text-sm text-[#72A68E]"><Loader2 className="w-5 h-5 animate-spin inline" /></div>
           ) : !plan || plan.rows.length === 0 ? (
@@ -223,6 +247,95 @@ export function CustomerHireDashboard({
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Statement: full contract + vehicle history for the customer ───────────────
+function StatementView({ groups, t }: { groups: StatementGroup[] | null; t: (k: string, v?: Record<string, string | number>) => string }) {
+  if (groups === null) {
+    return <div className="py-10 text-center text-sm text-[#72A68E]"><Loader2 className="w-5 h-5 animate-spin inline" /></div>
+  }
+  if (groups.length === 0) {
+    return <EmptyState icon={<ClipboardList className="w-7 h-7" />} title={t('hire.statementEmpty')} hint={t('hire.statementEmptyHint')} />
+  }
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const isExpired = (g: StatementGroup) =>
+    !!g.agreement.endDate && new Date(g.agreement.endDate + 'T00:00:00') < today && g.agreement.status !== 'cancelled'
+
+  const activeContracts = groups.filter((g) => g.agreement.status === 'active' || (g.agreement.status === 'draft' && !isExpired(g))).length
+  const vehiclesEver = new Set(
+    groups.flatMap((g) => g.lines.map((l) => (l.registration || '').toUpperCase().replace(/\s+/g, '')).filter(Boolean)),
+  ).size
+
+  const agStatus = (g: StatementGroup): { label: string; tone: 'green' | 'amber' | 'red' | 'slate' } => {
+    if (g.agreement.status === 'cancelled') return { label: t('hire.statusCancelled'), tone: 'red' }
+    if (g.agreement.status === 'completed') return { label: t('hire.statusCompleted'), tone: 'slate' }
+    if (isExpired(g)) return { label: t('hire.statusExpired'), tone: 'amber' }
+    if (g.agreement.status === 'active') return { label: t('hire.statusActive'), tone: 'green' }
+    return { label: t('hire.statusDraft'), tone: 'slate' }
+  }
+
+  const lineLabel = (s: string) =>
+    s === 'active' ? t('hire.lineActive')
+      : s === 'returned' ? t('hire.lineReturned')
+        : s === 'swapped' ? t('hire.lineSwapped')
+          : s === 'cancelled' ? t('hire.statusCancelled')
+            : t('hire.lineScheduled')
+
+  const outDate = (l: HireAgreementVehicle) => euDate(l.actualOutAt ? l.actualOutAt.slice(0, 10) : l.scheduledStart)
+  const inDate = (l: HireAgreementVehicle) => (l.actualReturnAt ? euDate(l.actualReturnAt.slice(0, 10)) : '—')
+
+  return (
+    <div className="space-y-3">
+      {/* Summary */}
+      <div className="grid grid-cols-3 gap-2.5">
+        <StatCard tone="forest" icon={<ClipboardList className="w-4 h-4" />} label={t('hire.stmtContracts')} value={groups.length} />
+        <StatCard tone="lime" icon={<KeyRound className="w-4 h-4" />} label={t('hire.stmtActive')} value={activeContracts} />
+        <StatCard tone="slate" icon={<CalendarRange className="w-4 h-4" />} label={t('hire.stmtVehicles')} value={vehiclesEver} />
+      </div>
+
+      {groups.map(({ agreement, lines }) => {
+        const st = agStatus({ agreement, lines })
+        return (
+          <div key={agreement.id} className="rounded-xl border border-[#e2e8e5] dark:border-gray-700 overflow-hidden">
+            <div className="flex items-center gap-2 px-3 py-2.5 bg-[#f6f8f7] dark:bg-gray-800 border-b border-[#e2e8e5] dark:border-gray-700">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-[#012619] dark:text-white truncate">{agreement.reference || t('hire.agreement')}</p>
+                <p className="text-[11px] text-[#72A68E]">{euDate(agreement.startDate)} → {euDate(agreement.endDate)}</p>
+              </div>
+              <Pill tone="lime">{rateLabel(agreement.rateType, agreement.rateAmount, t('hire.perWeek'), t('hire.perMonth'))}</Pill>
+              <Pill tone={st.tone}>{st.label}</Pill>
+            </div>
+            {lines.length === 0 ? (
+              <p className="px-3 py-3 text-[12px] text-[#72A68E]">{t('hire.noVehicles')}</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[10px] uppercase tracking-[0.08em] text-[#72A68E] border-b border-[#eef2f0] dark:border-gray-700/60">
+                    <th className="px-3 py-2 font-bold">{t('hire.colReg')}</th>
+                    <th className="px-3 py-2 font-bold">{t('hire.colOut')}</th>
+                    <th className="px-3 py-2 font-bold">{t('hire.colReturned')}</th>
+                    <th className="px-3 py-2 font-bold text-right">{t('hire.colStatus')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#eef2f0] dark:divide-gray-700/60">
+                  {lines.map((l) => (
+                    <tr key={l.id}>
+                      <td className="px-3 py-2 font-mono font-bold text-[#012619] dark:text-white">{l.registration || '—'}</td>
+                      <td className="px-3 py-2 text-[#4a5e54] dark:text-gray-300">{outDate(l) || '—'}</td>
+                      <td className="px-3 py-2 text-[#4a5e54] dark:text-gray-300">{inDate(l)}</td>
+                      <td className="px-3 py-2 text-right text-[#72A68E]">{lineLabel(l.status)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
