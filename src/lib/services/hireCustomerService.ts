@@ -108,6 +108,31 @@ export const hireCustomerService = {
     if (error) throw error
   },
 
+  /**
+   * Latest fleet-insurance expiry per customer for the whole org (one query).
+   * Returns { customerId: 'YYYY-MM-DD' | null }. Used by the overview's
+   * "insurance expiring soon" flag. Defensive: missing table → {}.
+   */
+  async getFleetInsuranceByCustomer(organizationId: string): Promise<Record<string, string | null>> {
+    const out: Record<string, string | null> = {}
+    if (!organizationId) return out
+    try {
+      const { data, error } = await supabase
+        .from(DOCUMENTS)
+        .select('customer_id, expiry_date')
+        .eq('organization_id', organizationId)
+        .eq('doc_type', 'fleet_insurance')
+      if (error) throw error
+      for (const d of data ?? []) {
+        const cur = out[d.customer_id]
+        if (cur === undefined || (d.expiry_date && (!cur || d.expiry_date > cur))) out[d.customer_id] = d.expiry_date ?? null
+      }
+    } catch (err) {
+      logger.error('hireCustomerService.getFleetInsuranceByCustomer failed:', err)
+    }
+    return out
+  },
+
   // ── Documents ─────────────────────────────────────────────────────────────
   async getDocuments(organizationId: string, customerId: string): Promise<RentalCustomerDocument[]> {
     if (!organizationId || !customerId) return []

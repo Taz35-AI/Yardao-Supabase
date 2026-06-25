@@ -20,26 +20,30 @@ export function NewAgreementModal({
   organizationId,
   label,
   editing,
+  renewFrom,
   onClose,
   onSaved,
 }: {
   organizationId: string | null
   label: string
   editing?: HireAgreement | null
+  renewFrom?: HireAgreement | null
   onClose: () => void
   onSaved: () => void
 }) {
   const t = useT()
   const { user } = useAuth()
   const isEdit = !!editing
+  const isRenew = !!renewFrom
+  const src = editing || renewFrom // prefill source
   const [customers, setCustomers] = useState<RentalCustomer[]>([])
-  const [customerId, setCustomerId] = useState(editing?.customerId || '')
+  const [customerId, setCustomerId] = useState(src?.customerId || '')
   const [reference, setReference] = useState(editing?.reference || '')
-  const [startDate, setStartDate] = useState(editing?.startDate || '')
-  const [durationValue, setDurationValue] = useState(String(editing?.durationValue ?? 52))
-  const [durationUnit, setDurationUnit] = useState<HireDurationUnit>(editing?.durationUnit || 'weeks')
-  const [rateType, setRateType] = useState<HireRateType>(editing?.rateType || 'weekly')
-  const [rateAmount, setRateAmount] = useState(editing ? String(editing.rateAmount) : '')
+  const [startDate, setStartDate] = useState(editing?.startDate || renewFrom?.endDate || '')
+  const [durationValue, setDurationValue] = useState(String(src?.durationValue ?? 52))
+  const [durationUnit, setDurationUnit] = useState<HireDurationUnit>(src?.durationUnit || 'weeks')
+  const [rateType, setRateType] = useState<HireRateType>(src?.rateType || 'weekly')
+  const [rateAmount, setRateAmount] = useState(src ? String(src.rateAmount) : '')
   const [eligible, setEligible] = useState<'unknown' | 'ok' | 'blocked'>('unknown')
   const [saving, setSaving] = useState(false)
 
@@ -51,7 +55,7 @@ export function NewAgreementModal({
   // Check insurance whenever the customer changes. Skip while editing (customer
   // is fixed and we don't re-gate an existing contract on date/rate edits).
   useEffect(() => {
-    if (isEdit) {
+    if (isEdit || isRenew) {
       setEligible('ok')
       return
     }
@@ -66,7 +70,7 @@ export function NewAgreementModal({
     return () => {
       cancelled = true
     }
-  }, [organizationId, customerId, isEdit])
+  }, [organizationId, customerId, isEdit, isRenew])
 
   const endDate = useMemo(() => {
     const n = parseInt(durationValue, 10)
@@ -96,7 +100,24 @@ export function NewAgreementModal({
     setSaving(true)
     try {
       const profile = user?.uid ? await userProfileService.getProfile(user.uid) : null
-      if (isEdit && editing) {
+      if (isRenew && renewFrom) {
+        await hireAgreementService.renewAgreement({
+          organizationId,
+          oldAgreementId: renewFrom.id,
+          customerId: renewFrom.customerId || customerId,
+          customerName: renewFrom.customerName ?? null,
+          reference: reference.trim() || null,
+          startDate,
+          durationValue: n,
+          durationUnit,
+          rateType,
+          rateAmount: amt,
+          createdBy: user?.uid || null,
+          createdByName: profile?.displayName || user?.email || 'Unknown',
+          actorId: user?.uid || null,
+          actorName: profile?.displayName || user?.email || 'Unknown',
+        })
+      } else if (isEdit && editing) {
         await hireAgreementService.updateAgreementDetails({
           organizationId,
           agreementId: editing.id,
@@ -136,17 +157,17 @@ export function NewAgreementModal({
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
       <div className="relative bg-white dark:bg-gray-900 w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl border border-[#025940]/20 max-h-[92vh] overflow-y-auto">
         <div className="sticky top-0 bg-gradient-to-br from-[#012619] to-[#025940] px-4 py-3 flex items-center justify-between">
-          <h2 className="text-base font-bold text-white">{isEdit ? t('hire.editAgreement', { label }) : t('hire.newAgreement', { label })}</h2>
+          <h2 className="text-base font-bold text-white">{isRenew ? t('hire.renewAgreement', { label }) : isEdit ? t('hire.editAgreement', { label }) : t('hire.newAgreement', { label })}</h2>
           <button onClick={onClose} className="p-1.5 hover:bg-white/15 rounded-lg"><X className="w-4 h-4 text-white" /></button>
         </div>
 
         <div className="p-4 space-y-3">
           <div>
             <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">{t('hire.selectCustomer')}</label>
-            <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} disabled={isEdit} className={`${inputCls} ${isEdit ? 'opacity-60 cursor-not-allowed' : ''}`}>
+            <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} disabled={isEdit || isRenew} className={`${inputCls} ${isEdit || isRenew ? 'opacity-60 cursor-not-allowed' : ''}`}>
               <option value="">{t('hire.selectCustomerPlaceholder')}</option>
-              {isEdit && editing && !customers.some((c) => c.id === editing.customerId) && (
-                <option value={editing.customerId || ''}>{editing.customerName || '—'}</option>
+              {src && !customers.some((c) => c.id === src.customerId) && (
+                <option value={src.customerId || ''}>{src.customerName || '—'}</option>
               )}
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>{c.companyName ? `${c.companyName} — ${c.name}` : c.name}</option>
@@ -203,7 +224,7 @@ export function NewAgreementModal({
             <button onClick={onClose} className="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-bold">{t('hire.cancel')}</button>
             <button onClick={save} disabled={saving || eligible === 'blocked'} className="flex-1 px-4 py-2.5 rounded-lg bg-[#025940] hover:bg-[#012619] text-white text-sm font-bold disabled:opacity-60 inline-flex items-center justify-center gap-2">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              {saving ? t('hire.saving') : isEdit ? t('hire.save') : t('hire.create')}
+              {saving ? t('hire.saving') : isRenew ? t('hire.renew') : isEdit ? t('hire.save') : t('hire.create')}
             </button>
           </div>
         </div>

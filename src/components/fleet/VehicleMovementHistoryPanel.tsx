@@ -64,6 +64,7 @@ const ACTION: Record<ActivityActionType | 'default', { icon: React.ElementType; 
   rental_swap:          { icon: ArrowLeftRight, label: 'Vehicle swap',   tone: 'blue' },
   rental_end:           { icon: Truck,          label: 'Hire ended',     tone: 'indigo' },
   rental_temp_return:   { icon: ArrowDownLeft,  label: 'Temp return',    tone: 'amber' },
+  rental_renew:         { icon: Activity,       label: 'Renewed',        tone: 'purple' },
   default:              { icon: Activity,       label: 'Event',          tone: 'slate' },
 }
 

@@ -179,6 +179,90 @@ export const hireAgreementService = {
   },
 
   /**
+   * Renew a contract: create a NEW contract for the same customer and roll every
+   * currently-on-hire vehicle onto it WITHOUT returning it (stays out, re-linked).
+   * The old lines are closed (returned at the renewal date), the old contract is
+   * marked completed. Returns the new agreement id.
+   */
+  async renewAgreement(input: {
+    organizationId: string
+    oldAgreementId: string
+    customerId: string
+    customerName?: string | null
+    reference?: string | null
+    startDate: string // renewal/handover date = new contract start
+    durationValue: number
+    durationUnit: HireDurationUnit
+    rateType: HireRateType
+    rateAmount: number
+    createdBy?: string | null
+    createdByName?: string | null
+    actorId?: string | null
+    actorName?: string | null
+  }): Promise<string> {
+    const newEnd = prorationService.computeEndDate(input.startDate, input.durationValue, input.durationUnit)
+    const newId = await this.createAgreement({
+      organizationId: input.organizationId,
+      customerId: input.customerId,
+      customerName: input.customerName ?? null,
+      reference: input.reference ?? null,
+      startDate: input.startDate,
+      durationValue: input.durationValue,
+      durationUnit: input.durationUnit,
+      rateType: input.rateType,
+      rateAmount: input.rateAmount,
+      createdBy: input.createdBy ?? null,
+      createdByName: input.createdByName ?? null,
+    })
+
+    const renewalIso = `${input.startDate}T00:00:00`
+    const oldLines = (await this.getLines(input.organizationId, input.oldAgreementId)).filter((l) => l.status === 'active')
+    for (const l of oldLines) {
+      // Close the old line (vehicle does NOT physically return).
+      await this.updateLine(l.id, {
+        status: 'returned',
+        actual_return_at: renewalIso,
+        notes: `Renewed → ${input.reference || newId.slice(0, 8)}`,
+      })
+      if (!l.vehicleId) continue
+      // Open the same vehicle on the new contract, already on hire from renewal.
+      try {
+        await this.importOnHireVehicle({
+          organizationId: input.organizationId,
+          agreementId: newId,
+          vehicleId: l.vehicleId,
+          registration: l.registration || '',
+          make: l.make,
+          model: l.model,
+          scheduledStart: input.startDate,
+          scheduledEnd: newEnd,
+          rateType: input.rateType,
+          rateAmount: input.rateAmount,
+          outDate: input.startDate,
+          createdBy: input.createdBy,
+          createdByName: input.createdByName,
+          actorId: input.actorId,
+          actorName: input.actorName,
+        })
+      } catch (err) {
+        logger.error('renewAgreement: rolling a vehicle onto the new contract failed:', err)
+      }
+    }
+
+    await this.updateAgreement(newId, { status: 'active' })
+    await this.updateAgreement(input.oldAgreementId, { status: 'completed' })
+    activityLogService.log({
+      organizationId: input.organizationId,
+      actionType: 'rental_renew',
+      actorId: input.actorId,
+      actorName: input.actorName,
+      summary: `Renewed contract → ${input.reference || newId.slice(0, 8)} (${oldLines.length} vehicle(s))`,
+      details: { from: input.oldAgreementId, to: newId },
+    })
+    return newId
+  },
+
+  /**
    * Edit a contract's core details and CASCADE the single contract rate to every
    * vehicle line (the rate is always per-vehicle and identical across the
    * contract). End date is recomputed from start + duration.
