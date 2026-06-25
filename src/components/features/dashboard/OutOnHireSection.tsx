@@ -5,9 +5,10 @@
 // ✅ Table on desktop, compact rows on mobile
 'use client'
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { CheckedInVehicle, isVehicleOutOnHire, getDisplayStatus } from '@/types'
 import { useT } from '@/lib/i18n'
+import { hireAgreementService } from '@/lib/services/hireAgreementService'
 import {
   Car,
   CheckCircle,
@@ -16,6 +17,7 @@ import {
   XCircle,
   Calendar,
   User,
+  Building2,
   FileText,
   ArrowLeft,
   Search
@@ -85,6 +87,32 @@ export function OutOnHireSection({
   const outOnHireVehicles = vehicles.filter(isVehicleOutOnHire)
   const isSearching       = searchTerm && searchTerm.trim() !== ''
   const actualTotal       = totalUnfilteredCount || outOnHireVehicles.length
+
+  // Resolve contract → customer for any vehicle on a Hire-Management line.
+  const [hireCustomerByLine, setHireCustomerByLine] = useState<Record<string, string>>({})
+  const lineKey = outOnHireVehicles
+    .map((v) => v.currentAgreementLineId)
+    .filter(Boolean)
+    .sort()
+    .join(',')
+  useEffect(() => {
+    const orgId = vehicles.find((v) => v.organizationId)?.organizationId
+    const lineIds = lineKey ? lineKey.split(',') : []
+    if (!orgId || lineIds.length === 0) {
+      setHireCustomerByLine({})
+      return
+    }
+    let cancelled = false
+    hireAgreementService.getCustomerNamesByLineIds(orgId, lineIds).then((m) => {
+      if (!cancelled) setHireCustomerByLine(m)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [lineKey, vehicles])
+
+  const customerFor = (v: CheckedInVehicle): string =>
+    (v.currentAgreementLineId && hireCustomerByLine[v.currentAgreementLineId]) || ''
 
   // Don't render when empty and not searching
   if (outOnHireVehicles.length === 0 && !isSearching) return null
@@ -159,16 +187,24 @@ export function OutOnHireSection({
                       <span>{formatDateTime(vehicle.hiredAt)}</span>
                     </div>
 
-                    {/* Hired by */}
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <User className="w-3.5 h-3.5 text-[#72A68E] flex-shrink-0" />
-                      <span className="text-xs text-[#4a5e54] dark:text-gray-400 truncate">
-                        {safeString(vehicle.hiredByName) || '—'}
-                      </span>
-                      {vehicle.hireNotes && (
-                        <span className="hidden lg:flex items-center gap-1 text-[10px] text-[#8a9e94] ml-1 truncate max-w-[120px]">
-                          <FileText className="w-3 h-3 flex-shrink-0" />
-                          {safeString(vehicle.hireNotes)}
+                    {/* Hired by (+ contract customer when on a hire agreement) */}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <User className="w-3.5 h-3.5 text-[#72A68E] flex-shrink-0" />
+                        <span className="text-xs text-[#4a5e54] dark:text-gray-400 truncate">
+                          {safeString(vehicle.hiredByName) || '—'}
+                        </span>
+                        {vehicle.hireNotes && (
+                          <span className="hidden lg:flex items-center gap-1 text-[10px] text-[#8a9e94] ml-1 truncate max-w-[120px]">
+                            <FileText className="w-3 h-3 flex-shrink-0" />
+                            {safeString(vehicle.hireNotes)}
+                          </span>
+                        )}
+                      </div>
+                      {customerFor(vehicle) && (
+                        <span className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#025940]/10 dark:bg-[#025940]/25 text-[10px] font-bold text-[#025940] dark:text-[#b3f243] max-w-full truncate">
+                          <Building2 className="w-2.5 h-2.5 flex-shrink-0" />
+                          <span className="truncate">{customerFor(vehicle)}</span>
                         </span>
                       )}
                     </div>
@@ -221,6 +257,12 @@ export function OutOnHireSection({
                           <span className="text-[10px] text-[#72A68E] flex items-center gap-1">
                             <User className="w-2.5 h-2.5" />
                             {safeString(vehicle.hiredByName)}
+                          </span>
+                        )}
+                        {customerFor(vehicle) && (
+                          <span className="text-[10px] font-bold text-[#025940] dark:text-[#b3f243] flex items-center gap-1">
+                            <Building2 className="w-2.5 h-2.5" />
+                            {customerFor(vehicle)}
                           </span>
                         )}
                       </div>

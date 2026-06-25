@@ -161,7 +161,8 @@ export interface CheckedInVehicle {
   hiredByName?: string
   hireNotes?: string
   currentHireHistoryId?: string | null  // Links to active hire history record
-  
+  currentAgreementLineId?: string | null // Links to the active Hire-Management line (contract)
+
   // NEW: Audit log field
   lastEditLog?: AuditLog
 }

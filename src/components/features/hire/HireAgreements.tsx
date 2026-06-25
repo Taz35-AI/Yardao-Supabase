@@ -12,11 +12,16 @@ import { supabase } from '@/lib/supabaseClient'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { hireAgreementService } from '@/lib/services/hireAgreementService'
+import { VehicleHireService } from '@/lib/services/vehicleHireService'
 import { useHire } from '@/contexts/HireContext'
 import { useT } from '@/lib/i18n'
+import { toCamel } from '@/lib/dbMap'
+import { canPerformAction } from '@/lib/insuranceUtils'
+import type { CheckedInVehicle } from '@/types'
 import type { HireAgreement, HireAgreementVehicle } from '@/types/hire'
 import { NewAgreementModal } from './NewAgreementModal'
 import { HireSwapModal } from './HireSwapModal'
+import { SetOutOnHireModal } from '@/components/features/dashboard/HireModals'
 import { euDate, rateLabel } from './hireFormat'
 
 export function HireAgreements() {
@@ -94,6 +99,11 @@ function AgreementCard({
   const [lines, setLines] = useState<HireAgreementVehicle[]>([])
   const [loaded, setLoaded] = useState(false)
   const [swapLine, setSwapLine] = useState<HireAgreementVehicle | null>(null)
+  // Set-on-hire goes through the normal yard "Set out on hire" modal so the
+  // insurance gate + yard status flip run exactly as they do in the yard.
+  const [hireVehicle, setHireVehicle] = useState<CheckedInVehicle | null>(null)
+  const [hireLineId, setHireLineId] = useState<string | null>(null)
+  const [hireBusy, setHireBusy] = useState(false)
 
   const loadLines = async () => {
     if (!organizationId) return
@@ -111,36 +121,73 @@ function AgreementCard({
     return { id: user?.uid || null, name: profile?.displayName || user?.email || 'Unknown' }
   }
 
-  const todayYmd = () => {
-    const d = new Date()
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  }
-
+  // Open the SAME "Set out on hire" modal the yard uses. The vehicle must be
+  // checked into the yard first — that's the row the modal flips (incl. the
+  // insurance gate). If it isn't in the yard, tell the user to check it in.
   const setOnHire = async (l: HireAgreementVehicle) => {
     if (!organizationId) return
-    // Future-dated warning: starting earlier than the agreement's start date.
-    if (agreement.startDate && agreement.startDate > todayYmd()) {
-      const msg = t('hire.futureWarnBody', {
-        reg: l.registration || '',
-        customer: agreement.customerName || '',
-        date: euDate(agreement.startDate),
-      })
-      if (!window.confirm(msg)) return
+    const norm = (l.registration || '').toUpperCase().replace(/\s+/g, '')
+    if (!norm) {
+      toast.error(t('hire.actionFail'))
+      return
     }
     try {
-      const a = await actor()
-      await hireAgreementService.setLineOnHire({
-        organizationId,
-        lineId: l.id,
-        registration: l.registration,
-        actorId: a.id,
-        actorName: a.name,
-      })
-      toast.success(t('hire.onHireDone'))
-      loadLines()
-      onChange()
+      const { data } = await supabase
+        .from('checked_in_vehicles')
+        .select('*')
+        .eq('organization_id', organizationId)
+      const row = (data ?? []).find(
+        (r) => (r.registration || '').toUpperCase().replace(/\s+/g, '') === norm,
+      )
+      if (!row) {
+        toast.error(t('hire.notInYard', { reg: l.registration || '' }))
+        return
+      }
+      const vehicle = toCamel<CheckedInVehicle>(row)
+      if (!vehicle) {
+        toast.error(t('hire.notInYard', { reg: l.registration || '' }))
+        return
+      }
+      if (vehicle.hireStatus === 'Out on Hire') {
+        toast.error(t('hire.alreadyOut', { reg: l.registration || '' }))
+        return
+      }
+      setHireLineId(l.id)
+      setHireVehicle(vehicle)
     } catch {
       toast.error(t('hire.actionFail'))
+    }
+  }
+
+  // Confirm handler for the reused yard modal: insurance-gate, flip the yard row
+  // to Out on Hire, then activate the contract line (linked to this yard row).
+  const confirmSetOnHire = async (vehicleId: string, hireNotes?: string) => {
+    if (!organizationId || !hireVehicle) return
+    if (!canPerformAction(hireVehicle.insuranceStatus)) {
+      toast.error(t('hire.insuranceBlockedSetOut', { reg: hireVehicle.registration || '' }))
+      throw new Error('INSURANCE_REQUIRED')
+    }
+    setHireBusy(true)
+    try {
+      const a = await actor()
+      await VehicleHireService.setOutOnHire(vehicleId, a.id || '', a.name, hireNotes)
+      if (hireLineId) {
+        await hireAgreementService.setLineOnHire({
+          organizationId,
+          lineId: hireLineId,
+          registration: hireVehicle.registration,
+          checkedInVehicleId: vehicleId,
+          actorId: a.id,
+          actorName: a.name,
+        })
+      }
+      toast.success(t('hire.onHireDone'))
+      setHireVehicle(null)
+      setHireLineId(null)
+      loadLines()
+      onChange()
+    } finally {
+      setHireBusy(false)
     }
   }
 
@@ -252,6 +299,21 @@ function AgreementCard({
             loadLines()
             onChange()
           }}
+        />
+      )}
+
+      {hireVehicle && (
+        <SetOutOnHireModal
+          vehicle={hireVehicle}
+          isOpen={!!hireVehicle}
+          loading={hireBusy}
+          onClose={() => {
+            if (!hireBusy) {
+              setHireVehicle(null)
+              setHireLineId(null)
+            }
+          }}
+          onConfirm={confirmSetOnHire}
         />
       )}
     </div>

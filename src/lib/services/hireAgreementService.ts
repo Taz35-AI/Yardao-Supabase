@@ -60,6 +60,45 @@ export const hireAgreementService = {
     }
   },
 
+  /**
+   * Resolve a set of line ids → the hire customer name on each line's agreement.
+   * Used by the yard "Out on Hire" list to show who a contract vehicle is with.
+   * Returns { lineId: customerName }. Defensive: missing tables → {}.
+   */
+  async getCustomerNamesByLineIds(
+    organizationId: string,
+    lineIds: string[],
+  ): Promise<Record<string, string>> {
+    const out: Record<string, string> = {}
+    const ids = lineIds.filter(Boolean)
+    if (!organizationId || ids.length === 0) return out
+    try {
+      const { data: lines, error: lerr } = await supabase
+        .from(LINES)
+        .select('id, agreement_id')
+        .eq('organization_id', organizationId)
+        .in('id', ids)
+      if (lerr) throw lerr
+      const agIds = Array.from(new Set((lines ?? []).map((l) => l.agreement_id).filter(Boolean)))
+      if (agIds.length === 0) return out
+      const { data: ags, error: aerr } = await supabase
+        .from(AGREEMENTS)
+        .select('id, customer_name')
+        .eq('organization_id', organizationId)
+        .in('id', agIds)
+      if (aerr) throw aerr
+      const nameByAg: Record<string, string> = {}
+      for (const a of ags ?? []) nameByAg[a.id] = a.customer_name || ''
+      for (const l of lines ?? []) {
+        const nm = nameByAg[l.agreement_id]
+        if (nm) out[l.id] = nm
+      }
+    } catch (err) {
+      logger.error('hireAgreementService.getCustomerNamesByLineIds failed:', err)
+    }
+    return out
+  },
+
   async getAgreement(id: string): Promise<HireAgreement | null> {
     try {
       const { data, error } = await supabase.from(AGREEMENTS).select('*').eq('id', id).single()

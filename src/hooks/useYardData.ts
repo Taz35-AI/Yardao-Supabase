@@ -319,6 +319,7 @@ export function useYardDataInternal(props?: UseYardDataProps) {
         hiredBy: data.hiredBy,
         hiredByName: data.hiredByName,
         hireNotes: data.hireNotes,
+        currentAgreementLineId: data.currentAgreementLineId ?? null,
 
         // ✅ NEW: Transfer status fields for CheckedOutVehiclesSection
         transferStatus: data.transferStatus || null,
