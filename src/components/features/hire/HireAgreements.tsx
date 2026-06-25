@@ -13,6 +13,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { hireAgreementService } from '@/lib/services/hireAgreementService'
 import { VehicleHireService } from '@/lib/services/vehicleHireService'
+import { branchService } from '@/lib/services/branchService'
+import { activityLogService } from '@/lib/services/activityLogService'
 import { useHire } from '@/contexts/HireContext'
 import { useT } from '@/lib/i18n'
 import { toCamel } from '@/lib/dbMap'
@@ -104,6 +106,9 @@ function AgreementCard({
   const [hireVehicle, setHireVehicle] = useState<CheckedInVehicle | null>(null)
   const [hireLineId, setHireLineId] = useState<string | null>(null)
   const [hireBusy, setHireBusy] = useState(false)
+  // When the vehicle isn't in the yard we auto-check it in to the main branch on
+  // confirm (so cancelling leaves no stray row). Holds the fleet row + branch.
+  const [pendingCheckIn, setPendingCheckIn] = useState<{ branchId: string; fleet: any } | null>(null)
 
   const loadLines = async () => {
     if (!organizationId) return
@@ -121,9 +126,10 @@ function AgreementCard({
     return { id: user?.uid || null, name: profile?.displayName || user?.email || 'Unknown' }
   }
 
-  // Open the SAME "Set out on hire" modal the yard uses. The vehicle must be
-  // checked into the yard first — that's the row the modal flips (incl. the
-  // insurance gate). If it isn't in the yard, tell the user to check it in.
+  // Open the SAME "Set out on hire" modal the yard uses, so the insurance gate +
+  // yard status flip run exactly as in the yard. If the vehicle isn't currently
+  // in the yard, we auto-check it in to the main branch (on confirm) — saving the
+  // manual check-in steps.
   const setOnHire = async (l: HireAgreementVehicle) => {
     if (!organizationId) return
     const norm = (l.registration || '').toUpperCase().replace(/\s+/g, '')
@@ -132,6 +138,7 @@ function AgreementCard({
       return
     }
     try {
+      // 1) Already in the yard? Use that row directly.
       const { data } = await supabase
         .from('checked_in_vehicles')
         .select('*')
@@ -139,28 +146,76 @@ function AgreementCard({
       const row = (data ?? []).find(
         (r) => (r.registration || '').toUpperCase().replace(/\s+/g, '') === norm,
       )
-      if (!row) {
+      if (row) {
+        const vehicle = toCamel<CheckedInVehicle>(row)
+        if (!vehicle) {
+          toast.error(t('hire.actionFail'))
+          return
+        }
+        if (vehicle.hireStatus === 'Out on Hire') {
+          toast.error(t('hire.alreadyOut', { reg: l.registration || '' }))
+          return
+        }
+        setPendingCheckIn(null)
+        setHireLineId(l.id)
+        setHireVehicle(vehicle)
+        return
+      }
+
+      // 2) Not in the yard → pull the fleet record so we can auto-check-in.
+      let fleet: any = null
+      if (l.vehicleId) {
+        const { data: fv } = await supabase.from('vehicles').select('*').eq('id', l.vehicleId).maybeSingle()
+        fleet = fv
+      }
+      if (!fleet) {
+        const { data: fvs } = await supabase
+          .from('vehicles')
+          .select('*')
+          .eq('organization_id', organizationId)
+        fleet = (fvs ?? []).find((v) => (v.registration || '').toUpperCase().replace(/\s+/g, '') === norm) || null
+      }
+      if (!fleet) {
         toast.error(t('hire.notInYard', { reg: l.registration || '' }))
         return
       }
-      const vehicle = toCamel<CheckedInVehicle>(row)
-      if (!vehicle) {
-        toast.error(t('hire.notInYard', { reg: l.registration || '' }))
+      // Pre-check insurance before creating anything (no stranded check-in row).
+      if (!canPerformAction(fleet.insurance_status)) {
+        toast.error(t('hire.insuranceBlockedSetOut', { reg: l.registration || '' }))
         return
       }
-      if (vehicle.hireStatus === 'Out on Hire') {
-        toast.error(t('hire.alreadyOut', { reg: l.registration || '' }))
+      const branches = await branchService.getBranches(organizationId)
+      const main = branches.find((b) => b.isMain) || branches[0]
+      if (!main) {
+        toast.error(t('hire.actionFail'))
         return
       }
+      // Synthetic (not-yet-persisted) vehicle for the modal display.
+      const synthetic = {
+        id: '',
+        organizationId,
+        registration: fleet.registration,
+        make: fleet.make,
+        model: fleet.model,
+        colour: fleet.colour,
+        size: fleet.size,
+        condition: fleet.condition,
+        status: 'Ready',
+        motExpiry: fleet.mot_expiry,
+        taxExpiry: fleet.tax_expiry,
+        insuranceStatus: fleet.insurance_status ?? null,
+        hireStatus: 'In Yard',
+      } as unknown as CheckedInVehicle
+      setPendingCheckIn({ branchId: main.id, fleet })
       setHireLineId(l.id)
-      setHireVehicle(vehicle)
+      setHireVehicle(synthetic)
     } catch {
       toast.error(t('hire.actionFail'))
     }
   }
 
-  // Confirm handler for the reused yard modal: insurance-gate, flip the yard row
-  // to Out on Hire, then activate the contract line (linked to this yard row).
+  // Confirm handler for the reused yard modal: insurance-gate, (auto-check-in if
+  // needed), flip the yard row to Out on Hire, then activate + link the line.
   const confirmSetOnHire = async (vehicleId: string, hireNotes?: string) => {
     if (!organizationId || !hireVehicle) return
     if (!canPerformAction(hireVehicle.insuranceStatus)) {
@@ -170,13 +225,63 @@ function AgreementCard({
     setHireBusy(true)
     try {
       const a = await actor()
-      await VehicleHireService.setOutOnHire(vehicleId, a.id || '', a.name, hireNotes)
+      let realVehicleId = vehicleId
+
+      // Auto-check-in to the main branch when the vehicle wasn't in the yard.
+      if (pendingCheckIn) {
+        const f = pendingCheckIn.fleet
+        const nowIso = new Date().toISOString()
+        const { data: ins, error: insErr } = await supabase
+          .from('checked_in_vehicles')
+          .insert({
+            vehicle_id: f.id,
+            registration: (f.registration || '').toUpperCase(),
+            make: f.make || '',
+            model: f.model || '',
+            colour: f.colour || '',
+            size: f.size || '',
+            condition: f.condition || '',
+            status: 'Ready',
+            mileage: '',
+            insurance_status: f.insurance_status ?? null,
+            insurance_policy_id: f.insurance_policy_id ?? null,
+            insurance_policy_name: f.insurance_policy_name ?? null,
+            insurance_policy_expiry: f.insurance_policy_expiry ?? null,
+            mot_expiry: f.mot_expiry ?? null,
+            tax_expiry: f.tax_expiry ?? null,
+            contract: f.contract ?? null,
+            contract_color: f.contract_color ?? null,
+            branch_id: pendingCheckIn.branchId,
+            hire_status: 'In Yard',
+            user_id: a.id,
+            organization_id: organizationId,
+            created_at: nowIso,
+            updated_at: nowIso,
+            check_in_time: nowIso,
+          })
+          .select('id')
+          .single()
+        if (insErr) throw insErr
+        realVehicleId = ins.id as string
+        activityLogService.log({
+          organizationId,
+          actorId: a.id,
+          actorName: a.name,
+          actionType: 'checkin',
+          registration: hireVehicle.registration ?? null,
+          branchId: pendingCheckIn.branchId,
+          summary: 'Auto checked-in to main branch for hire',
+        })
+        toast.success(t('hire.autoCheckedIn', { reg: hireVehicle.registration || '' }))
+      }
+
+      await VehicleHireService.setOutOnHire(realVehicleId, a.id || '', a.name, hireNotes)
       if (hireLineId) {
         await hireAgreementService.setLineOnHire({
           organizationId,
           lineId: hireLineId,
           registration: hireVehicle.registration,
-          checkedInVehicleId: vehicleId,
+          checkedInVehicleId: realVehicleId,
           actorId: a.id,
           actorName: a.name,
         })
@@ -184,6 +289,7 @@ function AgreementCard({
       toast.success(t('hire.onHireDone'))
       setHireVehicle(null)
       setHireLineId(null)
+      setPendingCheckIn(null)
       loadLines()
       onChange()
     } finally {
@@ -311,6 +417,7 @@ function AgreementCard({
             if (!hireBusy) {
               setHireVehicle(null)
               setHireLineId(null)
+              setPendingCheckIn(null)
             }
           }}
           onConfirm={confirmSetOnHire}
