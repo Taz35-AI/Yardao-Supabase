@@ -1,0 +1,56 @@
+// src/components/features/hire/ContractIcon.tsx
+// Brand contract/agreement icon (signed document with pen) used across the Hire
+// feature. Self-contained, full-colour illustration — size it with className.
+import React from 'react'
+
+export function ContractIcon({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 451.292 451.292"
+      className={className}
+      xmlns="http://www.w3.org/2000/svg"
+      role="img"
+      aria-hidden="true"
+    >
+      <ellipse style={{ fill: '#45B39C' }} cx="225.646" cy="225.639" rx="225.639" ry="225.639" />
+      <path
+        style={{ opacity: 0.1 }}
+        d="M449.027,257.381L343.834,152.189c-0.41-0.41-1.075-0.41-1.434,0l-2.662,2.509l-2.407,2.304l-14.717,14.108l-74.729-74.729L96.64,96.073l-0.512,250.01l-0.051,8.55l93.821,93.821c11.496,1.83,23.275,2.813,35.282,2.837C339.184,451.525,433.561,367.159,449.027,257.381z"
+      />
+      <rect x="96.104" y="346.289" transform="matrix(-1 -0.002 0.002 -1 384.9174 701.5483)" style={{ fill: '#D5D6DB' }} width="193.429" height="8.576" />
+      <polygon style={{ fill: '#FFFFFF' }} points="247.906,96.396 96.625,96.086 96.112,346.076 289.54,346.473 289.967,138.629 " />
+      <polygon style={{ fill: '#EBF0F3' }} points="247.82,138.543 289.967,138.629 247.906,96.396 " />
+      <rect x="132.886" y="102.487" transform="matrix(-0.002 1 -1 -0.002 258.7106 -11.7851)" style={{ fill: '#44C4A1' }} width="4.7" height="41.421" />
+      <rect x="247.65" y="278.587" transform="matrix(-0.002 1 -1 -0.002 549.8098 49.9114)" style={{ fill: '#27A2DB' }} width="4.7" height="41.421" />
+      <rect x="254.641" y="300.75" transform="matrix(-0.0021 1 -1 -0.0021 571.9559 58.0934)" style={{ fill: '#EBF0F3' }} width="4.7" height="27.372" />
+      <rect x="190.845" y="132.087" transform="matrix(-0.0021 1 -1 -0.0021 359.9605 -26.4838)" style={{ fill: '#E56353' }} width="4.7" height="68.562" />
+      <g>
+        <rect x="190.802" y="109.662" transform="matrix(-0.002 1 -1 -0.002 380.9996 -5.3145)" style={{ fill: '#EBF0F3' }} width="4.7" height="155.582" />
+        <rect x="190.766" y="126.951" transform="matrix(-0.002 1 -1 -0.002 398.2534 12.0468)" style={{ fill: '#EBF0F3' }} width="4.7" height="155.582" />
+        <rect x="172.278" y="162.681" transform="matrix(-0.002 1 -1 -0.002 397.0073 47.8495)" style={{ fill: '#EBF0F3' }} width="4.7" height="118.682" />
+        <rect x="190.714" y="161.582" transform="matrix(-0.002 1 -1 -0.002 432.833 46.8001)" style={{ fill: '#EBF0F3' }} width="4.7" height="155.582" />
+        <rect x="190.663" y="178.924" transform="matrix(-0.002 1 -1 -0.002 450.1226 64.228)" style={{ fill: '#EBF0F3' }} width="4.7" height="155.582" />
+        <rect x="157.343" y="229.404" transform="matrix(-0.002 1 -1 -0.002 433.9625 114.8116)" style={{ fill: '#EBF0F3' }} width="4.7" height="89.078" />
+        <rect x="142.7" y="110.223" transform="matrix(-0.0021 1 -1 -0.0021 286.1095 -3.9979)" style={{ fill: '#EBF0F3' }} width="4.7" height="61.077" />
+      </g>
+      <path
+        style={{ fill: '#64798A' }}
+        d="M257.435,265.399l97.327-100.786c0.393-0.407,0.388-1.054-0.011-1.455l-10.921-10.965c-0.399-0.401-1.046-0.409-1.454-0.018l-101.185,96.912l0,0l-17.138,20.954l12.358,12.408L257.435,265.399L257.435,265.399z"
+      />
+      <polygon style={{ fill: '#FCD462' }} points="222.65,274.74 212.267,280.485 206.246,300.134 225.92,294.194 231.706,283.834 " />
+      <ellipse style={{ fill: '#F6C358' }} cx="219.422" cy="287.053" rx="2.79" ry="2.79" />
+      <path
+        style={{ fill: '#64798A' }}
+        d="M236.833,282.875l-13.202-13.257c-0.84-0.843-2.204-0.846-3.047-0.006l0,0c-0.843,0.84-0.846,2.204-0.006,3.047l13.203,13.257c0.84,0.843,2.204,0.846,3.047,0.006l0,0C237.67,285.083,237.673,283.718,236.833,282.875z"
+      />
+      <g>
+        <polygon style={{ fill: '#FCD462' }} points="307.097,213.971 292.822,199.638 290.423,201.936 304.789,216.361 " />
+        <path
+          style={{ fill: '#FCD462' }}
+          d="M352.208,167.258L339.72,154.72l-2.399,2.297l4.146,4.163l-34.133,33.993c-0.374,0.373-0.376,0.978-0.003,1.352l2.937,2.949c0.372,0.374,0.978,0.376,1.352,0.003l34.133-33.993l4.146,4.163L352.208,167.258z"
+        />
+      </g>
+      <rect x="306.792" y="178.94" transform="matrix(-0.7086 0.7056 -0.7056 -0.7086 685.3005 77.387)" style={{ fill: '#F6C358' }} width="39.757" height="2.524" />
+    </svg>
+  )
+}

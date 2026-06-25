@@ -3,7 +3,8 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { Users, FileText, CalendarRange, Coins, Settings, KeyRound, AlertTriangle, Clock } from 'lucide-react'
+import { Users, CalendarRange, Coins, Settings, KeyRound, AlertTriangle, Clock } from 'lucide-react'
+import { ContractIcon } from './ContractIcon'
 import { useHire } from '@/contexts/HireContext'
 import { hireAgreementService } from '@/lib/services/hireAgreementService'
 import { hireCustomerService } from '@/lib/services/hireCustomerService'
@@ -50,7 +51,7 @@ export function HireHub() {
 
   const tabs: { key: Tab; icon: React.ReactNode; label: string }[] = [
     { key: 'customers', icon: <Users className="w-4 h-4" />, label: t('hire.tabCustomers') },
-    { key: 'agreements', icon: <FileText className="w-4 h-4" />, label: settings.agreementLabelPlural },
+    { key: 'agreements', icon: <ContractIcon className="w-4 h-4" />, label: settings.agreementLabelPlural },
     { key: 'schedule', icon: <CalendarRange className="w-4 h-4" />, label: t('hire.tabSchedule') },
     { key: 'credits', icon: <Coins className="w-4 h-4" />, label: t('hire.tabCredits') },
   ]

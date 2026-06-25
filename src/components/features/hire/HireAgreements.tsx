@@ -4,8 +4,9 @@
 'use client'
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { FileText, Plus, Search, Car, ChevronDown } from 'lucide-react'
+import { Plus, Search, Car, ChevronDown } from 'lucide-react'
 import { EmptyState, PrimaryBtn, Pill } from './hireUi'
+import { ContractIcon } from './ContractIcon'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuth } from '@/contexts/AuthContext'
@@ -54,7 +55,7 @@ export function HireAgreements() {
       {loading ? (
         <div className="py-12 text-center text-sm text-[#72A68E]">…</div>
       ) : agreements.length === 0 ? (
-        <EmptyState icon={<FileText className="w-7 h-7" />} title={t('hire.emptyAgreements')} hint={t('hire.emptyAgreementsHint')} />
+        <EmptyState icon={<ContractIcon className="w-10 h-10" />} title={t('hire.emptyAgreements')} hint={t('hire.emptyAgreementsHint')} />
       ) : (
         <div className="space-y-2">
           {agreements.map((a) => (
@@ -202,9 +203,7 @@ function AgreementCard({
   return (
     <div className="rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm hover:shadow-md transition-shadow">
       <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-3 p-4 text-left">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#025940] to-[#012619] flex items-center justify-center text-[#b3f243] flex-shrink-0">
-          <FileText className="w-5 h-5" />
-        </div>
+        <ContractIcon className="w-10 h-10 flex-shrink-0 drop-shadow-sm" />
         <div className="min-w-0 flex-1">
           <span className="block font-bold text-[#012619] dark:text-white truncate leading-tight">{agreement.customerName || '—'}</span>
           <p className="text-xs text-[#72A68E] mt-0.5">

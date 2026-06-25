@@ -14,6 +14,7 @@ import { mileageService } from '@/lib/services/mileageService'
 import { hireAgreementService } from '@/lib/services/hireAgreementService'
 import { hireSettingsService } from '@/lib/services/hireSettingsService'
 import { HireSwapModal } from '@/components/features/hire/HireSwapModal'
+import { ContractIcon } from '@/components/features/hire/ContractIcon'
 import type { HireAgreement, HireAgreementVehicle } from '@/types/hire'
 
 const ymdToday = () => {
@@ -194,7 +195,7 @@ export function SetOutOnHireModal({
           {match && (
             <div className="rounded-xl border-2 border-[#025940]/40 bg-[#025940]/5 dark:bg-[#025940]/10 p-4">
               <div className="flex items-start gap-3">
-                <FileText className="w-4 h-4 text-[#025940] dark:text-[#b3f243] flex-shrink-0 mt-0.5" />
+                <ContractIcon className="w-5 h-5 flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="text-sm font-bold text-[#012619] dark:text-white">
                     {t('dashboard.hire.agreementMatch', { customer: match.customer, label: match.label })}
