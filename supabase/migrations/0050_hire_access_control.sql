@@ -57,36 +57,42 @@ grant execute on function public.hire_customer_names_for_lines(uuid[]) to authen
 
 -- ── Lock every rental_* table to owner + allow-list ─────────────────────────
 drop policy if exists rental_customers_org_rw on public.rental_customers;
+drop policy if exists rental_customers_hire_rw on public.rental_customers;
 create policy rental_customers_hire_rw on public.rental_customers
   for all to authenticated
   using (organization_id = public.auth_org_id() and public.can_access_hire())
   with check (organization_id = public.auth_org_id() and public.can_access_hire());
 
 drop policy if exists rental_customer_documents_org_rw on public.rental_customer_documents;
+drop policy if exists rental_customer_documents_hire_rw on public.rental_customer_documents;
 create policy rental_customer_documents_hire_rw on public.rental_customer_documents
   for all to authenticated
   using (organization_id = public.auth_org_id() and public.can_access_hire())
   with check (organization_id = public.auth_org_id() and public.can_access_hire());
 
 drop policy if exists rental_agreements_org_rw on public.rental_agreements;
+drop policy if exists rental_agreements_hire_rw on public.rental_agreements;
 create policy rental_agreements_hire_rw on public.rental_agreements
   for all to authenticated
   using (organization_id = public.auth_org_id() and public.can_access_hire())
   with check (organization_id = public.auth_org_id() and public.can_access_hire());
 
 drop policy if exists rental_agreement_vehicles_org_rw on public.rental_agreement_vehicles;
+drop policy if exists rental_agreement_vehicles_hire_rw on public.rental_agreement_vehicles;
 create policy rental_agreement_vehicles_hire_rw on public.rental_agreement_vehicles
   for all to authenticated
   using (organization_id = public.auth_org_id() and public.can_access_hire())
   with check (organization_id = public.auth_org_id() and public.can_access_hire());
 
 drop policy if exists rental_swaps_org_rw on public.rental_swaps;
+drop policy if exists rental_swaps_hire_rw on public.rental_swaps;
 create policy rental_swaps_hire_rw on public.rental_swaps
   for all to authenticated
   using (organization_id = public.auth_org_id() and public.can_access_hire())
   with check (organization_id = public.auth_org_id() and public.can_access_hire());
 
 drop policy if exists rental_credits_org_rw on public.rental_credits;
+drop policy if exists rental_credits_hire_rw on public.rental_credits;
 create policy rental_credits_hire_rw on public.rental_credits
   for all to authenticated
   using (organization_id = public.auth_org_id() and public.can_access_hire())
