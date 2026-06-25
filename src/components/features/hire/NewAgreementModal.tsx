@@ -44,6 +44,7 @@ export function NewAgreementModal({
   const [durationUnit, setDurationUnit] = useState<HireDurationUnit>(src?.durationUnit || 'weeks')
   const [rateType, setRateType] = useState<HireRateType>(src?.rateType || 'weekly')
   const [rateAmount, setRateAmount] = useState(src ? String(src.rateAmount) : '')
+  const [chargeDay, setChargeDay] = useState<number | null>(src?.chargeDay ?? null)
   const [eligible, setEligible] = useState<'unknown' | 'ok' | 'blocked'>('unknown')
   const [saving, setSaving] = useState(false)
 
@@ -112,6 +113,7 @@ export function NewAgreementModal({
           durationUnit,
           rateType,
           rateAmount: amt,
+          chargeDay,
           createdBy: user?.uid || null,
           createdByName: profile?.displayName || user?.email || 'Unknown',
           actorId: user?.uid || null,
@@ -127,6 +129,7 @@ export function NewAgreementModal({
           durationUnit,
           rateType,
           rateAmount: amt,
+          chargeDay,
         })
       } else {
         await hireAgreementService.createAgreement({
@@ -139,6 +142,7 @@ export function NewAgreementModal({
           durationUnit,
           rateType,
           rateAmount: amt,
+          chargeDay,
           createdBy: user?.uid || null,
           createdByName: profile?.displayName || user?.email || 'Unknown',
         })
@@ -215,6 +219,27 @@ export function NewAgreementModal({
               <input type="number" min="0" step="0.01" value={rateAmount} onChange={(e) => setRateAmount(e.target.value)} className={inputCls} placeholder="0.00" />
             </div>
           </div>
+
+          {rateType === 'weekly' && (
+            <div>
+              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">{t('hire.chargeDay')}</label>
+              <select
+                value={chargeDay === null ? '' : String(chargeDay)}
+                onChange={(e) => setChargeDay(e.target.value === '' ? null : Number(e.target.value))}
+                className={inputCls}
+              >
+                <option value="">{t('hire.chargeDaySame')}</option>
+                <option value="1">{t('hire.dowMon')}</option>
+                <option value="2">{t('hire.dowTue')}</option>
+                <option value="3">{t('hire.dowWed')}</option>
+                <option value="4">{t('hire.dowThu')}</option>
+                <option value="5">{t('hire.dowFri')}</option>
+                <option value="6">{t('hire.dowSat')}</option>
+                <option value="0">{t('hire.dowSun')}</option>
+              </select>
+              <p className="mt-1 text-[11px] text-[#72A68E]">{t('hire.chargeDayHint')}</p>
+            </div>
+          )}
 
           {endDate && (
             <p className="text-xs text-[#72A68E]">{t('hire.endsOn')}: <span className="font-semibold text-[#012619] dark:text-white">{euDate(endDate)}</span></p>

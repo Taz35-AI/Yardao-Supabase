@@ -69,32 +69,48 @@ export function buildContractSchedule(
   // Cancelled lines that never went out don't bill; everything else can.
   const billable = lines.filter((l) => l.status !== 'cancelled' || l.actualOutAt)
 
-  const periods: SchedulePeriod[] = []
-  let cursor = start
-  let idx = 1
-  let guard = 0
-  while (cursor < end && guard < 520) {
-    guard++
-    const boundary = addDays(cursor, periodDays) // fixed grid boundary
-    const pEnd = boundary > end ? end : boundary // clip the last period
-    const pdays = prorationService.dayCount(cursor, pEnd)
-    if (pdays <= 0) break
+  // ── Build the period windows ──────────────────────────────────────────────
+  // Weekly contracts can bill on a fixed weekday (chargeDay): window 1 is a stub
+  // from start → the first charge day, then full 7-day windows align to it. The
+  // calendar term is preserved, so the last window may be a short tail stub.
+  // 4-weekly always anchors to the start (no stub).
+  const chargeDay = rateType === 'weekly' ? agreement.chargeDay ?? null : null
+  let anchor = start
+  if (chargeDay != null) {
+    const diff = (chargeDay - new Date(start + 'T00:00:00').getDay() + 7) % 7
+    anchor = diff === 0 ? start : addDays(start, diff)
+  }
+  const anchorCapped = anchor > end ? end : anchor
 
+  const windows: Array<[string, string]> = []
+  if (anchorCapped > start) windows.push([start, anchorCapped]) // front stub
+  let cur = anchor
+  let guard = 0
+  while (cur < end && guard < 520) {
+    guard++
+    const boundary = addDays(cur, periodDays)
+    const wEnd = boundary > end ? end : boundary
+    if (prorationService.dayCount(cur, wEnd) > 0) windows.push([cur, wEnd])
+    cur = boundary
+  }
+
+  const periods: SchedulePeriod[] = windows.map(([wStart, wEnd], i) => {
+    const pdays = prorationService.dayCount(wStart, wEnd)
     const vehicles: SchedulePeriodVehicle[] = []
     for (const l of billable) {
       const vStart = dayOnly(l.actualOutAt) || l.scheduledStart || start
       const vEnd = dayOnly(l.actualReturnAt) || end
-      const oStart = vStart > cursor ? vStart : cursor
-      const oEnd = vEnd < pEnd ? vEnd : pEnd
+      const oStart = vStart > wStart ? vStart : wStart
+      const oEnd = vEnd < wEnd ? vEnd : wEnd
       const days = prorationService.dayCount(oStart, oEnd)
       if (days <= 0) continue
       const amount = prorationService.prorate(rateType, rateAmount, oStart, oEnd)
 
       let swapNote: string | undefined
       const ret = dayOnly(l.actualReturnAt)
-      if (l.swappedToLineId && ret && ret > cursor && ret <= pEnd) {
+      if (l.swappedToLineId && ret && ret > wStart && ret <= wEnd) {
         swapNote = `→ ${regByLine.get(l.swappedToLineId) || ''}`.trim()
-      } else if (l.swappedFromLineId && vStart >= cursor && vStart < pEnd) {
+      } else if (l.swappedFromLineId && vStart >= wStart && vStart < wEnd) {
         swapNote = `← ${regByLine.get(l.swappedFromLineId) || ''}`.trim()
       }
 
@@ -107,12 +123,9 @@ export function buildContractSchedule(
         swapNote,
       })
     }
-
     const total = round2(vehicles.reduce((s, v) => s + v.amount, 0))
-    periods.push({ index: idx, start: cursor, end: pEnd, days: pdays, vehicles, total })
-    cursor = boundary // advance by a FULL period (grid stays fixed)
-    idx++
-  }
+    return { index: i + 1, start: wStart, end: wEnd, days: pdays, vehicles, total }
+  })
 
   const grandTotal = round2(periods.reduce((s, p) => s + p.total, 0))
   return { rateType, rateAmount, periodDays, start, end, periods, grandTotal }

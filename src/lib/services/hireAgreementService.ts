@@ -137,6 +137,7 @@ export const hireAgreementService = {
     durationUnit: HireDurationUnit
     rateType: HireRateType
     rateAmount: number
+    chargeDay?: number | null
     currency?: string
     notes?: string | null
     createdBy?: string | null
@@ -158,6 +159,7 @@ export const hireAgreementService = {
         end_date: endDate,
         rate_type: input.rateType,
         rate_amount: input.rateAmount,
+        charge_day: input.rateType === 'weekly' ? input.chargeDay ?? null : null,
         currency: input.currency || 'GBP',
         status: 'draft',
         notes: input.notes ?? null,
@@ -195,6 +197,7 @@ export const hireAgreementService = {
     durationUnit: HireDurationUnit
     rateType: HireRateType
     rateAmount: number
+    chargeDay?: number | null
     createdBy?: string | null
     createdByName?: string | null
     actorId?: string | null
@@ -211,6 +214,7 @@ export const hireAgreementService = {
       durationUnit: input.durationUnit,
       rateType: input.rateType,
       rateAmount: input.rateAmount,
+      chargeDay: input.chargeDay ?? null,
       createdBy: input.createdBy ?? null,
       createdByName: input.createdByName ?? null,
     })
@@ -276,6 +280,7 @@ export const hireAgreementService = {
     durationUnit: HireDurationUnit
     rateType: HireRateType
     rateAmount: number
+    chargeDay?: number | null
   }): Promise<void> {
     const endDate = prorationService.computeEndDate(input.startDate, input.durationValue, input.durationUnit)
     const { error } = await supabase
@@ -288,6 +293,7 @@ export const hireAgreementService = {
         end_date: endDate,
         rate_type: input.rateType,
         rate_amount: input.rateAmount,
+        charge_day: input.rateType === 'weekly' ? input.chargeDay ?? null : null,
         updated_at: nowIso(),
       })
       .eq('organization_id', input.organizationId)

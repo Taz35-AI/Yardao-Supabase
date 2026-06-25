@@ -58,6 +58,8 @@ export interface HireAgreement {
   endDate?: string | null // computed
   rateType: HireRateType
   rateAmount: number
+  /** Weekly only: weekday to bill on (0=Sun…6=Sat). null = same as start day. */
+  chargeDay?: number | null
   currency: string
   status: HireAgreementStatus
   notes?: string | null

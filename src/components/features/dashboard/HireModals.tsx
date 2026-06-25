@@ -207,10 +207,10 @@ export function SetOutOnHireModal({
                 </div>
               </div>
               {match.future && (
-                <div className="mt-2 flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-2.5">
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-                  <p className="text-[11px] text-amber-800 dark:text-amber-200 leading-relaxed">
-                    {t('dashboard.hire.agreementFutureWarn', { date: euFromYmd(match.startDate) })}
+                <div className="mt-2 flex items-start gap-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-800 p-2.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-red-700 dark:text-red-300 leading-relaxed">
+                    {t('dashboard.hire.agreementFutureBlock', { date: euFromYmd(match.startDate) })}
                   </p>
                 </div>
               )}
@@ -237,10 +237,10 @@ export function SetOutOnHireModal({
             </Button>
             <Button
               type="submit"
-              disabled={loading}
-              className="flex-1 bg-[#025940] hover:bg-[#012619] text-white font-bold py-2.5 shadow-sm hover:shadow-md transition-all border-0"
+              disabled={loading || !!match?.future}
+              className="flex-1 bg-[#025940] hover:bg-[#012619] text-white font-bold py-2.5 shadow-sm hover:shadow-md transition-all border-0 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? t('dashboard.hire.settingOut') : t('dashboard.hire.setOutBtn')}
+              {loading ? t('dashboard.hire.settingOut') : match?.future ? t('dashboard.hire.setOutBlocked') : t('dashboard.hire.setOutBtn')}
             </Button>
           </div>
         </form>

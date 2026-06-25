@@ -141,6 +141,34 @@ function AgreementCard({
       toast.error(t('hire.actionFail'))
       return
     }
+    // HARD BLOCK: can't set a vehicle out before the contract's start date — those
+    // days would fall outside the billing schedule. Offer to shift the term to
+    // today, otherwise stop (they can make a separate contract).
+    const todayYmd = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` })()
+    if (agreement.startDate && agreement.startDate > todayYmd) {
+      const amend = window.confirm(
+        t('hire.setOutBeforeStart', { date: euDate(agreement.startDate) }),
+      )
+      if (!amend) return
+      try {
+        await hireAgreementService.updateAgreementDetails({
+          organizationId,
+          agreementId: agreement.id,
+          reference: agreement.reference ?? null,
+          startDate: todayYmd,
+          durationValue: agreement.durationValue,
+          durationUnit: agreement.durationUnit,
+          rateType: agreement.rateType,
+          rateAmount: agreement.rateAmount,
+          chargeDay: agreement.chargeDay ?? null,
+        })
+        toast.success(t('hire.startAmended', { date: euDate(todayYmd) }))
+        onChange()
+      } catch {
+        toast.error(t('hire.actionFail'))
+        return
+      }
+    }
     try {
       // 1) Already in the yard? Use that row directly.
       const { data } = await supabase
