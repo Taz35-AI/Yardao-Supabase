@@ -185,7 +185,30 @@ function AgreementCard({
           return
         }
         if (vehicle.hireStatus === 'Out on Hire') {
-          toast.error(t('hire.alreadyOut', { reg: l.registration || '' }))
+          // Already physically out. If it's committed to a DIFFERENT contract
+          // line, that's a clash. Otherwise just activate + link THIS line — no
+          // need to "set out" a vehicle that's already out.
+          if (vehicle.currentAgreementLineId && vehicle.currentAgreementLineId !== l.id) {
+            toast.error(t('hire.alreadyOut', { reg: l.registration || '' }))
+            return
+          }
+          if (l.status === 'active') {
+            toast.success(t('hire.alreadyOnThisContract', { reg: l.registration || '' }))
+            loadLines()
+            return
+          }
+          const a = await actor()
+          await hireAgreementService.setLineOnHire({
+            organizationId,
+            lineId: l.id,
+            registration: l.registration,
+            checkedInVehicleId: vehicle.id,
+            actorId: a.id,
+            actorName: a.name,
+          })
+          toast.success(t('hire.onHireDone'))
+          loadLines()
+          onChange()
           return
         }
         setPendingCheckIn(null)
