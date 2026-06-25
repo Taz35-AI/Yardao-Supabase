@@ -9,6 +9,7 @@ import { logger } from '@/lib/logger'
 import { prorationService } from '@/lib/services/prorationService'
 import { activityLogService } from '@/lib/services/activityLogService'
 import { hireCreditService } from '@/lib/services/hireCreditService'
+import { VehicleHireService } from '@/lib/services/vehicleHireService'
 import type {
   HireAgreement,
   HireAgreementVehicle,
@@ -217,10 +218,16 @@ export const hireAgreementService = {
   },
 
   /**
-   * Delete a whole contract. Lines, swaps and credits cascade via FK; we first
-   * clear any yard links that point at this contract's lines (plain column, no FK).
+   * Delete a whole contract. Lines, swaps and credits cascade via FK. Any vehicle
+   * currently OUT ON HIRE on this contract is RETURNED to the yard (proper
+   * check-in: hire_status → In Yard, original status restored), then every yard
+   * link to this contract's lines is cleared (plain column, no FK).
    */
-  async deleteAgreement(organizationId: string, agreementId: string): Promise<void> {
+  async deleteAgreement(
+    organizationId: string,
+    agreementId: string,
+    opts?: { actorId?: string | null; actorName?: string | null },
+  ): Promise<void> {
     try {
       const { data: lines } = await supabase
         .from(LINES)
@@ -229,6 +236,22 @@ export const hireAgreementService = {
         .eq('agreement_id', agreementId)
       const ids = (lines ?? []).map((l) => l.id)
       if (ids.length) {
+        // Return any on-hire vehicles to the yard via the normal check-in path.
+        const { data: rows } = await supabase
+          .from('checked_in_vehicles')
+          .select('id, hire_status')
+          .eq('organization_id', organizationId)
+          .in('current_agreement_line_id', ids)
+        for (const r of rows ?? []) {
+          if (r.hire_status === 'Out on Hire') {
+            try {
+              await VehicleHireService.quickCheckIn(r.id, opts?.actorId || '', opts?.actorName || 'System')
+            } catch (err) {
+              logger.error('deleteAgreement: returning vehicle to yard failed (non-fatal):', err)
+            }
+          }
+        }
+        // Clear the (now stale) contract link on every linked yard row.
         await supabase
           .from('checked_in_vehicles')
           .update({ current_agreement_line_id: null })
@@ -236,7 +259,7 @@ export const hireAgreementService = {
           .in('current_agreement_line_id', ids)
       }
     } catch (err) {
-      logger.error('deleteAgreement: clearing yard links failed (non-fatal):', err)
+      logger.error('deleteAgreement: yard cleanup failed (non-fatal):', err)
     }
     const { error } = await supabase
       .from(AGREEMENTS)
@@ -246,9 +269,30 @@ export const hireAgreementService = {
     if (error) throw error
   },
 
-  /** Remove a single vehicle line from a contract (clears its yard link first). */
-  async removeLine(organizationId: string, lineId: string): Promise<void> {
+  /**
+   * Remove a single vehicle line from a contract. If that vehicle is currently
+   * out on hire it is RETURNED to the yard first, then its yard link is cleared.
+   */
+  async removeLine(
+    organizationId: string,
+    lineId: string,
+    opts?: { actorId?: string | null; actorName?: string | null },
+  ): Promise<void> {
     try {
+      const { data: rows } = await supabase
+        .from('checked_in_vehicles')
+        .select('id, hire_status')
+        .eq('organization_id', organizationId)
+        .eq('current_agreement_line_id', lineId)
+      for (const r of rows ?? []) {
+        if (r.hire_status === 'Out on Hire') {
+          try {
+            await VehicleHireService.quickCheckIn(r.id, opts?.actorId || '', opts?.actorName || 'System')
+          } catch (err) {
+            logger.error('removeLine: returning vehicle to yard failed (non-fatal):', err)
+          }
+        }
+      }
       await supabase
         .from('checked_in_vehicles')
         .update({ current_agreement_line_id: null })

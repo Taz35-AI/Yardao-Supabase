@@ -362,7 +362,8 @@ function AgreementCard({
     if (!organizationId) return
     if (!window.confirm(t('hire.removeLineConfirm', { reg: l.registration || '' }))) return
     try {
-      await hireAgreementService.removeLine(organizationId, l.id)
+      const a = await actor()
+      await hireAgreementService.removeLine(organizationId, l.id, { actorId: a.id, actorName: a.name })
       toast.success(t('hire.removeLineDone', { reg: l.registration || '' }))
       loadLines()
       onChange()
@@ -379,7 +380,8 @@ function AgreementCard({
       : t('hire.deleteAgreementConfirm', { customer: agreement.customerName || '' })
     if (!window.confirm(msg)) return
     try {
-      await hireAgreementService.deleteAgreement(organizationId, agreement.id)
+      const a = await actor()
+      await hireAgreementService.deleteAgreement(organizationId, agreement.id, { actorId: a.id, actorName: a.name })
       toast.success(t('hire.deleteAgreementDone'))
       onChange()
     } catch {
