@@ -1,13 +1,11 @@
 // src/components/features/hire/HireHub.tsx
-// Premium hire workspace: KPI strip + segmented tabs (renamable label).
+// Premium hire workspace: segmented tabs (renamable label). KPIs live in Overview.
 'use client'
 
-import React, { useEffect, useState } from 'react'
-import { Users, CalendarRange, Coins, Settings, KeyRound, AlertTriangle, Clock, LayoutDashboard } from 'lucide-react'
+import React, { useState } from 'react'
+import { Users, CalendarRange, Coins, Settings, LayoutDashboard } from 'lucide-react'
 import { ContractIcon } from './ContractIcon'
 import { useHire } from '@/contexts/HireContext'
-import { hireAgreementService } from '@/lib/services/hireAgreementService'
-import { hireCustomerService } from '@/lib/services/hireCustomerService'
 import { useT } from '@/lib/i18n'
 import { HireOverview } from './HireOverview'
 import { HireCustomers } from './HireCustomers'
@@ -15,40 +13,14 @@ import { HireAgreements } from './HireAgreements'
 import { HireGantt } from './HireGantt'
 import { HireCredits } from './HireCredits'
 import { HireSettingsModal } from './HireSettingsModal'
-import { StatCard } from './hireUi'
 
 type Tab = 'overview' | 'customers' | 'agreements' | 'schedule' | 'credits'
 
-const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-
 export function HireHub() {
   const t = useT()
-  const { settings, organizationId, refreshKey } = useHire()
+  const { settings } = useHire()
   const [tab, setTab] = useState<Tab>('overview')
   const [showSettings, setShowSettings] = useState(false)
-  const [stats, setStats] = useState({ onHire: 0, overdue: 0, reserved: 0, customers: 0 })
-
-  useEffect(() => {
-    if (!organizationId) return
-    let cancelled = false
-    ;(async () => {
-      const [lines, customers] = await Promise.all([
-        hireAgreementService.getActiveLines(organizationId),
-        hireCustomerService.getCustomers(organizationId),
-      ])
-      if (cancelled) return
-      const today = ymd(new Date())
-      setStats({
-        onHire: lines.filter((l) => l.status === 'active').length,
-        reserved: lines.filter((l) => l.status === 'scheduled').length,
-        overdue: lines.filter((l) => l.status === 'active' && l.scheduledEnd && l.scheduledEnd < today).length,
-        customers: customers.length,
-      })
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [organizationId, refreshKey])
 
   const tabs: { key: Tab; icon: React.ReactNode; label: string }[] = [
     { key: 'overview', icon: <LayoutDashboard className="w-4 h-4" />, label: t('hire.tabOverview') },
@@ -60,14 +32,6 @@ export function HireHub() {
 
   return (
     <div className="space-y-4">
-      {/* KPI strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
-        <StatCard tone="forest" icon={<KeyRound className="w-4 h-4 sm:w-5 sm:h-5" />} label={t('hire.kpiOnHire')} value={stats.onHire} />
-        <StatCard tone="red" icon={<AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />} label={t('hire.kpiOverdue')} value={stats.overdue} />
-        <StatCard tone="sky" icon={<Clock className="w-4 h-4 sm:w-5 sm:h-5" />} label={t('hire.kpiReserved')} value={stats.reserved} />
-        <StatCard tone="lime" icon={<Users className="w-4 h-4 sm:w-5 sm:h-5" />} label={t('hire.tabCustomers')} value={stats.customers} />
-      </div>
-
       {/* Tabs + settings */}
       <div className="flex items-center gap-2">
         <div className="flex gap-1 bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-700 rounded-xl p-1 shadow-sm overflow-x-auto">
