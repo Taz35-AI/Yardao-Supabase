@@ -4,15 +4,17 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { X, FileSpreadsheet, FileText, User, Loader2, Wallet, KeyRound, CalendarRange, History, ClipboardList } from 'lucide-react'
+import { X, FileSpreadsheet, FileText, User, Loader2, Wallet, KeyRound, CalendarRange, History, ClipboardList, Contact, Pencil, Building2, Landmark, Phone, Mail, Globe, MapPin, Hash } from 'lucide-react'
 import { toast } from 'sonner'
 import { hireReportService, type RentPlan } from '@/lib/services/hireReportService'
 import { hireAgreementService } from '@/lib/services/hireAgreementService'
+import { hireCustomerService } from '@/lib/services/hireCustomerService'
 import { activityLogService, type ActivityRecord } from '@/lib/services/activityLogService'
 import { useT } from '@/lib/i18n'
 import { euDate, rateLabel } from './hireFormat'
 import { StatCard, EmptyState, Pill } from './hireUi'
-import type { HireAgreement, HireAgreementVehicle } from '@/types/hire'
+import { AddCustomerModal } from './AddCustomerModal'
+import type { HireAgreement, HireAgreementVehicle, RentalCustomer } from '@/types/hire'
 
 type StatementGroup = { agreement: HireAgreement; lines: HireAgreementVehicle[] }
 
@@ -42,9 +44,19 @@ export function CustomerHireDashboard({
   const t = useT()
   const [plan, setPlan] = useState<RentPlan | null>(null)
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<'rentals' | 'statement' | 'timeline'>('rentals')
+  const [view, setView] = useState<'rentals' | 'statement' | 'timeline' | 'details'>('rentals')
   const [timeline, setTimeline] = useState<ActivityRecord[] | null>(null)
   const [statement, setStatement] = useState<StatementGroup[] | null>(null)
+  const [customer, setCustomer] = useState<RentalCustomer | null>(null)
+  const [showEdit, setShowEdit] = useState(false)
+
+  // Full customer record (for the Details tab + edit). Reloaded after an edit.
+  const loadCustomer = React.useCallback(async () => {
+    if (!organizationId) return
+    const c = await hireCustomerService.getCustomer(customerId)
+    setCustomer(c)
+  }, [organizationId, customerId])
+  useEffect(() => { loadCustomer() }, [loadCustomer])
 
   useEffect(() => {
     if (!organizationId) return
@@ -142,6 +154,7 @@ export function CustomerHireDashboard({
               <button onClick={() => setView('rentals')} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${view === 'rentals' ? 'bg-gradient-to-br from-[#025940] to-[#012619] text-white shadow-sm' : 'text-[#72A68E] hover:text-[#025940]'}`}><KeyRound className="w-3.5 h-3.5" />{t('hire.tabRentals')}</button>
               <button onClick={() => setView('statement')} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${view === 'statement' ? 'bg-gradient-to-br from-[#025940] to-[#012619] text-white shadow-sm' : 'text-[#72A68E] hover:text-[#025940]'}`}><ClipboardList className="w-3.5 h-3.5" />{t('hire.tabStatement')}</button>
               <button onClick={() => setView('timeline')} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${view === 'timeline' ? 'bg-gradient-to-br from-[#025940] to-[#012619] text-white shadow-sm' : 'text-[#72A68E] hover:text-[#025940]'}`}><History className="w-3.5 h-3.5" />{t('hire.tabTimeline')}</button>
+              <button onClick={() => setView('details')} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${view === 'details' ? 'bg-gradient-to-br from-[#025940] to-[#012619] text-white shadow-sm' : 'text-[#72A68E] hover:text-[#025940]'}`}><Contact className="w-3.5 h-3.5" />{t('hire.tabDetails')}</button>
             </div>
             {view === 'rentals' && (
               <div className="flex gap-1.5">
@@ -176,6 +189,8 @@ export function CustomerHireDashboard({
             )
           ) : view === 'statement' ? (
             <StatementView groups={statement} t={t} />
+          ) : view === 'details' ? (
+            <DetailsView customer={customer} isBusiness={isBusiness} onEdit={() => setShowEdit(true)} t={t} />
           ) : loading ? (
             <div className="py-10 text-center text-sm text-[#72A68E]"><Loader2 className="w-5 h-5 animate-spin inline" /></div>
           ) : !plan || plan.rows.length === 0 ? (
@@ -254,6 +269,109 @@ export function CustomerHireDashboard({
             </>
           )}
         </div>
+      </div>
+
+      {showEdit && customer && (
+        <AddCustomerModal
+          organizationId={organizationId}
+          editing={customer}
+          onClose={() => setShowEdit(false)}
+          onSaved={() => {
+            setShowEdit(false)
+            loadCustomer()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Details: full customer record (company / contact / billing / bank) ────────
+function DetailsView({
+  customer,
+  isBusiness,
+  onEdit,
+  t,
+}: {
+  customer: RentalCustomer | null
+  isBusiness: boolean
+  onEdit: () => void
+  t: (k: string, v?: Record<string, string | number>) => string
+}) {
+  if (!customer) {
+    return <div className="py-10 text-center text-sm text-[#72A68E]"><Loader2 className="w-5 h-5 animate-spin inline" /></div>
+  }
+  const c = customer
+  const any = (...vals: (string | null | undefined)[]) => vals.some((v) => v && String(v).trim())
+
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <button onClick={onEdit} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-br from-[#025940] to-[#012619] shadow-sm hover:shadow-md active:scale-[0.98] transition-all">
+          <Pencil className="w-3.5 h-3.5" /> {t('hire.editCustomer')}
+        </button>
+      </div>
+
+      {isBusiness && any(c.companyName, c.companyNumber, c.vatNumber, c.website, c.address) && (
+        <DetailSection icon={<Building2 className="w-3.5 h-3.5" />} title={t('hire.secCompany')}>
+          <DetailRow icon={<Building2 className="w-3.5 h-3.5" />} label={t('hire.custCompany')} value={c.companyName} />
+          <DetailRow icon={<Hash className="w-3.5 h-3.5" />} label={t('hire.custCompanyNo')} value={c.companyNumber} />
+          <DetailRow icon={<Hash className="w-3.5 h-3.5" />} label={t('hire.custVat')} value={c.vatNumber} />
+          <DetailRow icon={<Globe className="w-3.5 h-3.5" />} label={t('hire.custWebsite')} value={c.website} />
+          <DetailRow icon={<MapPin className="w-3.5 h-3.5" />} label={t('hire.custAddress')} value={c.address} />
+        </DetailSection>
+      )}
+
+      <DetailSection icon={<User className="w-3.5 h-3.5" />} title={t('hire.secContact')}>
+        <DetailRow icon={<User className="w-3.5 h-3.5" />} label={t('hire.custContact')} value={c.contactName} />
+        <DetailRow icon={<Phone className="w-3.5 h-3.5" />} label={t('hire.custPhone')} value={c.phone} />
+        <DetailRow icon={<Mail className="w-3.5 h-3.5" />} label={t('hire.custEmail')} value={c.email} />
+        {!isBusiness && <DetailRow icon={<MapPin className="w-3.5 h-3.5" />} label={t('hire.custAddress')} value={c.address} />}
+      </DetailSection>
+
+      {any(c.accountNo, c.accountManager, c.billingEmail, c.billingAddress) && (
+        <DetailSection icon={<Wallet className="w-3.5 h-3.5" />} title={t('hire.secBilling')}>
+          <DetailRow icon={<Hash className="w-3.5 h-3.5" />} label={t('hire.custAccountNo')} value={c.accountNo} />
+          <DetailRow icon={<User className="w-3.5 h-3.5" />} label={t('hire.custAccountManager')} value={c.accountManager} />
+          <DetailRow icon={<Mail className="w-3.5 h-3.5" />} label={t('hire.custBillingEmail')} value={c.billingEmail} />
+          <DetailRow icon={<MapPin className="w-3.5 h-3.5" />} label={t('hire.custBillingAddress')} value={c.billingAddress} />
+        </DetailSection>
+      )}
+
+      {any(c.bankAccountName, c.bankSortCode, c.bankAccountNumber) && (
+        <DetailSection icon={<Landmark className="w-3.5 h-3.5" />} title={t('hire.secBank')}>
+          <DetailRow icon={<User className="w-3.5 h-3.5" />} label={t('hire.custBankName')} value={c.bankAccountName} />
+          <DetailRow icon={<Hash className="w-3.5 h-3.5" />} label={t('hire.custSortCode')} value={c.bankSortCode} />
+          <DetailRow icon={<Hash className="w-3.5 h-3.5" />} label={t('hire.custAccountNumber')} value={c.bankAccountNumber} />
+        </DetailSection>
+      )}
+
+      {any(c.notes) && (
+        <DetailSection icon={<ClipboardList className="w-3.5 h-3.5" />} title={t('hire.custNotes')}>
+          <p className="text-sm text-[#012619] dark:text-gray-200 whitespace-pre-wrap leading-snug">{c.notes}</p>
+        </DetailSection>
+      )}
+    </div>
+  )
+}
+
+function DetailSection({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 p-3.5 shadow-sm">
+      <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.06em] text-[#025940] dark:text-[#72A68E] mb-2.5">{icon}{title}</p>
+      <div className="space-y-2">{children}</div>
+    </div>
+  )
+}
+
+function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: string; value?: string | null }) {
+  if (!value || !String(value).trim()) return null
+  return (
+    <div className="flex items-start gap-2.5">
+      <span className="text-[#72A68E] mt-0.5 flex-shrink-0">{icon}</span>
+      <div className="min-w-0">
+        <p className="text-[10px] uppercase tracking-[0.06em] text-[#72A68E] font-semibold">{label}</p>
+        <p className="text-sm text-[#012619] dark:text-gray-200 break-words leading-snug">{value}</p>
       </div>
     </div>
   )

@@ -54,6 +54,13 @@ export const hireCustomerService = {
     billingEmail?: string | null
     billingAddress?: string | null
     accountManager?: string | null
+    address?: string | null
+    companyNumber?: string | null
+    vatNumber?: string | null
+    website?: string | null
+    bankAccountName?: string | null
+    bankSortCode?: string | null
+    bankAccountNumber?: string | null
     notes?: string | null
     createdBy?: string | null
     createdByName?: string | null
@@ -72,6 +79,13 @@ export const hireCustomerService = {
         billing_email: input.billingEmail ?? null,
         billing_address: input.billingAddress ?? null,
         account_manager: input.accountManager ?? null,
+        address: input.address ?? null,
+        company_number: input.companyNumber ?? null,
+        vat_number: input.vatNumber ?? null,
+        website: input.website ?? null,
+        bank_account_name: input.bankAccountName ?? null,
+        bank_sort_code: input.bankSortCode ?? null,
+        bank_account_number: input.bankAccountNumber ?? null,
         notes: input.notes ?? null,
         created_by: input.createdBy ?? null,
         created_by_name: input.createdByName ?? null,
