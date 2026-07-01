@@ -24,6 +24,14 @@ export interface RentalCustomer {
   billingEmail?: string | null
   billingAddress?: string | null
   accountManager?: string | null
+  // Richer B2B record (migration 0053). All optional.
+  address?: string | null
+  companyNumber?: string | null
+  vatNumber?: string | null
+  website?: string | null
+  bankAccountName?: string | null
+  bankSortCode?: string | null
+  bankAccountNumber?: string | null
   notes?: string | null
   isActive: boolean
   createdAt: string

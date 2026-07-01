@@ -34,6 +34,9 @@ export function HireAgreements() {
   const [agreements, setAgreements] = useState<HireAgreement[]>([])
   const [loading, setLoading] = useState(true)
   const [showNew, setShowNew] = useState(false)
+  const [q, setQ] = useState('')
+  // agreementId → lowercased "reg make model reg make model …" for search.
+  const [regIndex, setRegIndex] = useState<Record<string, string>>({})
 
   useEffect(() => {
     if (!organizationId) return
@@ -45,15 +48,59 @@ export function HireAgreements() {
         setAgreements(rows)
         setLoading(false)
       }
+      // Lightweight reg index so the search box can match by registration too.
+      try {
+        const { data } = await supabase
+          .from('rental_agreement_vehicles')
+          .select('agreement_id, registration, make, model')
+          .eq('organization_id', organizationId)
+        const idx: Record<string, string> = {}
+        for (const l of data ?? []) {
+          const bits = [l.registration, l.make, l.model].filter(Boolean).join(' ').toLowerCase()
+          idx[l.agreement_id] = idx[l.agreement_id] ? `${idx[l.agreement_id]} ${bits}` : bits
+        }
+        if (!cancelled) setRegIndex(idx)
+      } catch {
+        if (!cancelled) setRegIndex({})
+      }
     })()
     return () => {
       cancelled = true
     }
   }, [organizationId, refreshKey])
 
+  const term = q.trim().toLowerCase()
+  const filtered = useMemo(() => {
+    if (!term) return agreements
+    return agreements.filter((a) => {
+      const hay = [
+        a.customerName,
+        a.reference,
+        a.isRolling ? 'rolling' : '',
+        a.branchName,
+        regIndex[a.id] || '',
+      ].filter(Boolean).join(' ').toLowerCase()
+      return hay.includes(term)
+    })
+  }, [agreements, regIndex, term])
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-end">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#72A68E]" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={t('hire.searchAgreements')}
+            className="w-full pl-10 pr-9 py-2.5 rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 text-[#012619] dark:text-white text-sm placeholder:text-[#9db0a6] focus:ring-2 focus:ring-[#025940]/25 focus:border-[#025940] outline-none transition"
+          />
+          {q && (
+            <button onClick={() => setQ('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-[#72A68E] hover:text-[#025940]">
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
         <PrimaryBtn onClick={() => setShowNew(true)}>
           <Plus className="w-4 h-4" />
           <span>{t('hire.newAgreement', { label })}</span>
@@ -64,9 +111,11 @@ export function HireAgreements() {
         <div className="py-12 text-center text-sm text-[#72A68E]">…</div>
       ) : agreements.length === 0 ? (
         <EmptyState icon={<ContractIcon className="w-10 h-10" />} title={t('hire.emptyAgreements')} hint={t('hire.emptyAgreementsHint')} />
+      ) : filtered.length === 0 ? (
+        <EmptyState icon={<Search className="w-10 h-10" />} title={t('hire.noSearchMatch', { q })} />
       ) : (
         <div className="space-y-2">
-          {agreements.map((a) => (
+          {filtered.map((a) => (
             <AgreementCard key={a.id} agreement={a} organizationId={organizationId} onChange={refresh} />
           ))}
         </div>

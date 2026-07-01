@@ -1,9 +1,12 @@
 // src/components/features/hire/AddCustomerModal.tsx
-// Create a hire customer + (optional but recommended) fleet insurance doc.
+// Create / edit a B2B HIRE customer (public.rental_customers only — garage
+// customers are a separate population and are never touched here). Captures the
+// full record: company / registration / contact / billing / bank, plus (on
+// create) an optional fleet-insurance document that gates hiring.
 'use client'
 
 import React, { useState } from 'react'
-import { X, Loader2, ShieldCheck } from 'lucide-react'
+import { X, Loader2, ShieldCheck, Building2, User, Wallet, Landmark } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
@@ -29,15 +32,28 @@ export function AddCustomerModal({
   const [name, setName] = useState(editing?.name || '')
   const [isBusiness, setIsBusiness] = useState(editing ? editing.isBusiness : true)
   const [company, setCompany] = useState(editing?.companyName || '')
+  const [companyNumber, setCompanyNumber] = useState(editing?.companyNumber || '')
+  const [vatNumber, setVatNumber] = useState(editing?.vatNumber || '')
+  const [website, setWebsite] = useState(editing?.website || '')
+  const [address, setAddress] = useState(editing?.address || '')
   const [contact, setContact] = useState(editing?.contactName || '')
   const [phone, setPhone] = useState(editing?.phone || '')
   const [email, setEmail] = useState(editing?.email || '')
+  const [accountNo, setAccountNo] = useState(editing?.accountNo || '')
+  const [accountManager, setAccountManager] = useState(editing?.accountManager || '')
+  const [billingEmail, setBillingEmail] = useState(editing?.billingEmail || '')
+  const [billingAddress, setBillingAddress] = useState(editing?.billingAddress || '')
+  const [bankAccountName, setBankAccountName] = useState(editing?.bankAccountName || '')
+  const [bankSortCode, setBankSortCode] = useState(editing?.bankSortCode || '')
+  const [bankAccountNumber, setBankAccountNumber] = useState(editing?.bankAccountNumber || '')
+  const [notes, setNotes] = useState(editing?.notes || '')
   const [insRef, setInsRef] = useState('')
   const [insExpiry, setInsExpiry] = useState('')
   const [saving, setSaving] = useState(false)
 
   const inputCls =
     'w-full px-3 py-2.5 rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 text-[#012619] dark:text-white text-sm placeholder:text-[#9db0a6] focus:ring-2 focus:ring-[#025940]/25 focus:border-[#025940] outline-none transition'
+  const nz = (s: string) => (s.trim() ? s.trim() : null)
 
   const save = async () => {
     if (!organizationId || !name.trim()) {
@@ -49,15 +65,27 @@ export function AddCustomerModal({
       const profile = user?.uid ? await userProfileService.getProfile(user.uid) : null
       const actorName = profile?.displayName || user?.email || 'Unknown'
 
-      // Edit mode: update the existing customer's core fields and finish.
+      // Edit mode: update the existing customer's fields and finish.
       if (isEdit && editing) {
         await hireCustomerService.updateCustomer(editing.id, {
           name: name.trim(),
           is_business: isBusiness,
-          company_name: isBusiness ? company.trim() || null : null,
-          contact_name: contact.trim() || null,
-          phone: phone.trim() || null,
-          email: email.trim() || null,
+          company_name: isBusiness ? nz(company) : null,
+          company_number: isBusiness ? nz(companyNumber) : null,
+          vat_number: nz(vatNumber),
+          website: nz(website),
+          address: nz(address),
+          contact_name: nz(contact),
+          phone: nz(phone),
+          email: nz(email),
+          account_no: nz(accountNo),
+          account_manager: nz(accountManager),
+          billing_email: nz(billingEmail),
+          billing_address: nz(billingAddress),
+          bank_account_name: nz(bankAccountName),
+          bank_sort_code: nz(bankSortCode),
+          bank_account_number: nz(bankAccountNumber),
+          notes: nz(notes),
         })
         toast.success(t('hire.customerSaved'))
         onSaved()
@@ -68,10 +96,22 @@ export function AddCustomerModal({
         organizationId,
         name: name.trim(),
         isBusiness,
-        companyName: isBusiness ? company.trim() || null : null,
-        contactName: contact.trim() || null,
-        phone: phone.trim() || null,
-        email: email.trim() || null,
+        companyName: isBusiness ? nz(company) : null,
+        companyNumber: isBusiness ? nz(companyNumber) : null,
+        vatNumber: nz(vatNumber),
+        website: nz(website),
+        address: nz(address),
+        contactName: nz(contact),
+        phone: nz(phone),
+        email: nz(email),
+        accountNo: nz(accountNo),
+        accountManager: nz(accountManager),
+        billingEmail: nz(billingEmail),
+        billingAddress: nz(billingAddress),
+        bankAccountName: nz(bankAccountName),
+        bankSortCode: nz(bankSortCode),
+        bankAccountNumber: nz(bankAccountNumber),
+        notes: nz(notes),
         createdBy: user?.uid || null,
         createdByName: actorName,
       })
@@ -99,12 +139,12 @@ export function AddCustomerModal({
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
       <div className="relative bg-white dark:bg-gray-900 w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl border border-[#025940]/20 max-h-[92vh] overflow-y-auto">
-        <div className="sticky top-0 bg-gradient-to-br from-[#012619] to-[#025940] px-4 py-3 flex items-center justify-between">
+        <div className="sticky top-0 z-10 bg-gradient-to-br from-[#012619] to-[#025940] px-4 py-3 flex items-center justify-between">
           <h2 className="text-base font-bold text-white">{isEdit ? t('hire.editCustomer') : t('hire.newCustomer')}</h2>
           <button onClick={onClose} className="p-1.5 hover:bg-white/15 rounded-lg"><X className="w-4 h-4 text-white" /></button>
         </div>
 
-        <div className="p-4 space-y-3">
+        <div className="p-4 space-y-4">
           <Field label={t('hire.custName')}>
             <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
           </Field>
@@ -112,16 +152,52 @@ export function AddCustomerModal({
             <input type="checkbox" checked={isBusiness} onChange={(e) => setIsBusiness(e.target.checked)} className="w-4 h-4 accent-[#025940]" />
             {t('hire.custBusiness')}
           </label>
+
+          {/* Company */}
           {isBusiness && (
-            <Field label={t('hire.custCompany')}>
-              <input value={company} onChange={(e) => setCompany(e.target.value)} className={inputCls} />
-            </Field>
+            <Section icon={<Building2 className="w-3.5 h-3.5" />} title={t('hire.secCompany')}>
+              <Field label={t('hire.custCompany')}><input value={company} onChange={(e) => setCompany(e.target.value)} className={inputCls} /></Field>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label={t('hire.custCompanyNo')}><input value={companyNumber} onChange={(e) => setCompanyNumber(e.target.value)} className={inputCls} /></Field>
+                <Field label={t('hire.custVat')}><input value={vatNumber} onChange={(e) => setVatNumber(e.target.value)} placeholder={t('hire.optional')} className={inputCls} /></Field>
+              </div>
+              <Field label={t('hire.custWebsite')}><input value={website} onChange={(e) => setWebsite(e.target.value)} className={inputCls} /></Field>
+              <Field label={t('hire.custAddress')}><textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={2} className={inputCls} /></Field>
+            </Section>
           )}
-          <div className="grid grid-cols-2 gap-2">
-            <Field label={t('hire.custContact')}><input value={contact} onChange={(e) => setContact(e.target.value)} className={inputCls} /></Field>
-            <Field label={t('hire.custPhone')}><input value={phone} onChange={(e) => setPhone(e.target.value)} className={inputCls} /></Field>
-          </div>
-          <Field label={t('hire.custEmail')}><input value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} /></Field>
+
+          {/* Contact */}
+          <Section icon={<User className="w-3.5 h-3.5" />} title={t('hire.secContact')}>
+            <div className="grid grid-cols-2 gap-2">
+              <Field label={t('hire.custContact')}><input value={contact} onChange={(e) => setContact(e.target.value)} className={inputCls} /></Field>
+              <Field label={t('hire.custPhone')}><input value={phone} onChange={(e) => setPhone(e.target.value)} className={inputCls} /></Field>
+            </div>
+            <Field label={t('hire.custEmail')}><input value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} /></Field>
+            {!isBusiness && (
+              <Field label={t('hire.custAddress')}><textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={2} className={inputCls} /></Field>
+            )}
+          </Section>
+
+          {/* Billing */}
+          <Section icon={<Wallet className="w-3.5 h-3.5" />} title={t('hire.secBilling')}>
+            <div className="grid grid-cols-2 gap-2">
+              <Field label={t('hire.custAccountNo')}><input value={accountNo} onChange={(e) => setAccountNo(e.target.value)} className={inputCls} /></Field>
+              <Field label={t('hire.custAccountManager')}><input value={accountManager} onChange={(e) => setAccountManager(e.target.value)} className={inputCls} /></Field>
+            </div>
+            <Field label={t('hire.custBillingEmail')}><input value={billingEmail} onChange={(e) => setBillingEmail(e.target.value)} className={inputCls} /></Field>
+            <Field label={t('hire.custBillingAddress')}><textarea value={billingAddress} onChange={(e) => setBillingAddress(e.target.value)} rows={2} className={inputCls} /></Field>
+          </Section>
+
+          {/* Bank */}
+          <Section icon={<Landmark className="w-3.5 h-3.5" />} title={t('hire.secBank')}>
+            <Field label={t('hire.custBankName')}><input value={bankAccountName} onChange={(e) => setBankAccountName(e.target.value)} className={inputCls} /></Field>
+            <div className="grid grid-cols-2 gap-2">
+              <Field label={t('hire.custSortCode')}><input value={bankSortCode} onChange={(e) => setBankSortCode(e.target.value)} placeholder="00-00-00" className={inputCls} /></Field>
+              <Field label={t('hire.custAccountNumber')}><input value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} className={inputCls} /></Field>
+            </div>
+          </Section>
+
+          <Field label={t('hire.custNotes')}><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={inputCls} /></Field>
 
           {/* Insurance — only on create (manage docs from the customer screen) */}
           {!isEdit && (
@@ -145,6 +221,15 @@ export function AddCustomerModal({
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function Section({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-[#f6f8f7]/60 dark:bg-gray-800/40 p-3 space-y-2.5">
+      <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.06em] text-[#025940] dark:text-[#72A68E]">{icon}{title}</p>
+      {children}
     </div>
   )
 }
