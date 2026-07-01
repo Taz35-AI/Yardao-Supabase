@@ -1233,6 +1233,8 @@ export const en = {
     searchAgreements: 'Search contracts, customers, registrations…',
     noSearchMatch: 'No contracts match “{q}”',
     insuranceSection: 'Fleet insurance (required to hire)',
+    insuranceSectionEdit: 'Fleet insurance (update / renew)',
+    insuranceRenewHint: 'Set a new expiry to renew the policy. The latest one is used for the eligibility check.',
     insuranceRef: 'Policy / reference',
     insuranceExpiry: 'Expiry date',
     eligible: 'Insured',
