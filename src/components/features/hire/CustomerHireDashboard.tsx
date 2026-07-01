@@ -139,7 +139,7 @@ export function CustomerHireDashboard({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
-      <div className="relative bg-white dark:bg-gray-900 w-full sm:max-w-4xl sm:rounded-2xl rounded-t-2xl border border-[#025940]/20 max-h-[92vh] overflow-y-auto">
+      <div className="relative bg-white dark:bg-gray-900 w-full sm:max-w-7xl sm:rounded-2xl rounded-t-2xl border border-[#025940]/20 max-h-[92vh] overflow-y-auto">
         <div className="sticky top-0 z-10 bg-gradient-to-br from-[#012619] to-[#025940] px-4 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
             {isBusiness ? (
