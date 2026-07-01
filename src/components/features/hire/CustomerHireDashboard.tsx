@@ -139,7 +139,7 @@ export function CustomerHireDashboard({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
-      <div className="relative bg-white dark:bg-gray-900 w-full sm:max-w-7xl sm:rounded-2xl rounded-t-2xl border border-[#025940]/20 max-h-[92vh] overflow-y-auto">
+      <div className="relative bg-white dark:bg-gray-900 w-full sm:max-w-[96vw] sm:rounded-2xl rounded-t-2xl border border-[#025940]/20 max-h-[92vh] overflow-y-auto">
         <div className="sticky top-0 z-10 bg-gradient-to-br from-[#012619] to-[#025940] px-4 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
             {isBusiness ? (
@@ -218,36 +218,36 @@ export function CustomerHireDashboard({
               </div>
 
               <div className="rounded-xl border border-[#e2e8e5] dark:border-gray-700 overflow-x-auto shadow-sm">
-                <table className="w-full text-sm whitespace-nowrap">
+                <table className="w-full text-xs whitespace-nowrap">
                   <thead>
-                    <tr className="text-left text-[10px] uppercase tracking-[0.08em] text-[#72A68E] bg-[#f6f8f7] dark:bg-gray-800 border-b border-[#e2e8e5] dark:border-gray-700">
-                      <th className="px-3 py-2.5 font-bold">{t('hire.colContract')}</th>
-                      <th className="px-3 py-2.5 font-bold">{t('hire.colReg')}</th>
-                      <th className="px-3 py-2.5 font-bold">{t('hire.colMake')}</th>
-                      <th className="px-3 py-2.5 font-bold">{t('hire.colModel')}</th>
-                      <th className="px-3 py-2.5 font-bold">{t('hire.colSize')}</th>
-                      <th className="px-3 py-2.5 font-bold">{t('hire.colColour')}</th>
-                      <th className="px-3 py-2.5 font-bold">{t('hire.colMot')}</th>
-                      <th className="px-3 py-2.5 font-bold">{t('hire.colTax')}</th>
-                      <th className="px-3 py-2.5 font-bold">{t('hire.colStart')}</th>
-                      <th className="px-3 py-2.5 font-bold">{t('hire.colEndDate')}</th>
-                      <th className="px-3 py-2.5 font-bold text-right">{t('hire.colRate')}</th>
+                    <tr className="text-left text-[10px] uppercase tracking-[0.06em] text-[#72A68E] bg-[#f6f8f7] dark:bg-gray-800 border-b border-[#e2e8e5] dark:border-gray-700">
+                      <th className="px-2.5 py-2 font-bold">{t('hire.colContract')}</th>
+                      <th className="px-2.5 py-2 font-bold">{t('hire.colReg')}</th>
+                      <th className="px-2.5 py-2 font-bold">{t('hire.colMake')}</th>
+                      <th className="px-2.5 py-2 font-bold">{t('hire.colModel')}</th>
+                      <th className="px-2.5 py-2 font-bold">{t('hire.colSize')}</th>
+                      <th className="px-2.5 py-2 font-bold">{t('hire.colColour')}</th>
+                      <th className="px-2.5 py-2 font-bold">{t('hire.colMot')}</th>
+                      <th className="px-2.5 py-2 font-bold">{t('hire.colTax')}</th>
+                      <th className="px-2.5 py-2 font-bold">{t('hire.colStart')}</th>
+                      <th className="px-2.5 py-2 font-bold">{t('hire.colEndDate')}</th>
+                      <th className="px-2.5 py-2 font-bold text-right">{t('hire.colRate')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#eef2f0] dark:divide-gray-700/60">
                     {plan.rows.map((r, i) => (
                       <tr key={i} className="hover:bg-[#f6f8f7] dark:hover:bg-gray-800/50 transition-colors">
-                        <td className="px-3 py-2.5 text-[#4a5e54] dark:text-gray-300">{r.agreementRef || '—'}</td>
-                        <td className="px-3 py-2.5 font-mono font-bold text-[#012619] dark:text-white">{r.registration}</td>
-                        <td className="px-3 py-2.5 text-[#4a5e54] dark:text-gray-300">{r.make || '—'}</td>
-                        <td className="px-3 py-2.5 text-[#4a5e54] dark:text-gray-300">{r.model || '—'}</td>
-                        <td className="px-3 py-2.5 text-[#4a5e54] dark:text-gray-300">{r.size || '—'}</td>
-                        <td className="px-3 py-2.5 text-[#4a5e54] dark:text-gray-300">{r.colour || '—'}</td>
-                        <td className={`px-3 py-2.5 tabular-nums ${isPast(r.motExpiry) ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-[#4a5e54] dark:text-gray-300'}`}>{r.motExpiry || '—'}</td>
-                        <td className={`px-3 py-2.5 tabular-nums ${isPast(r.taxExpiry) ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-[#4a5e54] dark:text-gray-300'}`}>{r.taxExpiry || '—'}</td>
-                        <td className="px-3 py-2.5 text-[#4a5e54] dark:text-gray-300">{r.outDate}</td>
-                        <td className="px-3 py-2.5 text-[#4a5e54] dark:text-gray-300">{r.contractEnd || '—'}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-[#012619] dark:text-white">{r.rate}</td>
+                        <td className="px-2.5 py-2 text-[#4a5e54] dark:text-gray-300">{r.agreementRef || '—'}</td>
+                        <td className="px-2.5 py-2 font-mono font-bold text-[#012619] dark:text-white">{r.registration}</td>
+                        <td className="px-2.5 py-2 text-[#4a5e54] dark:text-gray-300">{r.make || '—'}</td>
+                        <td className="px-2.5 py-2 text-[#4a5e54] dark:text-gray-300">{r.model || '—'}</td>
+                        <td className="px-2.5 py-2 text-[#4a5e54] dark:text-gray-300">{r.size || '—'}</td>
+                        <td className="px-2.5 py-2 text-[#4a5e54] dark:text-gray-300">{r.colour || '—'}</td>
+                        <td className={`px-2.5 py-2 tabular-nums ${isPast(r.motExpiry) ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-[#4a5e54] dark:text-gray-300'}`}>{r.motExpiry || '—'}</td>
+                        <td className={`px-2.5 py-2 tabular-nums ${isPast(r.taxExpiry) ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-[#4a5e54] dark:text-gray-300'}`}>{r.taxExpiry || '—'}</td>
+                        <td className="px-2.5 py-2 text-[#4a5e54] dark:text-gray-300">{r.outDate}</td>
+                        <td className="px-2.5 py-2 text-[#4a5e54] dark:text-gray-300">{r.contractEnd || '—'}</td>
+                        <td className="px-2.5 py-2 text-right tabular-nums font-semibold text-[#012619] dark:text-white">{r.rate}</td>
                       </tr>
                     ))}
                   </tbody>
