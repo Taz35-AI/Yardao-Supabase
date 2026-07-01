@@ -5,7 +5,7 @@
 // create) an optional fleet-insurance document that gates hiring.
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { X, Loader2, ShieldCheck, Building2, User, Wallet, Landmark } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
@@ -49,7 +49,32 @@ export function AddCustomerModal({
   const [notes, setNotes] = useState(editing?.notes || '')
   const [insRef, setInsRef] = useState('')
   const [insExpiry, setInsExpiry] = useState('')
+  // Original insurance (edit mode) — so we only write a renewal when it changes.
+  const [origInsRef, setOrigInsRef] = useState('')
+  const [origInsExpiry, setOrigInsExpiry] = useState('')
   const [saving, setSaving] = useState(false)
+
+  // Edit mode: prefill from the customer's latest fleet-insurance policy so the
+  // fields show the current cover and can be renewed/updated in place.
+  useEffect(() => {
+    if (!isEdit || !editing || !organizationId) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const docs = await hireCustomerService.getDocuments(organizationId, editing.id)
+        const latest = docs
+          .filter((d) => d.docType === 'fleet_insurance')
+          .sort((a, b) => (a.expiryDate || '') < (b.expiryDate || '') ? 1 : -1)[0]
+        if (latest && !cancelled) {
+          setInsRef(latest.reference || '')
+          setInsExpiry(latest.expiryDate || '')
+          setOrigInsRef(latest.reference || '')
+          setOrigInsExpiry(latest.expiryDate || '')
+        }
+      } catch { /* no docs table / none yet → leave blank */ }
+    })()
+    return () => { cancelled = true }
+  }, [isEdit, editing, organizationId])
 
   const inputCls =
     'w-full px-3 py-2.5 rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 text-[#012619] dark:text-white text-sm placeholder:text-[#9db0a6] focus:ring-2 focus:ring-[#025940]/25 focus:border-[#025940] outline-none transition'
@@ -87,6 +112,18 @@ export function AddCustomerModal({
           bank_account_number: nz(bankAccountNumber),
           notes: nz(notes),
         })
+        // Insurance changed → record it as a (renewed) fleet-insurance policy.
+        if (insExpiry && (insExpiry !== origInsExpiry || insRef.trim() !== origInsRef)) {
+          await hireCustomerService.addDocument({
+            organizationId,
+            customerId: editing.id,
+            docType: 'fleet_insurance',
+            reference: insRef.trim() || null,
+            expiryDate: insExpiry,
+            createdBy: user?.uid || null,
+            createdByName: actorName,
+          })
+        }
         toast.success(t('hire.customerSaved'))
         onSaved()
         return
@@ -199,18 +236,17 @@ export function AddCustomerModal({
 
           <Field label={t('hire.custNotes')}><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={inputCls} /></Field>
 
-          {/* Insurance — only on create (manage docs from the customer screen) */}
-          {!isEdit && (
+          {/* Fleet insurance — settable on create AND editable/renewable here */}
           <div className="mt-1 p-3 rounded-lg border border-[#b3f243]/40 bg-[#b3f243]/5">
             <p className="flex items-center gap-1.5 text-xs font-bold text-[#025940] dark:text-[#b3f243] mb-2">
-              <ShieldCheck className="w-3.5 h-3.5" /> {t('hire.insuranceSection')}
+              <ShieldCheck className="w-3.5 h-3.5" /> {isEdit ? t('hire.insuranceSectionEdit') : t('hire.insuranceSection')}
             </p>
             <div className="grid grid-cols-2 gap-2">
               <Field label={t('hire.insuranceRef')}><input value={insRef} onChange={(e) => setInsRef(e.target.value)} className={inputCls} /></Field>
               <Field label={t('hire.insuranceExpiry')}><input type="date" value={insExpiry} onChange={(e) => setInsExpiry(e.target.value)} className={inputCls} /></Field>
             </div>
+            {isEdit && <p className="mt-1.5 text-[10px] text-[#72A68E] leading-snug">{t('hire.insuranceRenewHint')}</p>}
           </div>
-          )}
 
           <div className="flex gap-2 pt-1">
             <button onClick={onClose} className="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-bold">{t('hire.cancel')}</button>
