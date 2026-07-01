@@ -182,9 +182,10 @@ export const hireReportService = {
   },
 
   exportPdf(plan: RentPlan): void {
-    // Landscape to fit Reg / Make / Model / Size / Colour / MOT / Tax / Start / End / Rate.
+    // Landscape. PDF omits MOT/Tax (kept in Excel + on-screen) to give the long
+    // Contract name room, and truncates text so columns never overlap.
     const doc = new jsPDF({ orientation: 'landscape' })
-    const X = { reg: 14, make: 44, model: 72, size: 104, colour: 126, mot: 150, tax: 176, start: 202, end: 228, rate: 268 }
+    const X = { contract: 14, reg: 60, make: 92, model: 120, size: 152, colour: 172, start: 200, end: 232, rate: 266 }
     let y = 16
     doc.setFontSize(16)
     doc.text(`Rent Plan — ${plan.customerName}`, 14, y)
@@ -192,24 +193,22 @@ export const hireReportService = {
     doc.setFontSize(10)
     doc.text(`Generated ${euDate(plan.generatedAt)}`, 14, y)
     y += 8
-    doc.setFontSize(8.5)
+    doc.setFontSize(8)
     doc.setFont('helvetica', 'bold')
-    doc.text('Reg', X.reg, y); doc.text('Make', X.make, y); doc.text('Model', X.model, y)
-    doc.text('Size', X.size, y); doc.text('Colour', X.colour, y); doc.text('MOT', X.mot, y)
-    doc.text('Tax', X.tax, y); doc.text('Start date', X.start, y); doc.text('End date', X.end, y)
-    doc.text('Rate', X.rate, y)
+    doc.text('Contract', X.contract, y); doc.text('Reg', X.reg, y); doc.text('Make', X.make, y)
+    doc.text('Model', X.model, y); doc.text('Size', X.size, y); doc.text('Colour', X.colour, y)
+    doc.text('Start date', X.start, y); doc.text('End date', X.end, y); doc.text('Rate', X.rate, y)
     doc.setFont('helvetica', 'normal')
     y += 5
     const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s)
     for (const r of plan.rows) {
       if (y > 190) { doc.addPage(); y = 16 }
-      doc.text(String(r.registration), X.reg, y)
-      doc.text(trunc(String(r.make || '—'), 14), X.make, y)
-      doc.text(trunc(String(r.model || '—'), 16), X.model, y)
-      doc.text(trunc(String(r.size || '—'), 10), X.size, y)
+      doc.text(trunc(String(r.agreementRef || '—'), 22), X.contract, y)
+      doc.text(trunc(String(r.registration), 10), X.reg, y)
+      doc.text(trunc(String(r.make || '—'), 13), X.make, y)
+      doc.text(trunc(String(r.model || '—'), 14), X.model, y)
+      doc.text(trunc(String(r.size || '—'), 9), X.size, y)
       doc.text(trunc(String(r.colour || '—'), 11), X.colour, y)
-      doc.text(String(r.motExpiry || '—'), X.mot, y)
-      doc.text(String(r.taxExpiry || '—'), X.tax, y)
       doc.text(String(r.outDate), X.start, y)
       doc.text(String(r.contractEnd || '—'), X.end, y)
       doc.text(String(r.rate), X.rate, y)
