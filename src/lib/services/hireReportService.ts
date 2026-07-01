@@ -15,6 +15,8 @@ import type { HireAgreement, HireCredit } from '@/types/hire'
 
 export interface RentPlanRow {
   registration: string
+  make: string
+  model: string
   agreementRef: string
   contractStart: string
   contractEnd: string
@@ -98,6 +100,8 @@ export const hireReportService = {
             vehicleId: l.vehicleId || null,
             row: {
               registration: l.registration || '—',
+              make: l.make || '',
+              model: l.model || '',
               agreementRef: ag.reference || ag.id.slice(0, 8),
               contractStart: euDate(ag.startDate),
               contractEnd: ag.isRolling ? 'Rolling' : euDate(ag.endDate),
@@ -148,26 +152,27 @@ export const hireReportService = {
 
   exportExcel(plan: RentPlan): Promise<void> {
     const blank = {
-      Registration: '', Size: '', Colour: '', MOT: '', Tax: '', Agreement: '',
-      'Hire start': '', 'Contract start': '', 'Contract end': '', Rate: '',
+      Registration: '', Make: '', Model: '', Size: '', Colour: '', MOT: '', Tax: '',
+      Agreement: '', 'Start date': '', 'End date': '', Rate: '',
     }
     const sheet: Record<string, string | number>[] = plan.rows.map((r) => ({
       Registration: r.registration,
+      Make: r.make,
+      Model: r.model,
       Size: r.size,
       Colour: r.colour,
       MOT: r.motExpiry,
       Tax: r.taxExpiry,
       Agreement: r.agreementRef,
-      'Hire start': r.outDate,
-      'Contract start': r.contractStart,
-      'Contract end': r.contractEnd,
+      'Start date': r.outDate,
+      'End date': r.contractEnd,
       Rate: r.rate,
     }))
     if (plan.weeklyTotal > 0) {
-      sheet.push({ ...blank, 'Contract end': 'WEEKLY TOTAL', Rate: `£${plan.weeklyTotal}/wk` })
+      sheet.push({ ...blank, 'End date': 'WEEKLY TOTAL', Rate: `£${plan.weeklyTotal}/wk` })
     }
     if (plan.monthlyTotal > 0) {
-      sheet.push({ ...blank, 'Contract end': '4-WEEKLY TOTAL', Rate: `£${plan.monthlyTotal}/4wk` })
+      sheet.push({ ...blank, 'End date': '4-WEEKLY TOTAL', Rate: `£${plan.monthlyTotal}/4wk` })
     }
     const ws = XLSX.utils.json_to_sheet(sheet)
     const wb = XLSX.utils.book_new()
@@ -177,9 +182,9 @@ export const hireReportService = {
   },
 
   exportPdf(plan: RentPlan): void {
-    // Landscape to fit Contract / Reg / Size / Colour / MOT / Tax / Out / End / Rate.
+    // Landscape to fit Reg / Make / Model / Size / Colour / MOT / Tax / Start / End / Rate.
     const doc = new jsPDF({ orientation: 'landscape' })
-    const X = { contract: 14, reg: 50, size: 80, colour: 104, mot: 130, tax: 156, out: 182, end: 208, rate: 262 }
+    const X = { reg: 14, make: 44, model: 72, size: 104, colour: 126, mot: 150, tax: 176, start: 202, end: 228, rate: 268 }
     let y = 16
     doc.setFontSize(16)
     doc.text(`Rent Plan — ${plan.customerName}`, 14, y)
@@ -187,22 +192,25 @@ export const hireReportService = {
     doc.setFontSize(10)
     doc.text(`Generated ${euDate(plan.generatedAt)}`, 14, y)
     y += 8
-    doc.setFontSize(9)
+    doc.setFontSize(8.5)
     doc.setFont('helvetica', 'bold')
-    doc.text('Contract', X.contract, y); doc.text('Reg', X.reg, y); doc.text('Size', X.size, y)
-    doc.text('Colour', X.colour, y); doc.text('MOT', X.mot, y); doc.text('Tax', X.tax, y)
-    doc.text('Out', X.out, y); doc.text('End', X.end, y); doc.text('Rate', X.rate, y)
+    doc.text('Reg', X.reg, y); doc.text('Make', X.make, y); doc.text('Model', X.model, y)
+    doc.text('Size', X.size, y); doc.text('Colour', X.colour, y); doc.text('MOT', X.mot, y)
+    doc.text('Tax', X.tax, y); doc.text('Start date', X.start, y); doc.text('End date', X.end, y)
+    doc.text('Rate', X.rate, y)
     doc.setFont('helvetica', 'normal')
     y += 5
+    const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s)
     for (const r of plan.rows) {
       if (y > 190) { doc.addPage(); y = 16 }
-      doc.text(String(r.agreementRef || '—'), X.contract, y)
       doc.text(String(r.registration), X.reg, y)
-      doc.text(String(r.size || '—'), X.size, y)
-      doc.text(String(r.colour || '—'), X.colour, y)
+      doc.text(trunc(String(r.make || '—'), 14), X.make, y)
+      doc.text(trunc(String(r.model || '—'), 16), X.model, y)
+      doc.text(trunc(String(r.size || '—'), 10), X.size, y)
+      doc.text(trunc(String(r.colour || '—'), 11), X.colour, y)
       doc.text(String(r.motExpiry || '—'), X.mot, y)
       doc.text(String(r.taxExpiry || '—'), X.tax, y)
-      doc.text(String(r.outDate), X.out, y)
+      doc.text(String(r.outDate), X.start, y)
       doc.text(String(r.contractEnd || '—'), X.end, y)
       doc.text(String(r.rate), X.rate, y)
       y += 5
