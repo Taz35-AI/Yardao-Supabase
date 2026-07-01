@@ -77,7 +77,7 @@ export function Navigation() {
   const t = useT()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isAnimating, setIsAnimating] = useState(false)
-  const [userRole, setUserRole] = useState<'admin' | 'member' | 'mechanic' | null>(null)
+  const [userRole, setUserRole] = useState<'admin' | 'member' | 'mechanic' | 'garage_manager' | null>(null)
   const [loadingRole, setLoadingRole] = useState(true)
 
   useEffect(() => {

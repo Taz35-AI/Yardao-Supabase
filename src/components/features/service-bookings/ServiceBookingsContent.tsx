@@ -22,6 +22,7 @@ import { ExternalBookingsTicker } from './booking-workspace/ExternalBookingsTick
 import { BookingDetailsModal } from './BookingDetailsModal'
 import { JobPartsModal } from './JobPartsModal'
 import { useServiceBookings, setServiceBookingsModalHandler } from '@/hooks/useServiceBookings'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useMechanics } from '@/hooks/useMechanics'
 import { useBranches } from '@/hooks/useBranches'
 import { useCustomers } from '@/hooks/useCustomers'
@@ -42,6 +43,7 @@ import {
 } from 'lucide-react'
 import { logger } from '@/lib/logger'
 import { useT, localizeWorkRequired } from '@/lib/i18n'
+import { toast } from 'sonner'
 
 // Professional Modal Components
 import { ConfirmationModal } from '@/components/common/Modals/ConfirmationModal'
@@ -417,7 +419,10 @@ export function ServiceBookingsContent() {
   // Branch name for subtitle + admin role gate for the Working Report button.
   // Both come from the same profile fetch so we don't pay for two reads.
   const [branchName, setBranchName] = useState<string>('')
-  const [userRole, setUserRole] = useState<'admin' | 'member' | 'mechanic' | null>(null)
+  const [userRole, setUserRole] = useState<'admin' | 'member' | 'mechanic' | 'garage_manager' | null>(null)
+  // Owner / Garage Manager may add / edit / reschedule / delete bookings;
+  // regular admins keep operational actions only.
+  const { canManageBookings } = usePermissions()
   useEffect(() => {
     if (!user?.uid) return
     userProfileService.getProfile(user.uid).then(p => {
@@ -721,6 +726,7 @@ export function ServiceBookingsContent() {
     >
   ) => {
     if (!user) return false
+    if (!canManageBookings) { toast.error(t('serviceBookings.perm.managerOnly')); return false }
 
     if (!bookingData.isExternalProvider) {
       // 🕐 Multi-slot + bay-aware conflict scan. The user picked a bay on
@@ -841,8 +847,9 @@ export function ServiceBookingsContent() {
     }
   }
 
-  // edit button → open modal
+  // edit button → open modal (structural edit — owner / Garage Manager only)
   const handleEditBooking = (booking: ServiceBooking) => {
+    if (!canManageBookings) { toast.error(t('serviceBookings.perm.managerOnly')); return }
     setEditingBooking(booking)
     setSelectedDateForModal(new Date(booking.date + 'T00:00:00'))
     setShowBookingModal(true)
@@ -985,6 +992,7 @@ export function ServiceBookingsContent() {
   // Firestore doc in serviceBookings, so we must clear the vehicle's garage
   // status via returnFromGarage instead of calling deleteBooking.
   const handleDeleteBooking = async (bookingId: string) => {
+    if (!canManageBookings) { toast.error(t('serviceBookings.perm.managerOnly')); return }
     setModalStates(prev => ({ ...prev, deleteBookingId: bookingId, showDeleteConfirm: true }))
   }
 
@@ -1157,6 +1165,7 @@ export function ServiceBookingsContent() {
     },
   ) => {
     if (bookingId.startsWith('garage-')) return
+    if (!canManageBookings) { toast.error(t('serviceBookings.perm.managerOnly')); return }
     try {
       await updateBooking(bookingId, changes)
     } catch (err) {
@@ -1514,8 +1523,9 @@ export function ServiceBookingsContent() {
           )}
 
           {/* + Book — opens the 3-column workspace (form + workshop schedule
-              grid + rules panel). Editing an existing booking still opens the
-              old modal via handleEditBooking elsewhere. */}
+              grid + rules panel). Owner / Garage Manager only; editing an
+              existing booking still opens the old modal via handleEditBooking. */}
+          {canManageBookings && (
           <button
             onClick={() => {
               setEditingBooking(null)
@@ -1530,6 +1540,7 @@ export function ServiceBookingsContent() {
             <Plus className="w-4 h-4" />
             {pageMode === 'new-booking' ? t('serviceBookings.content.bookButtonInProgress') : t('serviceBookings.content.bookButton')}
           </button>
+          )}
         </div>
       </div>
 
@@ -1598,7 +1609,7 @@ export function ServiceBookingsContent() {
           // Block clicks open the read-only details modal — Edit there
           // switches the workspace into edit mode for that booking.
           onBookingEdit={setDetailsBooking}
-          onBookingUpdate={handleBookingDragUpdate}
+          onBookingUpdate={canManageBookings ? handleBookingDragUpdate : undefined}
         />
       )}
 
@@ -1719,7 +1730,7 @@ export function ServiceBookingsContent() {
                       // Block click → details modal (read-only summary;
                       // Edit jumps to workspace edit mode, Delete removes).
                       onBookingClick={setDetailsBooking}
-                      onBookingUpdate={handleBookingDragUpdate}
+                      onBookingUpdate={canManageBookings ? handleBookingDragUpdate : undefined}
                       customers={customers}
                     />
                   </div>

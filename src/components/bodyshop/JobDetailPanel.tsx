@@ -62,7 +62,7 @@ function DamageEstimatesPanel({
 }: {
   job: BodyshopJob
   onUpdateDamages?: (jobId: string, damages: DamageItem[]) => Promise<boolean>
-  userRole?: 'admin' | 'member' | 'mechanic'
+  userRole?: 'admin' | 'member' | 'mechanic' | 'garage_manager'
 }) {
   const t = useT()
   const sourceDamages = job.damages || []
@@ -714,7 +714,7 @@ export function JobDetailPanel({
   const [editingLog, setEditingLog] = useState<DailyLog | null>(null)
   const [saving, setSaving] = useState(false)
   const [completing, setCompleting] = useState(false)
-  const [userRole, setUserRole] = useState<'admin' | 'member' | 'mechanic'>('member')
+  const [userRole, setUserRole] = useState<'admin' | 'member' | 'mechanic' | 'garage_manager'>('member')
 
   const today = todayISO()
   const stageConfig = STAGE_CONFIG[job.stage || 'queued']

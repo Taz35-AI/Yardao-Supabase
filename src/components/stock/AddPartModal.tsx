@@ -11,6 +11,7 @@ import { X, Package, Zap, Search, Tag, TrendingUp, Box, Sparkles, Link, Car } fr
 import { stockService } from '@/lib/services/stockService'
 import { userProfileService, settingsService } from '@/lib/firestore'
 import { useAuth } from '@/contexts/AuthContext'
+import { usePermissions } from '@/hooks/usePermissions'
 import { supabase } from '@/lib/supabaseClient'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
@@ -239,6 +240,8 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
   const t = useT()
   const { lang } = useLang()
   const { user } = useAuth()
+  // Adding / editing parts (incl. prices) is owner / Garage Manager only.
+  const { canManageStockPrices } = usePermissions()
   const [organizationId, setOrganizationId] = useState<string | null>(null)
   const [userDisplayName, setUserDisplayName] = useState<string>('Unknown')
   const [loading, setLoading] = useState(false)
@@ -496,6 +499,8 @@ export function AddPartModal({ isOpen, onClose, onSuccess, defaultPartNumber }: 
       goNext()
       return
     }
+
+    if (!canManageStockPrices) { toast.error(t('stock.invoicing.onlyManagerWrite')); return }
 
     if (!user || !organizationId) {
       toast.error(t('stock.add.authRequired'))

@@ -33,6 +33,7 @@ import { bayLabel } from '@/utils/serviceBookings/bayLabels'
 import { normalizePhone } from '@/lib/utils/phone'
 import { useT, localizeWorkType } from '@/lib/i18n'
 import { useServiceBookings } from '@/hooks/useServiceBookings'
+import { usePermissions } from '@/hooks/usePermissions'
 import { JobPartsModal } from './JobPartsModal'
 import { CreateInvoiceModal } from '@/components/stock/CreateInvoiceModal'
 
@@ -122,6 +123,9 @@ export function BookingDetailsModal({
 }: BookingDetailsModalProps) {
   const t = useT()
   const { raiseInvoiceForBooking, updateBooking } = useServiceBookings()
+  // Regular admins keep operational actions (complete, scan parts) but cannot
+  // edit/delete bookings or raise invoices — owner / Garage Manager only.
+  const { canManageBookings, canCreateInvoices } = usePermissions()
   // 🧩 Live job-parts capture, reachable straight from the details view.
   const [partsOpen, setPartsOpen] = useState(false)
   // 🧾 When set, the invoice editor is layered on top for review after the
@@ -197,6 +201,7 @@ export function BookingDetailsModal({
   const isInvoiced = !!booking.invoiceId
   const noInvoiceNeeded = !!booking.noInvoiceNeeded
   const canInvoice =
+    canCreateInvoices &&
     booking.status === 'completed' && !isInvoiced && !noInvoiceNeeded &&
     !isExternal && !(booking as any).isGarageVehicle
 
@@ -451,7 +456,7 @@ export function BookingDetailsModal({
         <div className="flex-shrink-0 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-3 flex items-center justify-between gap-2 flex-wrap">
           {/* Delete on the left so it's visually separated from the
               positive Edit / Close actions on the right. */}
-          {onDelete ? (
+          {onDelete && canManageBookings ? (
             <button
               onClick={handleDeleteClick}
               className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors"
@@ -475,7 +480,7 @@ export function BookingDetailsModal({
                 {t('stock.jobParts.buttonLabel')}
               </button>
             )}
-            {onEdit && (
+            {onEdit && canManageBookings && (
               <button
                 onClick={handleEditClick}
                 className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-white dark:bg-gray-700 border border-[#025940]/40 hover:bg-[#025940]/10 text-[#025940] dark:text-[#72A68E] transition-colors"
