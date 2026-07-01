@@ -1171,7 +1171,7 @@ export const en = {
     },
   },
   hire: {
-    navTitle: 'Hire',
+    navTitle: 'B2B Hire',
     pageTitle: 'Hire Management',
     pageSubtitle: 'Customers, agreements and fleet on hire',
     tabOverview: 'Overview',
@@ -1410,9 +1410,13 @@ export const en = {
     // customer dashboard / rent plan
     dashboardTitle: 'Active rentals',
     colReg: 'Registration',
+    colMake: 'Make',
+    colModel: 'Model',
     colAgreement: 'Agreement',
     colOut: 'Out',
+    colStart: 'Start date',
     colEnd: 'Contract end',
+    colEndDate: 'End date',
     colContract: 'Contract',
     colRate: 'Rate',
     colSize: 'Size',
