@@ -96,6 +96,8 @@ function mapBookingRow(row: any): ServiceBooking {
     assignedMechanicName: v.assignedMechanicName ?? null,
     slotCount: typeof v.slotCount === 'number' && v.slotCount >= 1 ? v.slotCount : 1,
     mileage: typeof v.mileage === 'number' ? v.mileage : undefined,
+    carriedOverSlots: typeof v.carriedOverSlots === 'number' ? v.carriedOverSlots : 0,
+    carriedOverCount: typeof v.carriedOverCount === 'number' ? v.carriedOverCount : 0,
   } as ServiceBooking
 }
 
@@ -207,6 +209,8 @@ function bookingToRow(obj: Record<string, any>): Record<string, any> {
     cancelledByName: 'cancelled_by_name',
     invoiceId: 'invoice_id',
     noInvoiceNeeded: 'no_invoice_needed',
+    carriedOverSlots: 'carried_over_slots',
+    carriedOverCount: 'carried_over_count',
   }
   const out: Record<string, any> = {}
   for (const [k, v] of Object.entries(obj)) {

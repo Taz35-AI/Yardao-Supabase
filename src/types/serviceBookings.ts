@@ -90,6 +90,14 @@ export interface ServiceBooking {
   // "Not invoiced". A completed job with neither set is flagged for invoicing.
   invoiceId?: string | null
   noInvoiceNeeded?: boolean
+
+  // ⏭️ Carry-over (migration 0055). When an unfinished job is carried to another
+  // day, the SAME booking is re-dated; `carriedOverSlots` banks the slots it
+  // occupied on previous days so the invoice bills the TOTAL hours across every
+  // day (labour = carriedOverSlots + slotCount). `carriedOverCount` is how many
+  // times it has spilled over. Both default 0 → unaffected jobs.
+  carriedOverSlots?: number
+  carriedOverCount?: number
 }
 
 export interface TimeSlot {

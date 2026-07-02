@@ -1477,6 +1477,10 @@ export const en = {
     },
     stats: { total: 'TOTAL', scheduled: 'SCHEDULED', completed: 'COMPLETED', atGarage: 'AT GARAGE' },
     perm: { managerOnly: 'Only the owner or a Garage Manager can add, edit, reschedule or delete bookings' },
+    carryOver: {
+      button: 'Carry over',
+      entered: 'Carrying over {reg} — pick the day and slot, then save. Hours already worked are added automatically.',
+    },
     action: {
       checkInGarage: 'Check-in Garage', checkInShort: 'Check-in', checkIn: 'Check In',
       edit: 'Edit', complete: 'Complete', delete: 'Delete', done: 'Done',

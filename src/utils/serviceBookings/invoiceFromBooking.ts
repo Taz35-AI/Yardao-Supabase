@@ -36,8 +36,10 @@ export function aggregateUsageToParts(usage: PartUsageRecord[]): InvoicePart[] {
 
 // Turn the booking's work + booked span into labour lines. The number of
 // 30-minute slots gives the total hours, split evenly across each work item.
+// Carried-over slots (from days the job already spilled through) are added so a
+// multi-day job bills the TOTAL hours, not just its final day's span.
 export function labourFromBooking(booking: ServiceBooking, rate: number): LabourLine[] {
-  const span = Math.max(1, booking.slotCount ?? 1)
+  const span = Math.max(1, (booking.carriedOverSlots ?? 0) + (booking.slotCount ?? 1))
   const totalHours = span * 0.5
   const work: string[] = Array.isArray(booking.workRequired)
     ? booking.workRequired.filter(Boolean)

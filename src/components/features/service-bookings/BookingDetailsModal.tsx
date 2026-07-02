@@ -24,6 +24,7 @@ import {
   Package,
   Receipt,
   Ban,
+  CalendarClock,
 } from 'lucide-react'
 import type { ServiceBooking } from '@/types/serviceBookings'
 import type { Customer } from '@/types/customer'
@@ -49,6 +50,9 @@ interface BookingDetailsModalProps {
    *  completed). When omitted or the booking is already completed /
    *  cancelled, the button is hidden. */
   onComplete?: (booking: ServiceBooking) => void
+  /** Carry an unfinished job to another day — opens the workshop booking view
+   *  on the next day with this vehicle pre-loaded. Owner / Garage Manager only. */
+  onCarryOver?: (booking: ServiceBooking) => void
   /** Optional customer list — when provided, the matched customer's
    *  saved "preferred notes" is shown inside the Customer section.
    *  Lookup is by normalised phone. */
@@ -118,6 +122,7 @@ export function BookingDetailsModal({
   onEdit,
   onDelete,
   onComplete,
+  onCarryOver,
   customers,
   bayNames,
 }: BookingDetailsModalProps) {
@@ -204,6 +209,18 @@ export function BookingDetailsModal({
     canCreateInvoices &&
     booking.status === 'completed' && !isInvoiced && !noInvoiceNeeded &&
     !isExternal && !(booking as any).isGarageVehicle
+
+  // ⏭️ Carry-over: an UNFINISHED internal job whose day is today or earlier
+  // (scheduled / checked-in / in-progress). Future bookings aren't "spillover" —
+  // reschedule those via Edit. Owner / Garage Manager only.
+  const todayYmd = (() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  })()
+  const canCarryOver =
+    !!onCarryOver && canManageBookings && !isExternal && !(booking as any).isGarageVehicle &&
+    booking.status !== 'completed' && booking.status !== 'cancelled' &&
+    (booking.date || '') <= todayYmd
 
   const handleRaiseInvoice = async () => {
     if (raising) return
@@ -478,6 +495,17 @@ export function BookingDetailsModal({
               >
                 <Package className="w-4 h-4" />
                 {t('stock.jobParts.buttonLabel')}
+              </button>
+            )}
+            {/* Carry over → opens the workshop view on the next day with this
+                vehicle pre-loaded. Owner / Garage Manager only. */}
+            {canCarryOver && (
+              <button
+                onClick={() => { onCarryOver!(booking); onClose() }}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-white dark:bg-gray-700 border border-[#025940]/40 hover:bg-[#025940]/10 text-[#025940] dark:text-[#72A68E] transition-colors"
+              >
+                <CalendarClock className="w-4 h-4" />
+                {t('serviceBookings.carryOver.button')}
               </button>
             )}
             {onEdit && canManageBookings && (
