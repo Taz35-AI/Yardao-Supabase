@@ -260,15 +260,17 @@ export function BookingDetailsModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl mx-auto bg-white dark:bg-gray-800 rounded-2xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col"
+        className="w-full max-w-2xl mx-auto bg-white dark:bg-gray-900 rounded-2xl shadow-2xl ring-1 ring-[#025940]/15 overflow-hidden max-h-[92vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex-shrink-0 bg-gradient-to-r from-[#025940] to-[#72A68E] text-white px-4 sm:px-6 py-4">
-          <div className="flex items-start justify-between gap-4">
+        <div className="flex-shrink-0 relative bg-gradient-to-br from-[#012619] to-[#025940] text-white px-4 sm:px-6 py-4 overflow-hidden">
+          {/* soft brand glow, purely decorative */}
+          <div className="pointer-events-none absolute -top-10 -right-8 w-40 h-40 rounded-full bg-[#b3f243]/10 blur-2xl" aria-hidden />
+          <div className="relative flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <span className="text-xs font-bold bg-yellow-300 text-gray-900 px-2 py-0.5 rounded font-mono tracking-wide border border-yellow-400">
+                <span className="text-xs font-black bg-[#f6d33c] text-[#1a1a1a] px-2 py-0.5 rounded-[5px] font-mono tracking-[0.08em] shadow-sm ring-1 ring-black/10">
                   {booking.registration || '—'}
                 </span>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${status.classes}`}>
@@ -489,13 +491,13 @@ export function BookingDetailsModal({
         </div>
 
         {/* Footer */}
-        <div className="flex-shrink-0 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-3 flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex-shrink-0 bg-[#f6f8f7] dark:bg-gray-900/60 border-t border-[#e2e8e5] dark:border-gray-700 px-4 sm:px-6 py-3 flex items-center justify-between gap-2 flex-wrap">
           {/* Delete on the left so it's visually separated from the
               positive Edit / Close actions on the right. */}
           {onDelete && canManageBookings && !isMarker ? (
             <button
               onClick={handleDeleteClick}
-              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors"
+              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-xl text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors"
             >
               <Trash2 className="w-4 h-4" />
               {t('serviceBookings.action.delete')}
@@ -510,7 +512,7 @@ export function BookingDetailsModal({
             {showParts && (
               <button
                 onClick={() => setPartsOpen(true)}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-white dark:bg-gray-700 border border-[#025940]/40 hover:bg-[#025940]/10 text-[#025940] dark:text-[#72A68E] transition-colors"
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-xl bg-white dark:bg-gray-800 border border-[#025940]/30 hover:bg-[#025940]/10 text-[#025940] dark:text-[#72A68E] transition-colors"
               >
                 <Package className="w-4 h-4" />
                 {t('stock.jobParts.buttonLabel')}
@@ -521,7 +523,7 @@ export function BookingDetailsModal({
             {canCarryOver && (
               <button
                 onClick={() => { onCarryOver!(booking); onClose() }}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-white dark:bg-gray-700 border border-[#025940]/40 hover:bg-[#025940]/10 text-[#025940] dark:text-[#72A68E] transition-colors"
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-xl bg-white dark:bg-gray-800 border border-[#025940]/30 hover:bg-[#025940]/10 text-[#025940] dark:text-[#72A68E] transition-colors"
               >
                 <CalendarClock className="w-4 h-4" />
                 {t('serviceBookings.carryOver.button')}
@@ -530,7 +532,7 @@ export function BookingDetailsModal({
             {onEdit && canManageBookings && !isMarker && (
               <button
                 onClick={handleEditClick}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-white dark:bg-gray-700 border border-[#025940]/40 hover:bg-[#025940]/10 text-[#025940] dark:text-[#72A68E] transition-colors"
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-xl bg-white dark:bg-gray-800 border border-[#025940]/30 hover:bg-[#025940]/10 text-[#025940] dark:text-[#72A68E] transition-colors"
               >
                 <Pencil className="w-4 h-4" />
                 {t('serviceBookings.action.edit')}
@@ -542,7 +544,7 @@ export function BookingDetailsModal({
                // blew the button up to ~2× the height of its neighbours.
               <button
                 onClick={handleCompleteClick}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-[#025940] hover:bg-[#012619] text-white transition-colors shadow-sm"
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-xl bg-gradient-to-br from-[#025940] to-[#012619] hover:shadow-md hover:shadow-[#025940]/25 active:scale-[0.98] text-white transition-all shadow-sm"
               >
                 <img src="/completed.svg" alt="" className="w-4 h-4 object-contain" />
                 {completeLabel}
@@ -552,7 +554,7 @@ export function BookingDetailsModal({
               <button
                 onClick={handleRaiseInvoice}
                 disabled={raising}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-[#025940] hover:bg-[#012619] text-white transition-colors shadow-sm disabled:opacity-60"
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-xl bg-gradient-to-br from-[#025940] to-[#012619] hover:shadow-md hover:shadow-[#025940]/25 active:scale-[0.98] text-white transition-all shadow-sm disabled:opacity-60"
               >
                 <Receipt className="w-4 h-4" />
                 {t('serviceBookings.invoice.raiseInvoice')}
@@ -562,7 +564,7 @@ export function BookingDetailsModal({
               <button
                 onClick={handleNoInvoice}
                 disabled={savingNoInvoice}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition-colors disabled:opacity-60"
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-xl bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-[#4a5e54] dark:text-gray-200 transition-colors disabled:opacity-60"
               >
                 <Ban className="w-4 h-4" />
                 {t('serviceBookings.invoice.noInvoiceNeeded')}
@@ -570,7 +572,7 @@ export function BookingDetailsModal({
             )}
             <button
               onClick={onClose}
-              className="px-4 py-2 text-sm font-semibold rounded-lg bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white transition-colors"
+              className="px-4 py-2 text-sm font-semibold rounded-xl bg-[#012619]/5 hover:bg-[#012619]/10 dark:bg-gray-700 dark:hover:bg-gray-600 text-[#012619] dark:text-white transition-colors"
             >
               {t('serviceBookings.common.close')}
             </button>
@@ -612,10 +614,10 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <div className="bg-gray-50 dark:bg-gray-900/40 rounded-xl border border-gray-200 dark:border-gray-700 p-3">
-      <div className="flex items-center gap-2 mb-2 text-gray-500 dark:text-gray-400">
-        {icon}
-        <span className="text-[10px] font-bold uppercase tracking-wide">{title}</span>
+    <div className="bg-[#f6f8f7] dark:bg-gray-800/50 rounded-2xl border border-[#e2e8e5] dark:border-gray-700 p-3.5 shadow-sm">
+      <div className="flex items-center gap-2 mb-2 text-[#025940] dark:text-[#72A68E]">
+        <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-[#025940]/10 dark:bg-[#025940]/25 [&_img]:w-4 [&_img]:h-4 [&_svg]:w-3.5 [&_svg]:h-3.5">{icon}</span>
+        <span className="text-[10px] font-bold uppercase tracking-[0.08em]">{title}</span>
       </div>
       {children}
     </div>
