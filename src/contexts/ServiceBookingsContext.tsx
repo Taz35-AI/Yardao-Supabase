@@ -548,6 +548,10 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
       .eq('id', bookingId)
     if (updateError) {
       setBookings(prevBookings) // roll back the optimistic change
+      // Surface the real reason (Supabase errors otherwise log as `{}`). A
+      // "column ... does not exist" / schema-cache miss here means a pending
+      // migration hasn't been run on this database.
+      logger.error('updateBooking failed:', updateError.message, updateError.code, updateError.details, updateError.hint)
       throw updateError
     }
 
