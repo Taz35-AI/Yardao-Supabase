@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/Input'
 import { contractService } from '@/lib/contractService'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
+import { isAdminRole } from '@/lib/permissions'
 import { Contract, UserProfile, VehicleStatus, VEHICLE_STATUSES } from '@/types'
 import { settingsService, ContractDefaultStatuses } from '@/lib/services/settingsService'
 import { Plus, Edit2, Trash2, FileText, AlertCircle, Check } from 'lucide-react'
@@ -252,7 +253,7 @@ export const ContractManagement = React.memo(function ContractManagement() {
     )
   }
 
-  if (userProfile?.role !== 'admin') {
+  if (!isAdminRole(userProfile?.role)) {
     return (
       <div className="max-w-4xl px-4 sm:px-6 py-6">
         <div className="rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/60 dark:bg-amber-900/10 p-4 flex items-start gap-3">

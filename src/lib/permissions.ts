@@ -16,6 +16,16 @@
 
 export type AppRole = 'admin' | 'member' | 'mechanic' | 'garage_manager'
 
+/**
+ * Admin-LEVEL for visibility/access: a Garage Manager sees everything an admin
+ * sees (it's a promotion — admin PLUS write powers). Use this to gate PAGE and
+ * NAV visibility so garage managers aren't hidden from Fleet, Invoicing, admin
+ * settings, etc. (Write actions are gated separately by isManager.)
+ */
+export function isAdminRole(role?: string | null): boolean {
+  return role === 'admin' || role === 'garage_manager'
+}
+
 export interface PermCtx {
   uid?: string | null
   role?: AppRole | string | null

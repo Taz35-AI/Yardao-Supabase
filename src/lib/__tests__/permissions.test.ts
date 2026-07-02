@@ -2,7 +2,7 @@
 // Unit tests for the access-control helpers (Admin & Garage Manager model).
 // Run: npx tsx src/lib/__tests__/permissions.test.ts
 import {
-  isOwner, isGarageManager, isManager, isAdminLevel,
+  isOwner, isGarageManager, isManager, isAdminLevel, isAdminRole,
   canEditInvoices, canCreateInvoices, canManageBookings, canManageStockPrices, canGrantManager,
   type PermCtx,
 } from '../permissions'
@@ -58,6 +58,13 @@ for (const [label, ctx, expect] of [
   ok(`${label} canManageStockPrices=${expect}`, canManageStockPrices(ctx) === expect)
   ok(`${label} canGrantManager=${expect}`, canGrantManager(ctx) === expect)
 }
+
+// isAdminRole = visibility/access (a Garage Manager SEES everything an admin does).
+ok('PROMOTION: garage_manager is admin-level for visibility', isAdminRole('garage_manager'))
+ok('admin is admin-level for visibility', isAdminRole('admin'))
+ok('member not admin-level for visibility', !isAdminRole('member'))
+ok('mechanic not admin-level for visibility', !isAdminRole('mechanic'))
+ok('null not admin-level', !isAdminRole(null))
 
 // A plain admin must NOT be able to edit invoices or manage bookings/stock.
 ok('SECURITY: admin cannot edit invoices', canEditInvoices(admin) === false)

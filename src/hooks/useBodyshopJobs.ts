@@ -15,6 +15,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { toCamel } from '@/lib/dbMap'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService, vehicleService } from '@/lib/firestore'
+import { isAdminRole } from '@/lib/permissions'
 import { stockService } from '@/lib/services/stockService'  // ✅ For bodyshop parts → invoice integration
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
@@ -78,7 +79,7 @@ export function useBodyshopJobs() {
         if (profile?.organizationId) {
           setOrganizationId(profile.organizationId)
           setUserDisplayName(profile.displayName || 'Unknown')
-          setUserRole(profile.role === 'admin' ? 'admin' : 'member')
+          setUserRole(isAdminRole(profile.role) ? 'admin' : 'member')
         } else {
           // No org → stop the kanban spinner instead of hanging forever.
           setLoadingJobs(false)

@@ -5,6 +5,7 @@ import React, { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePermissions } from '@/hooks/usePermissions'
+import { isAdminRole } from '@/lib/permissions'
 import { userProfileService } from '@/lib/firestore'
 import { supabase } from '@/lib/supabaseClient'
 import { UserProfile, isUserActive, isUserDeleted } from '@/types'
@@ -94,7 +95,7 @@ function UserManagement() {
         return
       }
       setUserProfile(profile)
-      if (profile.role === 'admin' && profile.organizationId) {
+      if (isAdminRole(profile.role) && profile.organizationId) {
         try {
           const orgUsers = await userProfileService.getUsersByOrganization(profile.organizationId)
           setUsers(orgUsers.filter(u => !isUserDeleted(u)))
@@ -102,7 +103,7 @@ function UserManagement() {
           logger.error('Error loading organization users:', userLoadError)
           setError(t('settings.users.loadUsersFail'))
         }
-      } else if (profile.role !== 'admin') {
+      } else if (!isAdminRole(profile.role)) {
         setError('You do not have admin permissions to manage users.')
       } else {
         setError(t('settings.users.noOrgFound'))
@@ -125,7 +126,7 @@ function UserManagement() {
   }
 
   const handleToggleUserStatus = async (userItem: UserProfile) => {
-    if (!userProfile || userProfile.role !== 'admin') return setError('No permission')
+    if (!userProfile || !isAdminRole(userProfile.role)) return setError('No permission')
     if (userItem.role === 'admin') return setError(t('settings.users.cannotDeactivateAdmin'))
     try {
       setDeletingUser(userItem.uid)
@@ -143,7 +144,7 @@ function UserManagement() {
   }
 
   const handleRoleChange = async (userItem: UserProfile, newRole: AssignableRole) => {
-    if (!userProfile || userProfile.role !== 'admin') return setError('No permission')
+    if (!userProfile || !isAdminRole(userProfile.role)) return setError('No permission')
     if (newRole === userItem.role) return
     // Granting the Garage Manager role is owner / Garage Manager only.
     if (newRole === 'garage_manager' && !canGrantManager) {
@@ -191,7 +192,7 @@ function UserManagement() {
   }
 
   const handleDeleteUser = async () => {
-    if (!userProfile || userProfile.role !== 'admin' || !userToDelete) return
+    if (!userProfile || !isAdminRole(userProfile.role) || !userToDelete) return
     if (userToDelete.role === 'admin') {
       setError(t('settings.users.cannotDeleteAdmin'))
       setUserToDelete(null)
@@ -242,7 +243,7 @@ function UserManagement() {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!userProfile || userProfile.role !== 'admin') return setError('No permission')
+    if (!userProfile || !isAdminRole(userProfile.role)) return setError('No permission')
     if (!newUser.email.trim() || !newUser.displayName.trim() || !newUser.temporaryPassword.trim()) {
       return setError(t('settings.users.fillAllFields'))
     }
@@ -335,7 +336,7 @@ function UserManagement() {
     )
   }
 
-  if (!userProfile || userProfile.role !== 'admin') {
+  if (!userProfile || !isAdminRole(userProfile.role)) {
     return (
       <div className="max-w-4xl px-4 sm:px-6 py-6">
         <div className="rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50/60 dark:bg-amber-900/10 p-3 flex items-start gap-2">

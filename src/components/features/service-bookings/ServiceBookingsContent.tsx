@@ -23,6 +23,7 @@ import { BookingDetailsModal } from './BookingDetailsModal'
 import { JobPartsModal } from './JobPartsModal'
 import { useServiceBookings, setServiceBookingsModalHandler } from '@/hooks/useServiceBookings'
 import { usePermissions } from '@/hooks/usePermissions'
+import { isAdminRole } from '@/lib/permissions'
 import { useMechanics } from '@/hooks/useMechanics'
 import { useBranches } from '@/hooks/useBranches'
 import { useCustomers } from '@/hooks/useCustomers'
@@ -433,7 +434,9 @@ export function ServiceBookingsContent() {
       }
     }).catch(() => {})
   }, [user?.uid, branches])
-  const isAdmin = userRole === 'admin'
+  // Admin OR Garage Manager for VISIBILITY (working report, admin-only bits).
+  // Structural write actions remain gated by canManageBookings above.
+  const isAdmin = isAdminRole(userRole)
 
   // 📊 Working Report modal — admin-only.
   const [showWorkingReport, setShowWorkingReport] = useState(false)
