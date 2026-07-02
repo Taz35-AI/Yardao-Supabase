@@ -395,7 +395,7 @@ export function ServiceBookingsContent() {
     refreshBookings
   } = useServiceBookings()
 
-  const { branches } = useBranches()
+  const { branches, loading: branchesLoading } = useBranches()
   // Customers used for the workshop blocks + details modal — looked up by
   // phone so we can show each customer's saved "preferred notes" inline.
   const { customers } = useCustomers()
@@ -1354,7 +1354,10 @@ export function ServiceBookingsContent() {
     : 0
 
   // ─── Loading state ──────────────────────────────────────────────────────────
-  if (fleetLoading || bookingsLoading) {
+  // Wait for branches too — the bay count comes from the current branch, so
+  // rendering before they load flashes the default (2) then jumps to the real
+  // count. Holding the spinner until branches are ready removes that glitch.
+  if (fleetLoading || bookingsLoading || branchesLoading) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-center h-64">
