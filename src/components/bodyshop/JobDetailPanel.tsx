@@ -22,6 +22,7 @@ import {
 import { stockService } from '@/lib/services/stockService'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
+import { isAdminRole } from '@/lib/permissions'
 import { useMechanics } from '@/hooks/useMechanics'
 import { useT } from '@/lib/i18n'
 import type { BodyshopJob, DailyLog, MaterialLine, DamageItem } from '@/types/bodyshop'
@@ -138,7 +139,7 @@ function DamageEstimatesPanel({
             </span>
           )}
           {/* Admin unlock button — only shown when locked and user is admin */}
-          {isLocked && isPrep && userRole === 'admin' && (
+          {isLocked && isPrep && isAdminRole(userRole) && (
             <button
               onClick={() => setAdminUnlocked(true)}
               className="text-[10px] font-bold text-[#72A68E] hover:text-amber-400 transition-colors px-2 py-0.5 rounded border border-[#025940]/60 hover:border-amber-400/40"

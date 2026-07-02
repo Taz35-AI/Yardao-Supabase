@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
+import { isAdminRole } from '@/lib/permissions'
 import { useT } from '@/lib/i18n'
 import { UserProfile } from '@/types'
 import { 
@@ -284,8 +285,8 @@ export default function SettingsPage() {
     }
   ]
 
-  const availableTabs = settingsTabs.filter(tab => 
-    !tab.requiresAdmin || (userProfile?.role === 'admin')
+  const availableTabs = settingsTabs.filter(tab =>
+    !tab.requiresAdmin || isAdminRole(userProfile?.role)
   )
 
   const activeTabData = availableTabs.find(tab => tab.id === activeTab) || availableTabs[0]

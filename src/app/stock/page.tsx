@@ -15,6 +15,7 @@ import { OrderHistoryTab } from '@/components/stock/OrderHistoryTab'
 import { PartsUsedTodayTab } from '@/components/stock/PartsUsedTodayTab'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
+import { isAdminRole } from '@/lib/permissions'
 import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
 
@@ -54,7 +55,9 @@ export default function StockPage() {
     loadProfile()
   }, [user])
 
-  const isAdmin = userProfile?.role === 'admin'
+  // Admin OR Garage Manager may SEE the invoicing / used-today tabs (write
+  // actions inside are gated separately to owner + Garage Manager).
+  const isAdmin = isAdminRole(userProfile?.role)
 
   // If user tries to access admin tabs but isn't admin, redirect to stock
   useEffect(() => {

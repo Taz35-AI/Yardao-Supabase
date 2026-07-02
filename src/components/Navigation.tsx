@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button'
 import { UserThemeToggle } from '@/components/UserThemeToggle'
 import { NotificationBell } from '@/components/common/NotificationBell'
 import { BranchSelector } from '@/components/navigation/BranchSelector'
+import { isAdminRole } from '@/lib/permissions'
 import { useT } from '@/lib/i18n'
 import { userProfileService } from '@/lib/firestore'
 import { useHireAccess } from '@/hooks/useHireAccess'
@@ -158,7 +159,7 @@ export function Navigation() {
   // Hire is owner + chosen-admins only — hide it for everyone else (and while
   // access is still resolving, to avoid flashing it to staff).
   const hireAccess = useHireAccess()
-  const navItems = (userRole === 'admin'
+  const navItems = (isAdminRole(userRole)
     ? allNavItems
     : allNavItems.filter(item => !item.requiresAdmin)
   ).filter(item => item.href !== '/hire' || hireAccess.allowed)
@@ -173,7 +174,7 @@ export function Navigation() {
   const accountNavItems    = navItems.filter(item => item.group === 'account')
 
   // Bottom nav items depending on role
-  const bottomNavItems = userRole === 'admin' ? BOTTOM_NAV_ADMIN : BOTTOM_NAV_MEMBER
+  const bottomNavItems = isAdminRole(userRole) ? BOTTOM_NAV_ADMIN : BOTTOM_NAV_MEMBER
 
   // ── Loading spinner ───────────────────────────────────────────────────────
   if (loadingRole) {

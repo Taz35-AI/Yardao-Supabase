@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
+import { isAdminRole } from '@/lib/permissions'
 import { supabase } from '@/lib/supabaseClient'
 import { toCamelList } from '@/lib/dbMap'
 import { toast } from 'sonner'
@@ -277,7 +278,7 @@ export function DataManagement() {
       if (!user?.uid) { setLoading(false); return }
       try {
         const profile = await userProfileService.getProfile(user.uid)
-        setIsAdmin(profile?.role === 'admin')
+        setIsAdmin(isAdminRole(profile?.role))
         setOrgId(profile?.organizationId ?? null)
         setOrgName(profile?.organizationName ?? '')
       } catch (err) {

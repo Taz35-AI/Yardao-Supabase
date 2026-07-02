@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react'
 import { Plus, Trash2, Package, PackageOpen, AlertCircle, Loader2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService, settingsService } from '@/lib/firestore'
+import { isAdminRole } from '@/lib/permissions'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
@@ -105,7 +106,7 @@ export function SupplierManagement() {
     )
   }
 
-  if (userProfile?.role !== 'admin') {
+  if (!isAdminRole(userProfile?.role)) {
     return (
       <div className="max-w-4xl px-4 sm:px-6 py-6">
         <div className="rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50/60 dark:bg-amber-900/10 p-3 flex items-start gap-2">

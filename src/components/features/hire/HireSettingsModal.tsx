@@ -8,6 +8,7 @@ import { X, Loader2, ShieldCheck, Lock } from 'lucide-react'
 import { toast } from 'sonner'
 import { hireSettingsService } from '@/lib/services/hireSettingsService'
 import { userProfileService } from '@/lib/firestore'
+import { isAdminRole } from '@/lib/permissions'
 import { useHire } from '@/contexts/HireContext'
 import { useHireAccess } from '@/hooks/useHireAccess'
 import { useAuth } from '@/contexts/AuthContext'
@@ -36,8 +37,8 @@ export function HireSettingsModal({ onClose }: { onClose: () => void }) {
       .getActiveUsersByOrganization(organizationId)
       .then((users) => {
         if (cancelled) return
-        // Eligible = admins, excluding the owner (always has access).
-        setAdmins(users.filter((u) => u.role === 'admin' && u.uid !== user?.uid))
+        // Eligible = admins / garage managers, excluding the owner (always has access).
+        setAdmins(users.filter((u) => isAdminRole(u.role) && u.uid !== user?.uid))
       })
       .catch(() => setAdmins([]))
       .finally(() => !cancelled && setLoadingAdmins(false))
