@@ -48,22 +48,23 @@ export function CustomerHireDashboard({
   const [timeline, setTimeline] = useState<ActivityRecord[] | null>(null)
   const [statement, setStatement] = useState<StatementGroup[] | null>(null)
   const [customer, setCustomer] = useState<RentalCustomer | null>(null)
-  const [insurance, setInsurance] = useState<{ reference: string | null; expiryDate: string | null } | null>(null)
+  const [policies, setPolicies] = useState<{ reference: string | null; expiryDate: string | null }[]>([])
   const [showEdit, setShowEdit] = useState(false)
 
-  // Full customer record + latest fleet-insurance policy (for the Details tab +
-  // edit). Reloaded after an edit so a renewed policy shows immediately.
+  // Full customer record + ALL fleet-insurance policies (for the Details tab +
+  // edit). Reloaded after an edit so changes show immediately.
   const loadCustomer = React.useCallback(async () => {
     if (!organizationId) return
     const c = await hireCustomerService.getCustomer(customerId)
     setCustomer(c)
     try {
       const docs = await hireCustomerService.getDocuments(organizationId, customerId)
-      const latest = docs
+      const ins = docs
         .filter((d) => d.docType === 'fleet_insurance')
-        .sort((a, b) => ((a.expiryDate || '') < (b.expiryDate || '') ? 1 : -1))[0]
-      setInsurance(latest ? { reference: latest.reference ?? null, expiryDate: latest.expiryDate ?? null } : null)
-    } catch { setInsurance(null) }
+        .sort((a, b) => ((a.expiryDate || '') < (b.expiryDate || '') ? 1 : -1))
+        .map((d) => ({ reference: d.reference ?? null, expiryDate: d.expiryDate ?? null }))
+      setPolicies(ins)
+    } catch { setPolicies([]) }
   }, [organizationId, customerId])
   useEffect(() => { loadCustomer() }, [loadCustomer])
 
@@ -199,7 +200,7 @@ export function CustomerHireDashboard({
           ) : view === 'statement' ? (
             <StatementView groups={statement} t={t} />
           ) : view === 'details' ? (
-            <DetailsView customer={customer} insurance={insurance} isBusiness={isBusiness} onEdit={() => setShowEdit(true)} t={t} />
+            <DetailsView customer={customer} policies={policies} isBusiness={isBusiness} onEdit={() => setShowEdit(true)} t={t} />
           ) : loading ? (
             <div className="py-10 text-center text-sm text-[#72A68E]"><Loader2 className="w-5 h-5 animate-spin inline" /></div>
           ) : !plan || plan.rows.length === 0 ? (
@@ -298,13 +299,13 @@ export function CustomerHireDashboard({
 // ── Details: full customer record (company / contact / billing / bank) ────────
 function DetailsView({
   customer,
-  insurance,
+  policies,
   isBusiness,
   onEdit,
   t,
 }: {
   customer: RentalCustomer | null
-  insurance: { reference: string | null; expiryDate: string | null } | null
+  policies: { reference: string | null; expiryDate: string | null }[]
   isBusiness: boolean
   onEdit: () => void
   t: (k: string, v?: Record<string, string | number>) => string
@@ -314,7 +315,15 @@ function DetailsView({
   }
   const c = customer
   const any = (...vals: (string | null | undefined)[]) => vals.some((v) => v && String(v).trim())
-  const insExpired = insurance?.expiryDate ? isPast(euDate(insurance.expiryDate)) : false
+  // Insured while AT LEAST ONE policy is in date. No policies → missing.
+  const isPolicyExpired = (p: { expiryDate: string | null }) => (p.expiryDate ? isPast(euDate(p.expiryDate)) : true)
+  const hasPolicies = policies.length > 0
+  const anyValid = policies.some((p) => !isPolicyExpired(p))
+  const panelCls = !hasPolicies
+    ? 'border-red-200 bg-red-50 dark:bg-red-900/15 dark:border-red-900/40'
+    : anyValid
+      ? 'border-emerald-200 bg-emerald-50 dark:bg-emerald-900/15 dark:border-emerald-900/40'
+      : 'border-amber-200 bg-amber-50 dark:bg-amber-900/15 dark:border-amber-900/40'
 
   return (
     <div className="space-y-3">
@@ -324,21 +333,28 @@ function DetailsView({
         </button>
       </div>
 
-      {/* Fleet insurance — the hire-eligibility gate */}
-      <div className={`rounded-xl border p-3.5 shadow-sm ${!insurance ? 'border-red-200 bg-red-50 dark:bg-red-900/15 dark:border-red-900/40' : insExpired ? 'border-amber-200 bg-amber-50 dark:bg-amber-900/15 dark:border-amber-900/40' : 'border-emerald-200 bg-emerald-50 dark:bg-emerald-900/15 dark:border-emerald-900/40'}`}>
+      {/* Fleet insurance — the hire-eligibility gate. One or more policies. */}
+      <div className={`rounded-xl border p-3.5 shadow-sm ${panelCls}`}>
         <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.06em] text-[#025940] dark:text-[#72A68E] mb-2.5"><ShieldCheck className="w-3.5 h-3.5" />{t('hire.insuranceSection')}</p>
-        {!insurance ? (
+        {!hasPolicies ? (
           <p className="text-sm font-semibold text-red-700 dark:text-red-300">{t('hire.missing')}</p>
         ) : (
-          <div className="space-y-2">
-            <DetailRow icon={<Hash className="w-3.5 h-3.5" />} label={t('hire.insuranceRef')} value={insurance.reference} />
-            <div className="flex items-start gap-2.5">
-              <span className="text-[#72A68E] mt-0.5 flex-shrink-0"><ShieldCheck className="w-3.5 h-3.5" /></span>
-              <div className="min-w-0">
-                <p className="text-[10px] uppercase tracking-[0.06em] text-[#72A68E] font-semibold">{t('hire.insuranceExpiry')}</p>
-                <p className={`text-sm leading-snug font-semibold ${insExpired ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300'}`}>{euDate(insurance.expiryDate)}{insExpired ? ` · ${t('hire.expired')}` : ''}</p>
-              </div>
-            </div>
+          <div className="space-y-2.5">
+            {policies.map((p, i) => {
+              const exp = isPolicyExpired(p)
+              return (
+                <div key={i} className="flex items-center justify-between gap-3 border-b border-black/5 dark:border-white/5 last:border-0 pb-2 last:pb-0">
+                  <div className="min-w-0">
+                    <p className="text-[10px] uppercase tracking-[0.06em] text-[#72A68E] font-semibold">{t('hire.insuranceRef')}</p>
+                    <p className="text-sm text-[#012619] dark:text-gray-200 break-words leading-snug font-mono">{p.reference || '—'}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-[10px] uppercase tracking-[0.06em] text-[#72A68E] font-semibold">{t('hire.insuranceExpiry')}</p>
+                    <p className={`text-sm leading-snug font-semibold ${exp ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300'}`}>{euDate(p.expiryDate)}{exp ? ` · ${t('hire.expired')}` : ''}</p>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>

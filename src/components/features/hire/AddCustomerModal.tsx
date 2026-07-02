@@ -6,7 +6,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { X, Loader2, ShieldCheck, Building2, User, Wallet, Landmark } from 'lucide-react'
+import { X, Loader2, ShieldCheck, Building2, User, Wallet, Landmark, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
@@ -47,38 +47,68 @@ export function AddCustomerModal({
   const [bankSortCode, setBankSortCode] = useState(editing?.bankSortCode || '')
   const [bankAccountNumber, setBankAccountNumber] = useState(editing?.bankAccountNumber || '')
   const [notes, setNotes] = useState(editing?.notes || '')
-  const [insRef, setInsRef] = useState('')
-  const [insExpiry, setInsExpiry] = useState('')
-  // Original insurance (edit mode) — so we only write a renewal when it changes.
-  const [origInsRef, setOrigInsRef] = useState('')
-  const [origInsExpiry, setOrigInsExpiry] = useState('')
+  // One or more fleet-insurance policies (some customers insure vans
+  // individually). Each row = policy number + expiry. `id` present = an existing
+  // saved policy (used to reconcile add/edit/remove on save).
+  const [policies, setPolicies] = useState<Array<{ id?: string; reference: string; expiry: string }>>([
+    { reference: '', expiry: '' },
+  ])
+  const [origPolicies, setOrigPolicies] = useState<Array<{ id: string; reference: string; expiry: string }>>([])
   const [saving, setSaving] = useState(false)
 
-  // Edit mode: prefill from the customer's latest fleet-insurance policy so the
-  // fields show the current cover and can be renewed/updated in place.
+  // Edit mode: load ALL of the customer's fleet-insurance policies so they can
+  // be viewed / edited / added to / removed in place.
   useEffect(() => {
     if (!isEdit || !editing || !organizationId) return
     let cancelled = false
     ;(async () => {
       try {
         const docs = await hireCustomerService.getDocuments(organizationId, editing.id)
-        const latest = docs
+        const ins = docs
           .filter((d) => d.docType === 'fleet_insurance')
-          .sort((a, b) => (a.expiryDate || '') < (b.expiryDate || '') ? 1 : -1)[0]
-        if (latest && !cancelled) {
-          setInsRef(latest.reference || '')
-          setInsExpiry(latest.expiryDate || '')
-          setOrigInsRef(latest.reference || '')
-          setOrigInsExpiry(latest.expiryDate || '')
+          .sort((a, b) => ((a.expiryDate || '') < (b.expiryDate || '') ? 1 : -1))
+          .map((d) => ({ id: d.id, reference: d.reference || '', expiry: d.expiryDate || '' }))
+        if (!cancelled && ins.length) {
+          setPolicies(ins.map(({ id, reference, expiry }) => ({ id, reference, expiry })))
+          setOrigPolicies(ins)
         }
-      } catch { /* no docs table / none yet → leave blank */ }
+      } catch { /* no docs table / none yet → leave the one empty row */ }
     })()
     return () => { cancelled = true }
   }, [isEdit, editing, organizationId])
 
+  const addPolicyRow = () => setPolicies((prev) => [...prev, { reference: '', expiry: '' }])
+  const updatePolicy = (i: number, patch: Partial<{ reference: string; expiry: string }>) =>
+    setPolicies((prev) => prev.map((p, idx) => (idx === i ? { ...p, ...patch } : p)))
+  const removePolicy = (i: number) => setPolicies((prev) => prev.filter((_, idx) => idx !== i))
+
   const inputCls =
     'w-full px-3 py-2.5 rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 text-[#012619] dark:text-white text-sm placeholder:text-[#9db0a6] focus:ring-2 focus:ring-[#025940]/25 focus:border-[#025940] outline-none transition'
   const nz = (s: string) => (s.trim() ? s.trim() : null)
+
+  // Persist the policy list. On create just add each row; on edit reconcile
+  // against what was loaded (delete removed, add new, replace changed).
+  const writePolicies = async (customerId: string, actorName: string) => {
+    if (!organizationId) return
+    const add = (reference: string, expiry: string) =>
+      hireCustomerService.addDocument({
+        organizationId, customerId, docType: 'fleet_insurance',
+        reference: reference.trim() || null, expiryDate: expiry,
+        createdBy: user?.uid || null, createdByName: actorName,
+      })
+    const currentIds = new Set(policies.filter((p) => p.id).map((p) => p.id))
+    // Removed policies (were saved, no longer in the list).
+    for (const o of origPolicies) {
+      if (!currentIds.has(o.id)) await hireCustomerService.deleteDocument(o.id)
+    }
+    for (const p of policies) {
+      if (!p.expiry) { if (p.id) await hireCustomerService.deleteDocument(p.id); continue }
+      if (!p.id) { await add(p.reference, p.expiry); continue }
+      const orig = origPolicies.find((o) => o.id === p.id)
+      const changed = !orig || orig.reference !== p.reference.trim() || orig.expiry !== p.expiry
+      if (changed) { await hireCustomerService.deleteDocument(p.id); await add(p.reference, p.expiry) }
+    }
+  }
 
   const save = async () => {
     if (!organizationId || !name.trim()) {
@@ -112,18 +142,8 @@ export function AddCustomerModal({
           bank_account_number: nz(bankAccountNumber),
           notes: nz(notes),
         })
-        // Insurance changed → record it as a (renewed) fleet-insurance policy.
-        if (insExpiry && (insExpiry !== origInsExpiry || insRef.trim() !== origInsRef)) {
-          await hireCustomerService.addDocument({
-            organizationId,
-            customerId: editing.id,
-            docType: 'fleet_insurance',
-            reference: insRef.trim() || null,
-            expiryDate: insExpiry,
-            createdBy: user?.uid || null,
-            createdByName: actorName,
-          })
-        }
+        // Reconcile the customer's insurance policies (add / edit / remove).
+        await writePolicies(editing.id, actorName)
         toast.success(t('hire.customerSaved'))
         onSaved()
         return
@@ -152,17 +172,7 @@ export function AddCustomerModal({
         createdBy: user?.uid || null,
         createdByName: actorName,
       })
-      if (insExpiry) {
-        await hireCustomerService.addDocument({
-          organizationId,
-          customerId,
-          docType: 'fleet_insurance',
-          reference: insRef.trim() || null,
-          expiryDate: insExpiry,
-          createdBy: user?.uid || null,
-          createdByName: actorName,
-        })
-      }
+      await writePolicies(customerId, actorName)
       toast.success(t('hire.customerSaved'))
       onSaved()
     } catch (err) {
@@ -236,16 +246,36 @@ export function AddCustomerModal({
 
           <Field label={t('hire.custNotes')}><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={inputCls} /></Field>
 
-          {/* Fleet insurance — settable on create AND editable/renewable here */}
+          {/* Fleet insurance — one or more policies (per-vehicle if needed) */}
           <div className="mt-1 p-3 rounded-lg border border-[#b3f243]/40 bg-[#b3f243]/5">
             <p className="flex items-center gap-1.5 text-xs font-bold text-[#025940] dark:text-[#b3f243] mb-2">
-              <ShieldCheck className="w-3.5 h-3.5" /> {isEdit ? t('hire.insuranceSectionEdit') : t('hire.insuranceSection')}
+              <ShieldCheck className="w-3.5 h-3.5" /> {t('hire.insuranceSection')}
             </p>
-            <div className="grid grid-cols-2 gap-2">
-              <Field label={t('hire.insuranceRef')}><input value={insRef} onChange={(e) => setInsRef(e.target.value)} className={inputCls} /></Field>
-              <Field label={t('hire.insuranceExpiry')}><input type="date" value={insExpiry} onChange={(e) => setInsExpiry(e.target.value)} className={inputCls} /></Field>
+            <div className="space-y-2">
+              {policies.map((p, i) => (
+                <div key={p.id ?? `new-${i}`} className="flex gap-2 items-end">
+                  <div className="flex-1">
+                    <Field label={t('hire.insuranceRef')}>
+                      <input value={p.reference} onChange={(e) => updatePolicy(i, { reference: e.target.value })} className={inputCls} />
+                    </Field>
+                  </div>
+                  <div className="w-36 flex-shrink-0">
+                    <Field label={t('hire.insuranceExpiry')}>
+                      <input type="date" value={p.expiry} onChange={(e) => updatePolicy(i, { expiry: e.target.value })} className={inputCls} />
+                    </Field>
+                  </div>
+                  {policies.length > 1 && (
+                    <button type="button" onClick={() => removePolicy(i)} aria-label={t('hire.cancel')} className="mb-1 p-2 rounded-lg text-[#72A68E] hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0">
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
-            {isEdit && <p className="mt-1.5 text-[10px] text-[#72A68E] leading-snug">{t('hire.insuranceRenewHint')}</p>}
+            <button type="button" onClick={addPolicyRow} className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-[#025940] dark:text-[#b3f243] hover:underline">
+              <Plus className="w-3.5 h-3.5" /> {t('hire.insuranceAddPolicy')}
+            </button>
+            <p className="mt-1.5 text-[10px] text-[#72A68E] leading-snug">{t('hire.insuranceMultiHint')}</p>
           </div>
 
           <div className="flex gap-2 pt-1">

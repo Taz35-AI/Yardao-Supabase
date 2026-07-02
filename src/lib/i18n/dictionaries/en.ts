@@ -1237,6 +1237,8 @@ export const en = {
     insuranceRenewHint: 'Set a new expiry to renew the policy. The latest one is used for the eligibility check.',
     insuranceRef: 'Policy / reference',
     insuranceExpiry: 'Expiry date',
+    insuranceAddPolicy: 'Add another policy',
+    insuranceMultiHint: 'Add one policy for the whole fleet, or one per vehicle. The customer can hire while at least one policy is in date.',
     eligible: 'Insured',
     expired: 'Insurance expired',
     missing: 'No insurance',
