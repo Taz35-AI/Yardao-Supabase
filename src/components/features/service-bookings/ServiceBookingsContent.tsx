@@ -22,6 +22,7 @@ import { ExternalBookingsTicker } from './booking-workspace/ExternalBookingsTick
 import { BookingDetailsModal } from './BookingDetailsModal'
 import { JobPartsModal } from './JobPartsModal'
 import { useServiceBookings, setServiceBookingsModalHandler } from '@/hooks/useServiceBookings'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useMechanics } from '@/hooks/useMechanics'
 import { useBranches } from '@/hooks/useBranches'
 import { useCustomers } from '@/hooks/useCustomers'
@@ -42,6 +43,7 @@ import {
 } from 'lucide-react'
 import { logger } from '@/lib/logger'
 import { useT, localizeWorkRequired } from '@/lib/i18n'
+import { toast } from 'sonner'
 
 // Professional Modal Components
 import { ConfirmationModal } from '@/components/common/Modals/ConfirmationModal'
@@ -290,7 +292,7 @@ function MiniCalendar({
   const bookingCountMap = useMemo(() => {
     const map: Record<string, number> = {}
     bookings.forEach(b => {
-      if (b.status === 'cancelled') return
+      if (b.status === 'cancelled' || b.carriedForward) return
       if (!map[b.date]) map[b.date] = 0
       map[b.date]++
     })
@@ -417,7 +419,10 @@ export function ServiceBookingsContent() {
   // Branch name for subtitle + admin role gate for the Working Report button.
   // Both come from the same profile fetch so we don't pay for two reads.
   const [branchName, setBranchName] = useState<string>('')
-  const [userRole, setUserRole] = useState<'admin' | 'member' | 'mechanic' | null>(null)
+  const [userRole, setUserRole] = useState<'admin' | 'member' | 'mechanic' | 'garage_manager' | null>(null)
+  // Owner / Garage Manager may add / edit / reschedule / delete bookings;
+  // regular admins keep operational actions only.
+  const { canManageBookings } = usePermissions()
   useEffect(() => {
     if (!user?.uid) return
     userProfileService.getProfile(user.uid).then(p => {
@@ -473,6 +478,10 @@ export function ServiceBookingsContent() {
   // by clicking the grid).
   const [pageMode, setPageMode] = useState<'browse' | 'new-booking'>('browse')
   const [workspaceEditingBooking, setWorkspaceEditingBooking] = useState<ServiceBooking | null>(null)
+  // When set, the workspace is in CARRY-OVER mode for this (original) booking:
+  // saving re-dates the same row and banks its slots so the invoice totals every
+  // day. Holds the original so the banking uses its pre-move slot count.
+  const [carryOverBooking, setCarryOverBooking] = useState<ServiceBooking | null>(null)
   // Read-only details modal that workshop block clicks open. From there the
   // user picks Edit (→ workspace edit mode) or Delete (→ confirmation).
   const [detailsBooking, setDetailsBooking] = useState<ServiceBooking | null>(null)
@@ -667,7 +676,7 @@ export function ServiceBookingsContent() {
     for (const b of mergedBookings) {
       if (b.id === excludeBookingId) continue
       if (b.date !== date) continue
-      if (b.status === 'cancelled' || b.isExternalProvider) continue
+      if (b.status === 'cancelled' || b.isExternalProvider || b.carriedForward) continue
       const bay = b.serviceBay || 1
       const overlaps = requestedSlotIds.some(slotId => bookingCoversSlot(b, slotId))
       if (overlaps) busy.add(bay)
@@ -721,6 +730,7 @@ export function ServiceBookingsContent() {
     >
   ) => {
     if (!user) return false
+    if (!canManageBookings) { toast.error(t('serviceBookings.perm.managerOnly')); return false }
 
     if (!bookingData.isExternalProvider) {
       // 🕐 Multi-slot + bay-aware conflict scan. The user picked a bay on
@@ -743,6 +753,7 @@ export function ServiceBookingsContent() {
         b => b.date === bookingData.date &&
              b.status !== 'cancelled' &&
              !b.isExternalProvider &&
+             !b.carriedForward &&
              (b.serviceBay || 1) === requestedBay &&
              requestedSlotIds.some(sid => bookingCoversSlot(b, sid))
       )
@@ -841,11 +852,31 @@ export function ServiceBookingsContent() {
     }
   }
 
-  // edit button → open modal
+  // edit button → open modal (structural edit — owner / Garage Manager only)
   const handleEditBooking = (booking: ServiceBooking) => {
+    if (!canManageBookings) { toast.error(t('serviceBookings.perm.managerOnly')); return }
     setEditingBooking(booking)
     setSelectedDateForModal(new Date(booking.date + 'T00:00:00'))
     setShowBookingModal(true)
+  }
+
+  // ⏭️ Carry over → open the workshop booking view on the NEXT day (default
+  // tomorrow, freely changeable) with this vehicle pre-loaded. Saving re-dates
+  // the SAME booking and banks its slots (see handleWorkspaceUpdate) so the
+  // invoice totals every day. Owner / Garage Manager only.
+  const handleCarryOver = (booking: ServiceBooking) => {
+    if (!canManageBookings) { toast.error(t('serviceBookings.perm.managerOnly')); return }
+    const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + 1)
+    const tYmd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    setCarryOverBooking(booking)
+    setSelectedDate(d)                                   // grid opens on tomorrow
+    // editingBooking keeps the ORIGINAL date so the update's conflict check sees
+    // the move; the form prefills tomorrow via workspaceEditingBooking.
+    setEditingBooking(booking)
+    setWorkspaceEditingBooking({ ...booking, date: tYmd })
+    setPageMode('new-booking')
+    setDetailsBooking(null)
+    toast.success(t('serviceBookings.carryOver.entered', { reg: booking.registration || '' }))
   }
 
   // ✅ PRESERVED: Full update with service bay conflict detection (exact same as original)
@@ -889,6 +920,7 @@ export function ServiceBookingsContent() {
              b.date === bookingData.date &&
              b.status !== 'cancelled' &&
              !b.isExternalProvider &&
+             !b.carriedForward &&
              (b.serviceBay || 1) === requestedBay &&
              requestedSlotIds.some(sid => bookingCoversSlot(b, sid))
       )
@@ -985,6 +1017,7 @@ export function ServiceBookingsContent() {
   // Firestore doc in serviceBookings, so we must clear the vehicle's garage
   // status via returnFromGarage instead of calling deleteBooking.
   const handleDeleteBooking = async (bookingId: string) => {
+    if (!canManageBookings) { toast.error(t('serviceBookings.perm.managerOnly')); return }
     setModalStates(prev => ({ ...prev, deleteBookingId: bookingId, showDeleteConfirm: true }))
   }
 
@@ -1157,6 +1190,7 @@ export function ServiceBookingsContent() {
     },
   ) => {
     if (bookingId.startsWith('garage-')) return
+    if (!canManageBookings) { toast.error(t('serviceBookings.perm.managerOnly')); return }
     try {
       await updateBooking(bookingId, changes)
     } catch (err) {
@@ -1176,10 +1210,56 @@ export function ServiceBookingsContent() {
       'id' | 'createdAt' | 'updatedAt' | 'organizationId' | 'createdBy' | 'createdByName'
     >,
   ) => {
-    const ok = await handleUpdateBooking(bookingData)
+    // Carry-over mode: bank the slots the job used before this move so the
+    // invoice bills the total hours across every day it ran.
+    const orig = carryOverBooking
+    let data = bookingData
+    if (orig) {
+      const banked = (orig.carriedOverSlots ?? 0) + Math.max(1, orig.slotCount ?? 1)
+      data = {
+        ...bookingData,
+        carriedOverSlots: banked,
+        carriedOverCount: (orig.carriedOverCount ?? 0) + 1,
+      }
+    }
+    const ok = await handleUpdateBooking(data)
     if (ok) {
+      // Leave a read-only "carried over" marker on the day the job left, so the
+      // trail is visible. The live job (moved above) keeps all parts/hours/
+      // invoice; the marker is inert (no_invoice_needed, carried_forward).
+      if (orig) {
+        try {
+          await createBooking({
+            date: orig.date,
+            timeSlot: orig.timeSlot,
+            registration: orig.registration,
+            make: orig.make,
+            model: orig.model,
+            workRequired: orig.workRequired,
+            isCustomVehicle: orig.isCustomVehicle,
+            notes: orig.notes,
+            status: orig.status,
+            serviceBay: orig.serviceBay,
+            slotCount: orig.slotCount,
+            isExternalProvider: false,
+            customerName: orig.customerName,
+            customerPhone: orig.customerPhone,
+            customerEmail: orig.customerEmail,
+            assignedMechanicId: orig.assignedMechanicId,
+            assignedMechanicName: orig.assignedMechanicName,
+            carriedForward: true,
+            carriedToDate: data.date,
+            noInvoiceNeeded: true,
+            createdBy: user?.uid || '',
+            createdByName: user?.displayName || user?.email || 'Unknown',
+          } as unknown as Omit<ServiceBooking, 'id'>)
+        } catch (e) {
+          logger.error('carry-over marker create failed (non-fatal):', e)
+        }
+      }
       setPageMode('browse')
       setWorkspaceEditingBooking(null)
+      setCarryOverBooking(null)
       // editingBooking was already cleared by handleUpdateBooking on its
       // success path; no need to clear again.
     }
@@ -1514,8 +1594,9 @@ export function ServiceBookingsContent() {
           )}
 
           {/* + Book — opens the 3-column workspace (form + workshop schedule
-              grid + rules panel). Editing an existing booking still opens the
-              old modal via handleEditBooking elsewhere. */}
+              grid + rules panel). Owner / Garage Manager only; editing an
+              existing booking still opens the old modal via handleEditBooking. */}
+          {canManageBookings && (
           <button
             onClick={() => {
               setEditingBooking(null)
@@ -1530,6 +1611,7 @@ export function ServiceBookingsContent() {
             <Plus className="w-4 h-4" />
             {pageMode === 'new-booking' ? t('serviceBookings.content.bookButtonInProgress') : t('serviceBookings.content.bookButton')}
           </button>
+          )}
         </div>
       </div>
 
@@ -1594,11 +1676,12 @@ export function ServiceBookingsContent() {
             setPageMode('browse')
             setWorkspaceEditingBooking(null)
             setEditingBooking(null)
+            setCarryOverBooking(null)
           }}
           // Block clicks open the read-only details modal — Edit there
           // switches the workspace into edit mode for that booking.
           onBookingEdit={setDetailsBooking}
-          onBookingUpdate={handleBookingDragUpdate}
+          onBookingUpdate={canManageBookings ? handleBookingDragUpdate : undefined}
         />
       )}
 
@@ -1719,7 +1802,7 @@ export function ServiceBookingsContent() {
                       // Block click → details modal (read-only summary;
                       // Edit jumps to workspace edit mode, Delete removes).
                       onBookingClick={setDetailsBooking}
-                      onBookingUpdate={handleBookingDragUpdate}
+                      onBookingUpdate={canManageBookings ? handleBookingDragUpdate : undefined}
                       customers={customers}
                     />
                   </div>
@@ -1877,6 +1960,7 @@ export function ServiceBookingsContent() {
           booking={detailsBooking}
           customers={customers}
           bayNames={currentBayNames}
+          onCarryOver={detailsBooking.id.startsWith('garage-') ? undefined : handleCarryOver}
           onClose={() => setDetailsBooking(null)}
           onEdit={
             detailsBooking.id.startsWith('garage-')

@@ -9,6 +9,7 @@
     "lint": "next lint",
     "type-check": "tsc --noEmit",
     "test:hire": "npx --yes tsx src/lib/services/__tests__/hireBilling.test.ts",
+    "test:perms": "npx --yes tsx src/lib/__tests__/permissions.test.ts",
     "deploy": "firebase deploy",
     "build:mobile": "npm run build && npx cap sync",
     "android": "npx cap open android",

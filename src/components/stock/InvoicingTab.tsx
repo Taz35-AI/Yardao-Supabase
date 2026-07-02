@@ -9,6 +9,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { FileText, Plus, Eye, Search, Trash2, Calendar, Building2, PoundSterling, X, Pencil, FileSpreadsheet } from 'lucide-react'
 import { stockService } from '@/lib/services/stockService'
 import { useAuth } from '@/contexts/AuthContext'
+import { usePermissions } from '@/hooks/usePermissions'
 import { userProfileService } from '@/lib/firestore'
 import { Invoice } from '@/types/stock'
 import { CreateInvoiceModal } from './CreateInvoiceModal'
@@ -31,6 +32,8 @@ const PERIODS: { id: PeriodKey; labelKey: string }[] = [
 export function InvoicingTab() {
   const t = useT()
   const { user } = useAuth()
+  // Only the owner / Garage Manager may create, edit or delete invoices.
+  const { canCreateInvoices, canEditInvoices } = usePermissions()
   const [organizationId, setOrganizationId] = useState<string | null>(null)
   const [userProfile, setUserProfile] = useState<any>(null)
   const [invoices, setInvoices] = useState<Invoice[]>([])
@@ -51,10 +54,12 @@ export function InvoicingTab() {
   const [showExportModal, setShowExportModal] = useState(false)
 
   const openCreate = () => {
+    if (!canCreateInvoices) { toast.error(t('stock.invoicing.onlyManagerWrite')); return }
     setEditingInvoice(null)
     setShowCreateModal(true)
   }
   const openEdit = (invoice: Invoice) => {
+    if (!canEditInvoices) { toast.error(t('stock.invoicing.onlyManagerWrite')); return }
     setEditingInvoice(invoice)
     setShowCreateModal(true)
   }
@@ -105,9 +110,9 @@ export function InvoicingTab() {
   }
 
   const handleDeleteInvoice = async (invoice: Invoice) => {
-    // Check if user is admin
-    if (userProfile?.role !== 'admin') {
-      toast.error(t('stock.invoicing.onlyAdminsDelete'))
+    // Only owner / Garage Manager may delete an invoice.
+    if (!canEditInvoices) {
+      toast.error(t('stock.invoicing.onlyManagerWrite'))
       return
     }
 
@@ -163,8 +168,6 @@ export function InvoicingTab() {
     inv.vehicleRegistration.toLowerCase().includes(searchTerm.toLowerCase()) ||
     inv.toCompany.toLowerCase().includes(searchTerm.toLowerCase())
   )
-
-  const isAdmin = userProfile?.role === 'admin'
 
   // Summary stats — over the selected period so the pills match what's shown.
   const totalInvoices = periodInvoices.length
@@ -311,7 +314,8 @@ export function InvoicingTab() {
             <span>{t('stock.export.button')}</span>
           </button>
 
-          {/* Create Invoice Button - Hero CTA */}
+          {/* Create Invoice Button - Hero CTA — owner / Garage Manager only */}
+          {canCreateInvoices && (
           <button
             onClick={openCreate}
             className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-[10px] sm:text-sm font-bold bg-gradient-to-r from-[#025940] to-[#012619] text-[#b3f243] shadow-lg shadow-[#025940]/30 transition-all hover:shadow-xl hover:shadow-[#025940]/40 hover:scale-105 whitespace-nowrap"
@@ -319,6 +323,7 @@ export function InvoicingTab() {
             <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span>{t('stock.invoicing.createInvoice')}</span>
           </button>
+          )}
         </div>
 
         {/* Result count */}
@@ -340,7 +345,7 @@ export function InvoicingTab() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
             {searchTerm ? t('stock.invoicing.emptyTrySearch') : t('stock.invoicing.emptyCreateFirst')}
           </p>
-          {!searchTerm && (
+          {!searchTerm && canCreateInvoices && (
             <button
               onClick={openCreate}
               className="px-5 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-[#025940] to-[#012619] text-[#b3f243] shadow-lg shadow-[#025940]/30 hover:scale-105 transition-all"
@@ -419,7 +424,8 @@ export function InvoicingTab() {
                     <Eye className="w-4 h-4 sm:w-5 sm:h-5" />
                   </button>
 
-                  {/* Edit Button */}
+                  {/* Edit Button — owner / Garage Manager only */}
+                  {canEditInvoices && (
                   <button
                     onClick={() => openEdit(invoice)}
                     className="p-2 text-[#025940] dark:text-[#72A68E] hover:bg-[#025940]/10 dark:hover:bg-[#025940]/20 rounded-lg transition-all"
@@ -427,9 +433,10 @@ export function InvoicingTab() {
                   >
                     <Pencil className="w-4 h-4 sm:w-5 sm:h-5" />
                   </button>
+                  )}
 
-                  {/* Delete Button - Admin Only */}
-                  {isAdmin && (
+                  {/* Delete Button — owner / Garage Manager only */}
+                  {canEditInvoices && (
                     <button
                       onClick={() => handleDeleteInvoice(invoice)}
                       disabled={deletingId === invoice.id}

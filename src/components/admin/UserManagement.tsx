@@ -4,6 +4,7 @@
 import React, { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useAuth } from '@/contexts/AuthContext'
+import { usePermissions } from '@/hooks/usePermissions'
 import { userProfileService } from '@/lib/firestore'
 import { supabase } from '@/lib/supabaseClient'
 import { UserProfile, isUserActive, isUserDeleted } from '@/types'
@@ -22,9 +23,14 @@ const primaryBtnCls = 'h-9 px-4 text-[13px] font-medium rounded-lg bg-[#025940] 
 const ghostBtnCls = 'h-9 px-3 text-[13px] font-medium rounded-lg text-[#012619] dark:text-gray-200 hover:bg-[#e2e8e5] dark:hover:bg-gray-700 transition-colors inline-flex items-center gap-1'
 const iconBtnCls = 'w-7 h-7 rounded-md inline-flex items-center justify-center text-[#8a9e94] hover:bg-[#C5D9D0]/40 dark:hover:bg-gray-700 transition-colors'
 
+// Assignable roles. 'garage_manager' (Admin & Garage Manager) may only be
+// granted by the owner or an existing Garage Manager (DB-enforced in 0054).
+type AssignableRole = 'admin' | 'member' | 'mechanic' | 'garage_manager'
+
 function UserManagement() {
   const t = useT()
   const { user } = useAuth()
+  const { canGrantManager } = usePermissions()
   const [users, setUsers] = useState<UserProfile[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -48,7 +54,7 @@ function UserManagement() {
     email: string
     displayName: string
     temporaryPassword: string
-    role: 'member' | 'mechanic' | 'admin'
+    role: AssignableRole
   }>({ email: '', displayName: '', temporaryPassword: '', role: 'member' })
 
   useEffect(() => {
@@ -136,9 +142,13 @@ function UserManagement() {
     }
   }
 
-  const handleRoleChange = async (userItem: UserProfile, newRole: 'admin' | 'member' | 'mechanic') => {
+  const handleRoleChange = async (userItem: UserProfile, newRole: AssignableRole) => {
     if (!userProfile || userProfile.role !== 'admin') return setError('No permission')
     if (newRole === userItem.role) return
+    // Granting the Garage Manager role is owner / Garage Manager only.
+    if (newRole === 'garage_manager' && !canGrantManager) {
+      return setError(t('settings.users.onlyOwnerGrantsManager'))
+    }
 
     // Block self-edit (would lock you out)
     if (userItem.uid === user?.uid) {
@@ -166,7 +176,10 @@ function UserManagement() {
       setSavingRoleFor(userItem.uid)
       setError('')
       await userProfileService.updateProfile(userItem.uid, { role: newRole })
-      setSuccess(t('settings.users.roleUpdatedTo', { role: t('settings.role.' + (({ 'admin': 'admin', 'member': 'member', 'mechanic': 'mechanic' } as any)[newRole] || 'member')) }))
+      setSuccess(
+        t('settings.users.roleUpdatedTo', { role: t('settings.role.' + (({ 'admin': 'admin', 'member': 'member', 'mechanic': 'mechanic', 'garage_manager': 'garage_manager' } as any)[newRole] || 'member')) })
+        + ' ' + t('settings.users.roleReloginNote'),
+      )
       setTimeout(() => setSuccess(''), 3000)
       await loadData(false)
     } catch (err) {
@@ -423,12 +436,13 @@ function UserManagement() {
             <label className={labelCls}>{t('settings.users.roleLabel')}</label>
             <select
               value={newUser.role}
-              onChange={(e) => setNewUser(prev => ({ ...prev, role: e.target.value as 'member' | 'mechanic' | 'admin' }))}
+              onChange={(e) => setNewUser(prev => ({ ...prev, role: e.target.value as AssignableRole }))}
               className={`${inputCls} cursor-pointer pr-8`}
             >
               <option value="member">{t('settings.users.roleMemberOpt')}</option>
               <option value="mechanic">{t('settings.users.roleMechanicOpt')}</option>
               <option value="admin">{t('settings.users.roleAdminOpt')}</option>
+              {canGrantManager && <option value="garage_manager">{t('settings.users.roleManagerOpt')}</option>}
             </select>
           </div>
 
@@ -576,13 +590,13 @@ function UserManagement() {
                             title={isSelf ? t('settings.users.cantChangeOwnRole') : t('settings.users.cantDemoteLastAdmin')}
                             className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${roleChipCls}`}
                           >
-                            {t('settings.role.' + (({ 'admin': 'admin', 'member': 'member', 'mechanic': 'mechanic' } as any)[userItem.role] || 'member'))}
+                            {t('settings.role.' + (({ 'admin': 'admin', 'member': 'member', 'mechanic': 'mechanic', 'garage_manager': 'garage_manager' } as any)[userItem.role] || 'member'))}
                             {isLastAdmin && !isSelf && <Lock className="w-2.5 h-2.5 ml-1 opacity-70" />}
                           </span>
                         ) : (
                           <select
                             value={userItem.role}
-                            onChange={(e) => handleRoleChange(userItem, e.target.value as 'admin' | 'member' | 'mechanic')}
+                            onChange={(e) => handleRoleChange(userItem, e.target.value as AssignableRole)}
                             disabled={savingRoleFor === userItem.uid}
                             aria-label={t('settings.users.changeRole')}
                             className={`h-5 pl-1.5 pr-5 rounded text-[10px] font-semibold uppercase tracking-wider border cursor-pointer disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-[#025940]/30 transition-colors ${selectCls}`}
@@ -590,6 +604,10 @@ function UserManagement() {
                             <option value="member">{t('settings.role.member')}</option>
                             <option value="mechanic">{t('settings.role.mechanic')}</option>
                             <option value="admin">{t('settings.role.admin')}</option>
+                            {/* Only offer Garage Manager to those who may grant it (or if already set). */}
+                            {(canGrantManager || userItem.role === 'garage_manager') && (
+                              <option value="garage_manager">{t('settings.role.garage_manager')}</option>
+                            )}
                           </select>
                         )}
 

@@ -96,6 +96,10 @@ function mapBookingRow(row: any): ServiceBooking {
     assignedMechanicName: v.assignedMechanicName ?? null,
     slotCount: typeof v.slotCount === 'number' && v.slotCount >= 1 ? v.slotCount : 1,
     mileage: typeof v.mileage === 'number' ? v.mileage : undefined,
+    carriedOverSlots: typeof v.carriedOverSlots === 'number' ? v.carriedOverSlots : 0,
+    carriedOverCount: typeof v.carriedOverCount === 'number' ? v.carriedOverCount : 0,
+    carriedForward: !!v.carriedForward,
+    carriedToDate: v.carriedToDate ?? null,
   } as ServiceBooking
 }
 
@@ -207,6 +211,10 @@ function bookingToRow(obj: Record<string, any>): Record<string, any> {
     cancelledByName: 'cancelled_by_name',
     invoiceId: 'invoice_id',
     noInvoiceNeeded: 'no_invoice_needed',
+    carriedOverSlots: 'carried_over_slots',
+    carriedOverCount: 'carried_over_count',
+    carriedForward: 'carried_forward',
+    carriedToDate: 'carried_to_date',
   }
   const out: Record<string, any> = {}
   for (const [k, v] of Object.entries(obj)) {
@@ -544,6 +552,10 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
       .eq('id', bookingId)
     if (updateError) {
       setBookings(prevBookings) // roll back the optimistic change
+      // Surface the real reason (Supabase errors otherwise log as `{}`). A
+      // "column ... does not exist" / schema-cache miss here means a pending
+      // migration hasn't been run on this database.
+      logger.error('updateBooking failed:', updateError.message, updateError.code, updateError.details, updateError.hint)
       throw updateError
     }
 

@@ -9,6 +9,7 @@ import React, { useState, useEffect } from 'react'
 import { X, Scale, Plus, Minus, AlertCircle } from 'lucide-react'
 import { stockService } from '@/lib/services/stockService'
 import { useAuth } from '@/contexts/AuthContext'
+import { usePermissions } from '@/hooks/usePermissions'
 import { userProfileService } from '@/lib/firestore'
 import { toast } from 'sonner'
 import { StockPart } from '@/types/stock'
@@ -45,6 +46,7 @@ export function AdjustStockModal({ isOpen, onClose, onSuccess, part }: AdjustSto
         : 'stock.adjust.reasonOther'
     )
   const { user } = useAuth()
+  const { canManageStockPrices } = usePermissions()
   const [organizationId, setOrganizationId]   = useState<string | null>(null)
   const [userDisplayName, setUserDisplayName] = useState<string>('Unknown')
   const [loading, setLoading]                 = useState(false)
@@ -97,6 +99,7 @@ export function AdjustStockModal({ isOpen, onClose, onSuccess, part }: AdjustSto
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    if (!canManageStockPrices) { toast.error(t('stock.invoicing.onlyManagerWrite')); return }
     if (!user || !organizationId || !part) {
       toast.error(t('stock.adjust.missingInfo'))
       return

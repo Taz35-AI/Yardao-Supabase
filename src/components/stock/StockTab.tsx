@@ -20,6 +20,7 @@ import {
 import { stockService } from '@/lib/services/stockService'
 import { vehicleService } from '@/lib/firestore'
 import { useAuth } from '@/contexts/AuthContext'
+import { usePermissions } from '@/hooks/usePermissions'
 import { userProfileService } from '@/lib/firestore'
 import { StockPart } from '@/types/stock'
 import { Vehicle } from '@/lib/firestore'
@@ -47,6 +48,9 @@ type SortDir = 'asc' | 'desc'
 export function StockTab({ autoOpenAddSignal = 0 }: { autoOpenAddSignal?: number } = {}) {
   const t = useT()
   const { user } = useAuth()
+  // Owner / Garage Manager may add / edit prices / adjust / delete stock;
+  // regular admins keep operational scan in/out only.
+  const { canManageStockPrices } = usePermissions()
   const [organizationId, setOrganizationId] = useState<string | null>(null)
   const [userName, setUserName] = useState<string>('Unknown')
   const [parts, setParts] = useState<StockPart[]>([])
@@ -181,6 +185,7 @@ export function StockTab({ autoOpenAddSignal = 0 }: { autoOpenAddSignal?: number
   }
 
   const handleDeletePart = async (partId: string, partName: string) => {
+    if (!canManageStockPrices) { toast.error(t('stock.invoicing.onlyManagerWrite')); return }
     if (!confirm(t('stock.tab.confirmDeletePart', { name: partName }))) {
       return
     }
@@ -196,11 +201,13 @@ export function StockTab({ autoOpenAddSignal = 0 }: { autoOpenAddSignal?: number
   }
 
   const handleEditPart = (part: StockPart) => {
+    if (!canManageStockPrices) { toast.error(t('stock.invoicing.onlyManagerWrite')); return }
     setEditingPart(part)
     setShowEditPartModal(true)
   }
 
   const handleDeleteOrderHistory = async (partId: string, partName: string) => {
+    if (!canManageStockPrices) { toast.error(t('stock.invoicing.onlyManagerWrite')); return }
     if (!organizationId) return
     if (!confirm(t('stock.tab.confirmClearHistory', { name: partName }))) {
       return
@@ -217,6 +224,7 @@ export function StockTab({ autoOpenAddSignal = 0 }: { autoOpenAddSignal?: number
 
   // ✅ NEW: Delete All Stock Handler
   const handleDeleteAllStock = async () => {
+    if (!canManageStockPrices) { toast.error(t('stock.invoicing.onlyManagerWrite')); return }
     if (!organizationId) return
 
     setIsDeletingAll(true)
@@ -676,7 +684,8 @@ export function StockTab({ autoOpenAddSignal = 0 }: { autoOpenAddSignal?: number
             )}
           </div>
 
-          {/* Add Part Button - Hero CTA (desktop only; mobile uses the bottom-nav FAB) */}
+          {/* Add Part Button - Hero CTA — owner / Garage Manager only */}
+          {canManageStockPrices && (
           <button
             onClick={() => setShowAddModal(true)}
             className="hidden md:flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-[10px] sm:text-sm font-semibold bg-[#025940] text-white hover:bg-[#012619] transition-colors whitespace-nowrap flex-shrink-0"
@@ -684,6 +693,7 @@ export function StockTab({ autoOpenAddSignal = 0 }: { autoOpenAddSignal?: number
             <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span>{t('stock.tab.addPart')}</span>
           </button>
+          )}
         </div>
 
         {/* Batch Mode Bar */}
@@ -1280,7 +1290,8 @@ export function StockTab({ autoOpenAddSignal = 0 }: { autoOpenAddSignal?: number
                         </div>
                       )}
 
-                      {/* Action Buttons */}
+                      {/* Action Buttons — owner / Garage Manager only */}
+                      {canManageStockPrices && (
                       <div className="flex items-center gap-2 pt-2 border-t border-[#e2e8e5] dark:border-gray-700">
                         <button
                           onClick={() => handleEditPart(part)}
@@ -1315,6 +1326,7 @@ export function StockTab({ autoOpenAddSignal = 0 }: { autoOpenAddSignal?: number
                           <span className="hidden sm:inline">{t('stock.btn.delete')}</span>
                         </button>
                       </div>
+                      )}
                     </div>
                   )}
                 </div>

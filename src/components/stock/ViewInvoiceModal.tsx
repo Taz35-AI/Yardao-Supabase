@@ -12,6 +12,7 @@ import { stockService } from '@/lib/services/stockService'
 import { settingsService, FromCompanyDetails, ToCompanyDetails } from '@/lib/services/settingsService'
 import { userProfileService } from '@/lib/firestore'
 import { useAuth } from '@/contexts/AuthContext'
+import { usePermissions } from '@/hooks/usePermissions'
 import { toast } from 'sonner'
 import { generateInvoicePDF } from '@/lib/utils/generateInvoicePDF'
 import { logger } from '@/lib/logger'
@@ -29,6 +30,8 @@ interface ViewInvoiceModalProps {
 export function ViewInvoiceModal({ isOpen, onClose, invoice, onStatusChange, onEdit }: ViewInvoiceModalProps) {
   const t = useT()
   const { user } = useAuth()
+  // Only owner / Garage Manager may change status or edit; others view only.
+  const { canEditInvoices } = usePermissions()
   
   const [fromCompanyDetails, setFromCompanyDetails] = useState<FromCompanyDetails | null>(null)
   const [toCompanyDetails, setToCompanyDetails] = useState<ToCompanyDetails | null>(null)
@@ -94,6 +97,7 @@ export function ViewInvoiceModal({ isOpen, onClose, invoice, onStatusChange, onE
 
   const handleStatusChange = async (newStatus: Invoice['status']) => {
     if (!invoice?.id) return
+    if (!canEditInvoices) { toast.error(t('stock.invoicing.onlyManagerWrite')); return }
 
     const prevStatus = statusValue
     setStatusValue(newStatus) // optimistic — keep the dropdown on the chosen value
@@ -132,19 +136,25 @@ export function ViewInvoiceModal({ isOpen, onClose, invoice, onStatusChange, onE
           </div>
 
           <div className="flex items-center space-x-3">
-            {/* Status Dropdown */}
-            <select
-              value={statusValue}
-              onChange={(e) => handleStatusChange(e.target.value as Invoice['status'])}
-              className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
-            >
-              <option value="draft">{t('stock.viewInvoice.statusDraft')}</option>
-              <option value="issued">{t('stock.viewInvoice.statusIssued')}</option>
-              <option value="paid">{t('stock.viewInvoice.statusPaid')}</option>
-            </select>
+            {/* Status — editable dropdown for owner/Garage Manager, else read-only */}
+            {canEditInvoices ? (
+              <select
+                value={statusValue}
+                onChange={(e) => handleStatusChange(e.target.value as Invoice['status'])}
+                className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
+              >
+                <option value="draft">{t('stock.viewInvoice.statusDraft')}</option>
+                <option value="issued">{t('stock.viewInvoice.statusIssued')}</option>
+                <option value="paid">{t('stock.viewInvoice.statusPaid')}</option>
+              </select>
+            ) : (
+              <span className={`px-3 py-1 rounded-lg text-sm font-semibold ${getStatusBadgeClasses(statusValue)}`}>
+                {t(statusValue === 'paid' ? 'stock.viewInvoice.statusPaid' : statusValue === 'issued' ? 'stock.viewInvoice.statusIssued' : 'stock.viewInvoice.statusDraft')}
+              </span>
+            )}
 
-            {/* Edit Button */}
-            {onEdit && (
+            {/* Edit Button — owner / Garage Manager only */}
+            {onEdit && canEditInvoices && (
               <button
                 onClick={() => onEdit(invoice)}
                 className="flex items-center space-x-1.5 px-3 py-1.5 bg-white dark:bg-gray-700 border border-[#025940]/40 hover:bg-[#025940]/10 text-[#025940] dark:text-[#72A68E] rounded-lg transition-colors text-sm font-medium"

@@ -340,7 +340,7 @@ export interface UserProfile {
   organizationId: string
   organizationName?: string
   themePreference: 'light' | 'dark' | 'system'
-  role: 'admin' | 'member' | 'mechanic'
+  role: 'admin' | 'member' | 'mechanic' | 'garage_manager'
   createdAt: Date | string
   updatedAt?: Date | string
   requiresPasswordReset?: boolean

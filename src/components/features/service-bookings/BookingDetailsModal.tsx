@@ -24,6 +24,7 @@ import {
   Package,
   Receipt,
   Ban,
+  CalendarClock,
 } from 'lucide-react'
 import type { ServiceBooking } from '@/types/serviceBookings'
 import type { Customer } from '@/types/customer'
@@ -33,6 +34,7 @@ import { bayLabel } from '@/utils/serviceBookings/bayLabels'
 import { normalizePhone } from '@/lib/utils/phone'
 import { useT, localizeWorkType } from '@/lib/i18n'
 import { useServiceBookings } from '@/hooks/useServiceBookings'
+import { usePermissions } from '@/hooks/usePermissions'
 import { JobPartsModal } from './JobPartsModal'
 import { CreateInvoiceModal } from '@/components/stock/CreateInvoiceModal'
 
@@ -48,6 +50,9 @@ interface BookingDetailsModalProps {
    *  completed). When omitted or the booking is already completed /
    *  cancelled, the button is hidden. */
   onComplete?: (booking: ServiceBooking) => void
+  /** Carry an unfinished job to another day — opens the workshop booking view
+   *  on the next day with this vehicle pre-loaded. Owner / Garage Manager only. */
+  onCarryOver?: (booking: ServiceBooking) => void
   /** Optional customer list — when provided, the matched customer's
    *  saved "preferred notes" is shown inside the Customer section.
    *  Lookup is by normalised phone. */
@@ -117,11 +122,15 @@ export function BookingDetailsModal({
   onEdit,
   onDelete,
   onComplete,
+  onCarryOver,
   customers,
   bayNames,
 }: BookingDetailsModalProps) {
   const t = useT()
   const { raiseInvoiceForBooking, updateBooking } = useServiceBookings()
+  // Regular admins keep operational actions (complete, scan parts) but cannot
+  // edit/delete bookings or raise invoices — owner / Garage Manager only.
+  const { canManageBookings, canCreateInvoices } = usePermissions()
   // 🧩 Live job-parts capture, reachable straight from the details view.
   const [partsOpen, setPartsOpen] = useState(false)
   // 🧾 When set, the invoice editor is layered on top for review after the
@@ -142,6 +151,9 @@ export function BookingDetailsModal({
   const customerPreferredNotes = matchedCustomer?.notes?.trim() || ''
 
   const isExternal = !!booking.isExternalProvider
+  // A carried-over trail marker is a read-only record of a day the job ran
+  // before moving on — no actions apply to it.
+  const isMarker = !!booking.carriedForward
   // Parts only make sense for our own (internal, real) jobs — external garages
   // supply their own parts, and synthetic garage rows aren't real bookings.
   const showParts = !isExternal && !(booking as any).isGarageVehicle
@@ -183,7 +195,7 @@ export function BookingDetailsModal({
   }
   // Hide Complete when there's nothing meaningful to complete.
   const canComplete =
-    !!onComplete &&
+    !!onComplete && !isMarker &&
     booking.status !== 'completed' &&
     booking.status !== 'cancelled'
   // Garage vehicles get a friendlier label — handleMarkCompleted treats
@@ -197,8 +209,21 @@ export function BookingDetailsModal({
   const isInvoiced = !!booking.invoiceId
   const noInvoiceNeeded = !!booking.noInvoiceNeeded
   const canInvoice =
+    canCreateInvoices && !isMarker &&
     booking.status === 'completed' && !isInvoiced && !noInvoiceNeeded &&
     !isExternal && !(booking as any).isGarageVehicle
+
+  // ⏭️ Carry-over: an UNFINISHED internal job whose day is today or earlier
+  // (scheduled / checked-in / in-progress). Future bookings aren't "spillover" —
+  // reschedule those via Edit. Owner / Garage Manager only.
+  const todayYmd = (() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  })()
+  const canCarryOver =
+    !!onCarryOver && canManageBookings && !isExternal && !isMarker && !(booking as any).isGarageVehicle &&
+    booking.status !== 'completed' && booking.status !== 'cancelled' &&
+    (booking.date || '') <= todayYmd
 
   const handleRaiseInvoice = async () => {
     if (raising) return
@@ -235,15 +260,17 @@ export function BookingDetailsModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl mx-auto bg-white dark:bg-gray-800 rounded-2xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col"
+        className="w-full max-w-2xl mx-auto bg-white dark:bg-gray-900 rounded-2xl shadow-2xl ring-1 ring-[#025940]/15 overflow-hidden max-h-[92vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex-shrink-0 bg-gradient-to-r from-[#025940] to-[#72A68E] text-white px-4 sm:px-6 py-4">
-          <div className="flex items-start justify-between gap-4">
+        <div className="flex-shrink-0 relative bg-gradient-to-br from-[#012619] to-[#025940] text-white px-4 sm:px-6 py-4 overflow-hidden">
+          {/* soft brand glow, purely decorative */}
+          <div className="pointer-events-none absolute -top-10 -right-8 w-40 h-40 rounded-full bg-[#b3f243]/10 blur-2xl" aria-hidden />
+          <div className="relative flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <span className="text-xs font-bold bg-yellow-300 text-gray-900 px-2 py-0.5 rounded font-mono tracking-wide border border-yellow-400">
+                <span className="text-xs font-black bg-[#f6d33c] text-[#1a1a1a] px-2 py-0.5 rounded-[5px] font-mono tracking-[0.08em] shadow-sm ring-1 ring-black/10">
                   {booking.registration || '—'}
                 </span>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${status.classes}`}>
@@ -286,6 +313,22 @@ export function BookingDetailsModal({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-4">
+
+          {/* Carried-over marker banner — this is a record only. */}
+          {isMarker && (
+            <div className="flex items-center gap-2 rounded-xl border border-[#025940]/30 bg-[#025940]/5 px-3 py-2.5 text-sm text-[#025940] dark:text-[#72A68E]">
+              <CalendarClock className="w-4 h-4 flex-shrink-0" />
+              <span>{t('serviceBookings.carryOver.markerNote', { date: booking.carriedToDate ? formatDate(booking.carriedToDate) : '' })}</span>
+            </div>
+          )}
+
+          {/* Continued job banner — hours were carried in from previous day(s). */}
+          {!isMarker && (booking.carriedOverCount ?? 0) > 0 && (
+            <div className="flex items-center gap-2 rounded-xl border border-[#b3f243]/50 bg-[#b3f243]/10 px-3 py-2.5 text-sm text-[#025940] dark:text-[#b3f243]">
+              <CalendarClock className="w-4 h-4 flex-shrink-0" />
+              <span>{t('serviceBookings.carryOver.continuedNote', { hours: ((booking.carriedOverSlots ?? 0) * 0.5).toFixed(1) })}</span>
+            </div>
+          )}
 
           {/* When + where */}
           <Section icon={<img src="/calendar.svg" alt="" className="w-8 h-8 object-contain" />} title={t('serviceBookings.details.sectionWhen')}>
@@ -448,13 +491,13 @@ export function BookingDetailsModal({
         </div>
 
         {/* Footer */}
-        <div className="flex-shrink-0 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-3 flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex-shrink-0 bg-[#f6f8f7] dark:bg-gray-900/60 border-t border-[#e2e8e5] dark:border-gray-700 px-4 sm:px-6 py-3 flex items-center justify-between gap-2 flex-wrap">
           {/* Delete on the left so it's visually separated from the
               positive Edit / Close actions on the right. */}
-          {onDelete ? (
+          {onDelete && canManageBookings && !isMarker ? (
             <button
               onClick={handleDeleteClick}
-              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors"
+              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-xl text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors"
             >
               <Trash2 className="w-4 h-4" />
               {t('serviceBookings.action.delete')}
@@ -469,16 +512,27 @@ export function BookingDetailsModal({
             {showParts && (
               <button
                 onClick={() => setPartsOpen(true)}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-white dark:bg-gray-700 border border-[#025940]/40 hover:bg-[#025940]/10 text-[#025940] dark:text-[#72A68E] transition-colors"
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-xl bg-white dark:bg-gray-800 border border-[#025940]/30 hover:bg-[#025940]/10 text-[#025940] dark:text-[#72A68E] transition-colors"
               >
                 <Package className="w-4 h-4" />
                 {t('stock.jobParts.buttonLabel')}
               </button>
             )}
-            {onEdit && (
+            {/* Carry over → opens the workshop view on the next day with this
+                vehicle pre-loaded. Owner / Garage Manager only. */}
+            {canCarryOver && (
+              <button
+                onClick={() => { onCarryOver!(booking); onClose() }}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-xl bg-white dark:bg-gray-800 border border-[#025940]/30 hover:bg-[#025940]/10 text-[#025940] dark:text-[#72A68E] transition-colors"
+              >
+                <CalendarClock className="w-4 h-4" />
+                {t('serviceBookings.carryOver.button')}
+              </button>
+            )}
+            {onEdit && canManageBookings && !isMarker && (
               <button
                 onClick={handleEditClick}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-white dark:bg-gray-700 border border-[#025940]/40 hover:bg-[#025940]/10 text-[#025940] dark:text-[#72A68E] transition-colors"
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-xl bg-white dark:bg-gray-800 border border-[#025940]/30 hover:bg-[#025940]/10 text-[#025940] dark:text-[#72A68E] transition-colors"
               >
                 <Pencil className="w-4 h-4" />
                 {t('serviceBookings.action.edit')}
@@ -490,7 +544,7 @@ export function BookingDetailsModal({
                // blew the button up to ~2× the height of its neighbours.
               <button
                 onClick={handleCompleteClick}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-[#025940] hover:bg-[#012619] text-white transition-colors shadow-sm"
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-xl bg-gradient-to-br from-[#025940] to-[#012619] hover:shadow-md hover:shadow-[#025940]/25 active:scale-[0.98] text-white transition-all shadow-sm"
               >
                 <img src="/completed.svg" alt="" className="w-4 h-4 object-contain" />
                 {completeLabel}
@@ -500,7 +554,7 @@ export function BookingDetailsModal({
               <button
                 onClick={handleRaiseInvoice}
                 disabled={raising}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-[#025940] hover:bg-[#012619] text-white transition-colors shadow-sm disabled:opacity-60"
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-xl bg-gradient-to-br from-[#025940] to-[#012619] hover:shadow-md hover:shadow-[#025940]/25 active:scale-[0.98] text-white transition-all shadow-sm disabled:opacity-60"
               >
                 <Receipt className="w-4 h-4" />
                 {t('serviceBookings.invoice.raiseInvoice')}
@@ -510,7 +564,7 @@ export function BookingDetailsModal({
               <button
                 onClick={handleNoInvoice}
                 disabled={savingNoInvoice}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition-colors disabled:opacity-60"
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-xl bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-[#4a5e54] dark:text-gray-200 transition-colors disabled:opacity-60"
               >
                 <Ban className="w-4 h-4" />
                 {t('serviceBookings.invoice.noInvoiceNeeded')}
@@ -518,7 +572,7 @@ export function BookingDetailsModal({
             )}
             <button
               onClick={onClose}
-              className="px-4 py-2 text-sm font-semibold rounded-lg bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white transition-colors"
+              className="px-4 py-2 text-sm font-semibold rounded-xl bg-[#012619]/5 hover:bg-[#012619]/10 dark:bg-gray-700 dark:hover:bg-gray-600 text-[#012619] dark:text-white transition-colors"
             >
               {t('serviceBookings.common.close')}
             </button>
@@ -560,10 +614,10 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <div className="bg-gray-50 dark:bg-gray-900/40 rounded-xl border border-gray-200 dark:border-gray-700 p-3">
-      <div className="flex items-center gap-2 mb-2 text-gray-500 dark:text-gray-400">
-        {icon}
-        <span className="text-[10px] font-bold uppercase tracking-wide">{title}</span>
+    <div className="bg-[#f6f8f7] dark:bg-gray-800/50 rounded-2xl border border-[#e2e8e5] dark:border-gray-700 p-3.5 shadow-sm">
+      <div className="flex items-center gap-2 mb-2 text-[#025940] dark:text-[#72A68E]">
+        <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-[#025940]/10 dark:bg-[#025940]/25 [&_img]:w-4 [&_img]:h-4 [&_svg]:w-3.5 [&_svg]:h-3.5">{icon}</span>
+        <span className="text-[10px] font-bold uppercase tracking-[0.08em]">{title}</span>
       </div>
       {children}
     </div>
