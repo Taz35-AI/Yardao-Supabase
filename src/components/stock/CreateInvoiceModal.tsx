@@ -109,6 +109,8 @@ export function CreateInvoiceModal({ isOpen, onClose, onSuccess, editInvoice }: 
   const [parts, setParts] = useState<InvoicePart[]>([])
   const [labour, setLabour] = useState<LabourLine[]>([])
   const [labourRate, setLabourRate] = useState(DEFAULT_LABOUR_RATE)
+  // Org-wide default labour rate (settings). A from-company can override it.
+  const [orgDefaultRate, setOrgDefaultRate] = useState(DEFAULT_LABOUR_RATE)
   // Per-invoice discount % (decided at generation; defaults from the from-company).
   const [discountPercent, setDiscountPercent] = useState(0)
   // Odometer / mileage reading shown on the invoice as "ODO: ".
@@ -131,7 +133,13 @@ export function CreateInvoiceModal({ isOpen, onClose, onSuccess, editInvoice }: 
   useEffect(() => {
     if (editInvoice) return
     setDiscountPercent(selectedFromCompany?.discountPercent || 0)
-  }, [selectedFromCompany, editInvoice])
+    // Labour rate: the selected company's own rate, else the org default, else
+    // the hardcoded fallback. Re-rate existing labour lines so a company change
+    // reflects its rate. Skipped in edit mode so saved invoices aren't touched.
+    const rate = selectedFromCompany?.labourRate ?? orgDefaultRate ?? DEFAULT_LABOUR_RATE
+    setLabourRate(rate)
+    setLabour(prev => prev.map(l => ({ ...l, rate, total: Math.round((l.hours || 0) * rate * 100) / 100 })))
+  }, [selectedFromCompany, orgDefaultRate, editInvoice])
 
   // Pre-fill the odometer from the selected vehicle, if it carries a mileage.
   // Skipped in edit mode (the invoice's own mileage is loaded instead).
@@ -445,13 +453,15 @@ const loadServiceBookingHoursAndCustomer = async () => {
       if (!organizationId || !isOpen) return
       
       try {
-        const [from, to] = await Promise.all([
+        const [from, to, rate] = await Promise.all([
           settingsService.getFromCompanies(organizationId),
-          settingsService.getToCompanies(organizationId)
+          settingsService.getToCompanies(organizationId),
+          settingsService.getDefaultLabourRate(organizationId),
         ])
-        
+
         setFromCompanies(from)
         setToCompanies(to)
+        setOrgDefaultRate(rate)
 
         if (editInvoice) {
           // Edit mode: select the invoice's saved companies by name. If a

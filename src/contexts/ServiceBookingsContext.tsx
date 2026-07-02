@@ -1148,8 +1148,12 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
   const raiseInvoiceForBooking = async (booking: ServiceBooking): Promise<Invoice> => {
     if (!user || !organizationId) throw new Error('Not authenticated')
     const { stockService } = await import('@/lib/services/stockService')
+    const { settingsService } = await import('@/lib/services/settingsService')
     const usage = await stockService.getUsageByBooking(organizationId, booking.id)
     const invoiceNumber = await stockService.generateInvoiceNumber(organizationId)
+    // Org-wide default labour rate from settings (falls back to £50 if unset).
+    let labourRate = DEFAULT_LABOUR_RATE
+    try { labourRate = await settingsService.getDefaultLabourRate(organizationId) } catch { /* fallback */ }
     const draft = buildInvoiceDraft({
       booking,
       usage,
@@ -1158,7 +1162,7 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
       createdByName: user.displayName || user.email || 'Unknown User',
       invoiceNumber,
       invoiceDate: nowIso().slice(0, 10),
-      labourRate: DEFAULT_LABOUR_RATE,
+      labourRate,
     })
     const created = await stockService.createInvoice(draft)
 

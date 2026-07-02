@@ -33,6 +33,7 @@ export interface FromCompanyDetails {
   logo?: string            // base64 data URL, shown top-right on the invoice
   partsMarkupPercent?: number  // % added on top of part costs (parts only)
   discountPercent?: number     // % discount applied to the net (own invoice line)
+  labourRate?: number          // £/hour override for invoices from this company
 }
 
 export interface ToCompanyDetails {
@@ -306,6 +307,34 @@ export const settingsService = {
       if (error) throw error
     } catch (error) {
       logger.error('Error saving service settings:', error)
+      throw error
+    }
+  },
+
+  // ==================== INVOICE LABOUR RATE ====================
+
+  /** Org-wide default labour rate (£/hour). Falls back to 50 until set. */
+  async getDefaultLabourRate(organizationId: string): Promise<number> {
+    try {
+      const row = await getSettingsRow(organizationId)
+      const v = row?.default_labour_rate
+      return typeof v === 'number' && v > 0 ? v : (v != null && Number(v) > 0 ? Number(v) : 50)
+    } catch (error) {
+      logger.error('Error getting default labour rate:', error)
+      return 50
+    }
+  },
+
+  async saveDefaultLabourRate(organizationId: string, rate: number): Promise<void> {
+    try {
+      await ensureSettingsDoc(organizationId)
+      const { error } = await supabase
+        .from(TABLE)
+        .update({ default_labour_rate: rate, updated_at: new Date().toISOString() })
+        .eq('organization_id', organizationId)
+      if (error) throw error
+    } catch (error) {
+      logger.error('Error saving default labour rate:', error)
       throw error
     }
   },
