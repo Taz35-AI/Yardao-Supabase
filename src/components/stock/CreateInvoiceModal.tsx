@@ -937,7 +937,7 @@ const loadServiceBookingHoursAndCustomer = async () => {
         toast.success(t('stock.createInvoice.updated'))
       } else {
         const invoiceNumber = await stockService.generateInvoiceNumber(organizationId)
-        await stockService.createInvoice({
+        const created = await stockService.createInvoice({
           invoiceNumber,
           ...editableFields,
           createdBy: user.uid,
@@ -945,6 +945,21 @@ const loadServiceBookingHoursAndCustomer = async () => {
           organizationId,
           status: 'draft',
         })
+        // 🔗 Link the invoice back to the job it was raised from so the job is
+        // marked invoiced (drives the "Invoiced" flag + stops accidental
+        // duplicates). Only when a specific job was picked (not the legacy
+        // last-10-days window). Non-fatal — the invoice is already saved.
+        if (selectedJobId && created?.id) {
+          try {
+            await supabase
+              .from('service_bookings')
+              .update({ invoice_id: created.id })
+              .eq('id', selectedJobId)
+              .eq('organization_id', organizationId)
+          } catch (linkErr) {
+            logger.error('Linking invoice to booking failed (non-fatal):', linkErr)
+          }
+        }
         toast.success(t('stock.createInvoice.created'))
       }
 
