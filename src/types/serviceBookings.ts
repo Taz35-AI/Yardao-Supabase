@@ -98,6 +98,13 @@ export interface ServiceBooking {
   // times it has spilled over. Both default 0 → unaffected jobs.
   carriedOverSlots?: number
   carriedOverCount?: number
+
+  // ⏭️ Carry-over trail marker (migration 0056). `carriedForward` marks the
+  // read-only "carried over" stub left on the original day when a job moves to
+  // another day; `carriedToDate` is the day it moved to. Markers are inert:
+  // never invoiced, excluded from counts and conflict checks.
+  carriedForward?: boolean
+  carriedToDate?: string | null
 }
 
 export interface TimeSlot {

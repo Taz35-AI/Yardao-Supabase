@@ -657,9 +657,11 @@ export function ServiceTodayView({
   const bayNames = primaryBranch?.serviceBayNames
   const effectiveViewMode: 'list' | 'grid' = viewFilter === 'all' ? 'list' : bookingsViewMode
 
+  // Carried-over markers are a workshop-grid trail concept; keep them out of the
+  // list/today view so it only shows actionable jobs.
   const dateBookings = viewFilter === 'all'
-    ? bookings.filter(b => b.status !== 'cancelled')
-    : bookings.filter(b => b.date === dateStr && b.status !== 'cancelled')
+    ? bookings.filter(b => b.status !== 'cancelled' && !b.carriedForward)
+    : bookings.filter(b => b.date === dateStr && b.status !== 'cancelled' && !b.carriedForward)
 
   const sorted = [...dateBookings].sort((a, b) => {
     const at = a.isExternalProvider ? (a.externalProvider?.customTime || '00:00') : (a.timeSlot || '00:00')

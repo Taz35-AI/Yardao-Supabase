@@ -292,7 +292,7 @@ function MiniCalendar({
   const bookingCountMap = useMemo(() => {
     const map: Record<string, number> = {}
     bookings.forEach(b => {
-      if (b.status === 'cancelled') return
+      if (b.status === 'cancelled' || b.carriedForward) return
       if (!map[b.date]) map[b.date] = 0
       map[b.date]++
     })
@@ -676,7 +676,7 @@ export function ServiceBookingsContent() {
     for (const b of mergedBookings) {
       if (b.id === excludeBookingId) continue
       if (b.date !== date) continue
-      if (b.status === 'cancelled' || b.isExternalProvider) continue
+      if (b.status === 'cancelled' || b.isExternalProvider || b.carriedForward) continue
       const bay = b.serviceBay || 1
       const overlaps = requestedSlotIds.some(slotId => bookingCoversSlot(b, slotId))
       if (overlaps) busy.add(bay)
@@ -753,6 +753,7 @@ export function ServiceBookingsContent() {
         b => b.date === bookingData.date &&
              b.status !== 'cancelled' &&
              !b.isExternalProvider &&
+             !b.carriedForward &&
              (b.serviceBay || 1) === requestedBay &&
              requestedSlotIds.some(sid => bookingCoversSlot(b, sid))
       )
@@ -919,6 +920,7 @@ export function ServiceBookingsContent() {
              b.date === bookingData.date &&
              b.status !== 'cancelled' &&
              !b.isExternalProvider &&
+             !b.carriedForward &&
              (b.serviceBay || 1) === requestedBay &&
              requestedSlotIds.some(sid => bookingCoversSlot(b, sid))
       )
@@ -1210,17 +1212,51 @@ export function ServiceBookingsContent() {
   ) => {
     // Carry-over mode: bank the slots the job used before this move so the
     // invoice bills the total hours across every day it ran.
+    const orig = carryOverBooking
     let data = bookingData
-    if (carryOverBooking) {
-      const banked = (carryOverBooking.carriedOverSlots ?? 0) + Math.max(1, carryOverBooking.slotCount ?? 1)
+    if (orig) {
+      const banked = (orig.carriedOverSlots ?? 0) + Math.max(1, orig.slotCount ?? 1)
       data = {
         ...bookingData,
         carriedOverSlots: banked,
-        carriedOverCount: (carryOverBooking.carriedOverCount ?? 0) + 1,
+        carriedOverCount: (orig.carriedOverCount ?? 0) + 1,
       }
     }
     const ok = await handleUpdateBooking(data)
     if (ok) {
+      // Leave a read-only "carried over" marker on the day the job left, so the
+      // trail is visible. The live job (moved above) keeps all parts/hours/
+      // invoice; the marker is inert (no_invoice_needed, carried_forward).
+      if (orig) {
+        try {
+          await createBooking({
+            date: orig.date,
+            timeSlot: orig.timeSlot,
+            registration: orig.registration,
+            make: orig.make,
+            model: orig.model,
+            workRequired: orig.workRequired,
+            isCustomVehicle: orig.isCustomVehicle,
+            notes: orig.notes,
+            status: orig.status,
+            serviceBay: orig.serviceBay,
+            slotCount: orig.slotCount,
+            isExternalProvider: false,
+            customerName: orig.customerName,
+            customerPhone: orig.customerPhone,
+            customerEmail: orig.customerEmail,
+            assignedMechanicId: orig.assignedMechanicId,
+            assignedMechanicName: orig.assignedMechanicName,
+            carriedForward: true,
+            carriedToDate: data.date,
+            noInvoiceNeeded: true,
+            createdBy: user?.uid || '',
+            createdByName: user?.displayName || user?.email || 'Unknown',
+          } as unknown as Omit<ServiceBooking, 'id'>)
+        } catch (e) {
+          logger.error('carry-over marker create failed (non-fatal):', e)
+        }
+      }
       setPageMode('browse')
       setWorkspaceEditingBooking(null)
       setCarryOverBooking(null)

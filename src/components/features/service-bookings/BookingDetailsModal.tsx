@@ -151,6 +151,9 @@ export function BookingDetailsModal({
   const customerPreferredNotes = matchedCustomer?.notes?.trim() || ''
 
   const isExternal = !!booking.isExternalProvider
+  // A carried-over trail marker is a read-only record of a day the job ran
+  // before moving on — no actions apply to it.
+  const isMarker = !!booking.carriedForward
   // Parts only make sense for our own (internal, real) jobs — external garages
   // supply their own parts, and synthetic garage rows aren't real bookings.
   const showParts = !isExternal && !(booking as any).isGarageVehicle
@@ -192,7 +195,7 @@ export function BookingDetailsModal({
   }
   // Hide Complete when there's nothing meaningful to complete.
   const canComplete =
-    !!onComplete &&
+    !!onComplete && !isMarker &&
     booking.status !== 'completed' &&
     booking.status !== 'cancelled'
   // Garage vehicles get a friendlier label — handleMarkCompleted treats
@@ -206,7 +209,7 @@ export function BookingDetailsModal({
   const isInvoiced = !!booking.invoiceId
   const noInvoiceNeeded = !!booking.noInvoiceNeeded
   const canInvoice =
-    canCreateInvoices &&
+    canCreateInvoices && !isMarker &&
     booking.status === 'completed' && !isInvoiced && !noInvoiceNeeded &&
     !isExternal && !(booking as any).isGarageVehicle
 
@@ -218,7 +221,7 @@ export function BookingDetailsModal({
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   })()
   const canCarryOver =
-    !!onCarryOver && canManageBookings && !isExternal && !(booking as any).isGarageVehicle &&
+    !!onCarryOver && canManageBookings && !isExternal && !isMarker && !(booking as any).isGarageVehicle &&
     booking.status !== 'completed' && booking.status !== 'cancelled' &&
     (booking.date || '') <= todayYmd
 
@@ -308,6 +311,22 @@ export function BookingDetailsModal({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-4">
+
+          {/* Carried-over marker banner — this is a record only. */}
+          {isMarker && (
+            <div className="flex items-center gap-2 rounded-xl border border-[#025940]/30 bg-[#025940]/5 px-3 py-2.5 text-sm text-[#025940] dark:text-[#72A68E]">
+              <CalendarClock className="w-4 h-4 flex-shrink-0" />
+              <span>{t('serviceBookings.carryOver.markerNote', { date: booking.carriedToDate ? formatDate(booking.carriedToDate) : '' })}</span>
+            </div>
+          )}
+
+          {/* Continued job banner — hours were carried in from previous day(s). */}
+          {!isMarker && (booking.carriedOverCount ?? 0) > 0 && (
+            <div className="flex items-center gap-2 rounded-xl border border-[#b3f243]/50 bg-[#b3f243]/10 px-3 py-2.5 text-sm text-[#025940] dark:text-[#b3f243]">
+              <CalendarClock className="w-4 h-4 flex-shrink-0" />
+              <span>{t('serviceBookings.carryOver.continuedNote', { hours: ((booking.carriedOverSlots ?? 0) * 0.5).toFixed(1) })}</span>
+            </div>
+          )}
 
           {/* When + where */}
           <Section icon={<img src="/calendar.svg" alt="" className="w-8 h-8 object-contain" />} title={t('serviceBookings.details.sectionWhen')}>
@@ -473,7 +492,7 @@ export function BookingDetailsModal({
         <div className="flex-shrink-0 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-3 flex items-center justify-between gap-2 flex-wrap">
           {/* Delete on the left so it's visually separated from the
               positive Edit / Close actions on the right. */}
-          {onDelete && canManageBookings ? (
+          {onDelete && canManageBookings && !isMarker ? (
             <button
               onClick={handleDeleteClick}
               className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors"
@@ -508,7 +527,7 @@ export function BookingDetailsModal({
                 {t('serviceBookings.carryOver.button')}
               </button>
             )}
-            {onEdit && canManageBookings && (
+            {onEdit && canManageBookings && !isMarker && (
               <button
                 onClick={handleEditClick}
                 className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-white dark:bg-gray-700 border border-[#025940]/40 hover:bg-[#025940]/10 text-[#025940] dark:text-[#72A68E] transition-colors"

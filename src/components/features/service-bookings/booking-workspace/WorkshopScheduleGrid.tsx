@@ -39,7 +39,12 @@ import {
 //  • completed                → solid app forest green
 //  • in-progress              → bright brand-lime "happening now"
 //  • scheduled / at-garage /… → on-theme teal = booked & busy
-function getStatusBlockClass(status: string | undefined | null): string {
+function getStatusBlockClass(status: string | undefined | null, carriedForward?: boolean): string {
+  if (carriedForward) {
+    // Read-only "carried over" trail marker — faded, dashed, unmistakably not a
+    // live booking.
+    return 'bg-[#025940]/5 border-2 border-dashed border-[#025940]/40 text-[#025940]/80 dark:bg-[#025940]/10 dark:border-[#72A68E]/40 dark:text-[#72A68E]'
+  }
   if (status === 'completed') {
     // Solid deep app-forest green, light text — unmistakably "done".
     return 'bg-[#025940] border-[#012619] text-white dark:bg-[#025940] dark:border-[#72A68E] dark:text-white'
@@ -958,7 +963,7 @@ export function WorkshopScheduleGrid({
                   className={`relative m-px ${isShort ? 'px-1.5 py-0.5' : 'px-1.5 py-1'} rounded-md ${
                     isLunchBreak
                       ? 'border-2 border-dashed border-slate-400 dark:border-slate-500 bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-200'
-                      : `border ${getStatusBlockClass(b.status)}`
+                      : `border ${getStatusBlockClass(b.status, b.carriedForward)}`
                   } text-left font-semibold leading-tight overflow-hidden flex flex-col items-start justify-start ${
                     meDragging ? 'shadow-xl z-20' : 'hover:shadow-md transition-all'
                   } ${

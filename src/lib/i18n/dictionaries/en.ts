@@ -1480,6 +1480,9 @@ export const en = {
     carryOver: {
       button: 'Carry over',
       entered: 'Carrying over {reg} — pick the day and slot, then save. Hours already worked are added automatically.',
+      markerNote: 'Carried over to {date} — this is a record of the work done on this day. It is not billed on its own.',
+      continuedNote: 'Continued job — {hours}h already logged on previous day(s) will be included on this job’s invoice.',
+      markerBadge: 'Carried over',
     },
     action: {
       checkInGarage: 'Check-in Garage', checkInShort: 'Check-in', checkIn: 'Check In',

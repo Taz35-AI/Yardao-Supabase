@@ -164,7 +164,7 @@ export function WorkshopWeekGrid({
           {days.map((day) => {
             const dateStr = formatDate(day)
             const count = bookings.filter(
-              (b) => b.date === dateStr && b.status !== 'cancelled',
+              (b) => b.date === dateStr && b.status !== 'cancelled' && !b.carriedForward,
             ).length
             const isToday = isSameDay(day, today)
             const isSelected = isSameDay(day, selectedDate)
