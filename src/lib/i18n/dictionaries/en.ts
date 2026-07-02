@@ -2561,6 +2561,8 @@ export const en = {
       whichJob: 'Which job are you invoicing?',
       jobParts: '{count} part(s) · £{total}',
       jobNoParts: 'No parts recorded on this job',
+      alreadyInvoiced: 'Invoiced',
+      alreadyInvoicedConfirm: 'This job already has an invoice raised from it. Invoicing it again will create a DUPLICATE. Continue anyway?',
       legacyWindow: 'Use all recent work (last 10 days)',
       missingInfo: 'Missing required information',
       selectBothCompanies: 'Please select both From Company and To Company',
