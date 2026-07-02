@@ -33,6 +33,10 @@ export function CompanyManagement() {
     name: '', address: '', postcode: '', vatNumber: '', companyRegNo: ''
   })
 
+  // Org-wide default labour rate (£/hour) used when a company has no override.
+  const [defaultLabourRate, setDefaultLabourRate] = useState<string>('')
+  const [savingRate, setSavingRate] = useState(false)
+
   const [toCompanies, setToCompanies] = useState<ToCompanyDetails[]>([])
   const [showToForm, setShowToForm] = useState(false)
   const [editingToIndex, setEditingToIndex] = useState<number | null>(null)
@@ -47,12 +51,14 @@ export function CompanyManagement() {
         const profile = await userProfileService.getProfile(user.uid)
         if (profile?.organizationId) {
           setOrganizationId(profile.organizationId)
-          const [from, to] = await Promise.all([
+          const [from, to, rate] = await Promise.all([
             settingsService.getFromCompanies(profile.organizationId),
-            settingsService.getToCompanies(profile.organizationId)
+            settingsService.getToCompanies(profile.organizationId),
+            settingsService.getDefaultLabourRate(profile.organizationId),
           ])
           setFromCompanies(from)
           setToCompanies(to)
+          setDefaultLabourRate(String(rate))
         }
       } catch (error) {
         logger.error('Error loading companies:', error)
@@ -63,6 +69,21 @@ export function CompanyManagement() {
     }
     loadData()
   }, [user])
+
+  const handleSaveDefaultRate = async () => {
+    if (!organizationId) return
+    const n = parseFloat(defaultLabourRate)
+    if (!(n > 0)) { toast.error(t('settings.company.labourRateInvalid')); return }
+    setSavingRate(true)
+    try {
+      await settingsService.saveDefaultLabourRate(organizationId, n)
+      toast.success(t('settings.company.labourRateSaved'))
+    } catch {
+      toast.error(t('settings.company.saveFail'))
+    } finally {
+      setSavingRate(false)
+    }
+  }
 
   // ── FROM handlers ────────────────────────────────────────────────────────
   const handleOpenFromAdd = () => {
@@ -210,6 +231,38 @@ export function CompanyManagement() {
   return (
     <div className="max-w-4xl px-4 sm:px-6 py-6 space-y-8">
 
+      {/* ════════════════════════ DEFAULT LABOUR RATE ════════════════════════ */}
+      <section className="rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-[#f6f8f7] dark:bg-gray-800/50 p-4 sm:p-5">
+        <h3 className="text-[15px] font-semibold text-[#012619] dark:text-white tracking-tight inline-flex items-center gap-2">
+          <Building2 className="w-4 h-4 text-[#025940]" />
+          {t('settings.company.labourRateTitle')}
+        </h3>
+        <p className="text-[12.5px] text-[#8a9e94] mt-0.5 mb-3">{t('settings.company.labourRateHint')}</p>
+        <div className="flex items-end gap-3 flex-wrap">
+          <div>
+            <label className={labelCls}>{t('settings.company.labourRateTitle')}</label>
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-semibold text-[#4a5e54] dark:text-gray-300">£</span>
+              <input
+                type="number" min="0" step="0.5"
+                value={defaultLabourRate}
+                onChange={(e) => setDefaultLabourRate(e.target.value)}
+                className={`${inputCls} w-28`}
+                placeholder="50"
+              />
+              <span className="text-sm text-[#8a9e94]">{t('settings.company.perHour')}</span>
+            </div>
+          </div>
+          <button
+            onClick={handleSaveDefaultRate}
+            disabled={savingRate}
+            className="h-9 px-4 text-[13px] font-medium rounded-lg bg-[#025940] hover:bg-[#012619] text-white disabled:opacity-60 transition-colors"
+          >
+            {savingRate ? t('settings.company.saving') : t('settings.company.save')}
+          </button>
+        </div>
+      </section>
+
       {/* ════════════════════════ FROM COMPANIES ════════════════════════ */}
       <section className="space-y-3.5">
         <div className="flex items-start justify-between gap-3">
@@ -286,8 +339,8 @@ export function CompanyManagement() {
                 />
               </div>
             </div>
-            {/* Invoicing: parts markup % + discount % */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* Invoicing: parts markup % + discount % + labour rate override */}
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className={labelCls}>{t('settings.company.partsMarkup')}</label>
                 <input
@@ -306,6 +359,16 @@ export function CompanyManagement() {
                   onChange={(e) => setFromForm({ ...fromForm, discountPercent: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
                   className={inputCls}
                   placeholder="0"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>{t('settings.company.labourRate')}</label>
+                <input
+                  type="number" min="0" step="0.5"
+                  value={fromForm.labourRate ?? ''}
+                  onChange={(e) => setFromForm({ ...fromForm, labourRate: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
+                  className={inputCls}
+                  placeholder={t('settings.company.labourRatePlaceholder')}
                 />
               </div>
             </div>
