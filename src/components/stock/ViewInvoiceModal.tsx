@@ -121,13 +121,19 @@ export function ViewInvoiceModal({ isOpen, onClose, invoice, onStatusChange, onE
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
-      <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-4xl border border-gray-200 dark:border-gray-700 my-8">
-        
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-4xl border border-gray-200 dark:border-gray-700 max-h-[92vh] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+
         {/* ── Modal Header ── */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+        <div className="flex-shrink-0 flex items-start justify-between gap-3 p-4 border-b border-gray-200 dark:border-gray-700 flex-wrap">
+          <div className="min-w-0">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white truncate">
               {t('stock.viewInvoice.invoiceNo', { number: invoice.invoiceNumber })}
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -135,7 +141,7 @@ export function ViewInvoiceModal({ isOpen, onClose, invoice, onStatusChange, onE
             </p>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center gap-2 flex-wrap justify-end flex-shrink-0">
             {/* Status — editable dropdown for owner/Garage Manager, else read-only */}
             {canEditInvoices ? (
               <select
@@ -180,10 +186,12 @@ export function ViewInvoiceModal({ isOpen, onClose, invoice, onStatusChange, onE
               <span className="hidden sm:inline">{t('stock.viewInvoice.downloadPdf')}</span>
             </button>
 
-            {/* Close */}
+            {/* Close — always visible; the backdrop also closes on click */}
             <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              title={t('serviceBookings.common.close')}
+              aria-label={t('serviceBookings.common.close')}
+              className="flex-shrink-0 p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -191,7 +199,7 @@ export function ViewInvoiceModal({ isOpen, onClose, invoice, onStatusChange, onE
         </div>
 
         {/* ── Invoice Preview Content ── */}
-        <div className="p-8 max-h-[70vh] overflow-y-auto">
+        <div className="p-8 flex-1 overflow-y-auto">
           
           {/* Invoice Title + Status */}
           <div className="flex items-start justify-between mb-8">
