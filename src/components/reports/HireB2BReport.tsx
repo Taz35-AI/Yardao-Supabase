@@ -104,6 +104,9 @@ export function HireB2BReport({ organizationId }: { organizationId: string }) {
 
   // Hidden entirely for users without hire access, and while it resolves.
   if (access.loading || !access.allowed) return null
+  // £ figures are for the OWNER's eyes only — chosen admins see counts + vans
+  // but never the rates/run-rate.
+  const showAmounts = access.isOwner
 
   return (
     <div className="mt-6 bg-white dark:bg-gray-800 rounded-xl border border-[#e2e8e5] dark:border-gray-700 shadow-sm overflow-hidden">
@@ -124,11 +127,11 @@ export function HireB2BReport({ organizationId }: { organizationId: string }) {
       ) : (
         <div className="p-4 sm:p-6 space-y-5">
           {/* KPIs */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className={`grid gap-3 ${showAmounts ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-2'}`}>
             <Kpi icon={<Building2 className="w-4 h-4" />} tone="forest" label="B2B customers" value={String(totals.customers)} />
             <Kpi icon={<KeyRound className="w-4 h-4" />} tone="lime" label="Vans on hire" value={String(totals.vans)} />
-            <Kpi icon={<Wallet className="w-4 h-4" />} tone="slate" label="Weekly run-rate" value={`£${totals.weekly.toFixed(0)}`} />
-            <Kpi icon={<Wallet className="w-4 h-4" />} tone="slate" label="4-weekly run-rate" value={`£${totals.monthly.toFixed(0)}`} />
+            {showAmounts && <Kpi icon={<Wallet className="w-4 h-4" />} tone="slate" label="Weekly run-rate" value={`£${totals.weekly.toFixed(0)}`} />}
+            {showAmounts && <Kpi icon={<Wallet className="w-4 h-4" />} tone="slate" label="4-weekly run-rate" value={`£${totals.monthly.toFixed(0)}`} />}
           </div>
 
           {/* Pie + legend */}
@@ -172,8 +175,8 @@ export function HireB2BReport({ organizationId }: { organizationId: string }) {
                   <th className="px-3 py-2.5 font-bold">Customer</th>
                   <th className="px-3 py-2.5 font-bold text-center">Vans</th>
                   <th className="px-3 py-2.5 font-bold">Which vans</th>
-                  <th className="px-3 py-2.5 font-bold text-right">Weekly</th>
-                  <th className="px-3 py-2.5 font-bold text-right">4-weekly</th>
+                  {showAmounts && <th className="px-3 py-2.5 font-bold text-right">Weekly</th>}
+                  {showAmounts && <th className="px-3 py-2.5 font-bold text-right">4-weekly</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#eef2f0] dark:divide-gray-700/60">
@@ -200,8 +203,8 @@ export function HireB2BReport({ organizationId }: { organizationId: string }) {
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-[#4a5e54] dark:text-gray-300">{r.weekly > 0 ? `£${r.weekly.toFixed(0)}` : '—'}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-[#4a5e54] dark:text-gray-300">{r.monthly > 0 ? `£${r.monthly.toFixed(0)}` : '—'}</td>
+                      {showAmounts && <td className="px-3 py-2.5 text-right tabular-nums text-[#4a5e54] dark:text-gray-300">{r.weekly > 0 ? `£${r.weekly.toFixed(0)}` : '—'}</td>}
+                      {showAmounts && <td className="px-3 py-2.5 text-right tabular-nums text-[#4a5e54] dark:text-gray-300">{r.monthly > 0 ? `£${r.monthly.toFixed(0)}` : '—'}</td>}
                     </tr>
                   )
                 })}
@@ -211,8 +214,8 @@ export function HireB2BReport({ organizationId }: { organizationId: string }) {
                   <td className="px-3 py-2.5">Total</td>
                   <td className="px-3 py-2.5 text-center">{totals.vans}</td>
                   <td className="px-3 py-2.5" />
-                  <td className="px-3 py-2.5 text-right tabular-nums text-[#025940] dark:text-[#b3f243]">{totals.weekly > 0 ? `£${totals.weekly.toFixed(0)}` : '—'}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-[#025940] dark:text-[#b3f243]">{totals.monthly > 0 ? `£${totals.monthly.toFixed(0)}` : '—'}</td>
+                  {showAmounts && <td className="px-3 py-2.5 text-right tabular-nums text-[#025940] dark:text-[#b3f243]">{totals.weekly > 0 ? `£${totals.weekly.toFixed(0)}` : '—'}</td>}
+                  {showAmounts && <td className="px-3 py-2.5 text-right tabular-nums text-[#025940] dark:text-[#b3f243]">{totals.monthly > 0 ? `£${totals.monthly.toFixed(0)}` : '—'}</td>}
                 </tr>
               </tfoot>
             </table>
