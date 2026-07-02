@@ -52,6 +52,7 @@ interface JobOption {
   booking: any
   parts: InvoicePart[]
   partsTotal: number
+  alreadyInvoiced: boolean   // this job already has an invoice raised from it
 }
 
 // Aggregate raw usage rows into invoice part lines (sum quantities per part).
@@ -636,6 +637,12 @@ const loadServiceBookingHoursAndCustomer = async () => {
 
   // Invoice from ONE completed job: only its attributed parts + its labour.
   const applyJob = (job: JobOption) => {
+    // Guard against duplicating an invoice from the stock page: this job already
+    // has one — make the user confirm before invoicing it again.
+    if (job.alreadyInvoiced && !editInvoice) {
+      const ok = window.confirm(t('stock.createInvoice.alreadyInvoicedConfirm'))
+      if (!ok) return
+    }
     setSelectedJobId(job.id)
     setParts(job.parts)
     // Replace service-derived labour with just this job's; keep manual/bodyshop.
@@ -726,13 +733,15 @@ const loadServiceBookingHoursAndCustomer = async () => {
             booking: b,
             parts,
             partsTotal: parts.reduce((s, p) => s + p.total, 0),
+            alreadyInvoiced: !!b.invoiceId,
           }
         })
 
       setVehicleJobs(options)
 
-      // Default to the most recent job that has parts; else the legacy window.
-      const firstWithParts = options.find(o => o.parts.length > 0)
+      // Default to the most recent NOT-yet-invoiced job that has parts (so we
+      // never auto-load an already-invoiced job); else the legacy window.
+      const firstWithParts = options.find(o => o.parts.length > 0 && !o.alreadyInvoiced)
       if (firstWithParts) {
         applyJob(firstWithParts)
       } else {
@@ -1139,8 +1148,13 @@ const loadServiceBookingHoursAndCustomer = async () => {
                             }`}
                           >
                             <div className="min-w-0">
-                              <p className="text-sm font-semibold text-[#012619] dark:text-white truncate">
-                                {new Date(job.date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · {job.workLabel}
+                              <p className="text-sm font-semibold text-[#012619] dark:text-white truncate flex items-center gap-2">
+                                <span className="truncate">{new Date(job.date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · {job.workLabel}</span>
+                                {job.alreadyInvoiced && (
+                                  <span className="flex-shrink-0 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                                    {t('stock.createInvoice.alreadyInvoiced')}
+                                  </span>
+                                )}
                               </p>
                               <p className="text-[11px] text-[#72A68E]">
                                 {job.parts.length > 0
