@@ -233,6 +233,7 @@ export function generateInvoicePDF({ invoice, fromCompanyDetails, toCompanyDetai
   // TOTALS (right-aligned)
   // ══════════════════════════════════════════
   y += 2
+  const paymentBlockY = y // left column starts level with the totals
   const totalsX = PAGE_WIDTH - MARGIN_RIGHT - 60
   const totalsValueX = PAGE_WIDTH - MARGIN_RIGHT
 
@@ -273,6 +274,24 @@ export function generateInvoicePDF({ invoice, fromCompanyDetails, toCompanyDetai
   doc.text('Total:', totalsX, y)
   doc.text(`£${invoice.total.toFixed(2)}`, totalsValueX, y, { align: 'right' })
   y += 14
+
+  // ══════════════════════════════════════════
+  // PAYMENT DETAILS (bottom-left, level with the totals)
+  // ══════════════════════════════════════════
+  if (fromCompanyDetails && (fromCompanyDetails.bankName || fromCompanyDetails.sortCode || fromCompanyDetails.accountNumber)) {
+    let py = paymentBlockY
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    doc.setTextColor(...COLORS.textLight)
+    doc.text('PAYMENT DETAILS', MARGIN_LEFT, py)
+    py += 5
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(...COLORS.text)
+    if (fromCompanyDetails.bankName) { doc.text(fromCompanyDetails.bankName, MARGIN_LEFT, py); py += 4.5 }
+    if (fromCompanyDetails.sortCode) { doc.text(`Sort code: ${fromCompanyDetails.sortCode}`, MARGIN_LEFT, py); py += 4.5 }
+    if (fromCompanyDetails.accountNumber) { doc.text(`Account no: ${fromCompanyDetails.accountNumber}`, MARGIN_LEFT, py); py += 4.5 }
+  }
 
   // ══════════════════════════════════════════
   // FOOTER

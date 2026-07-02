@@ -373,6 +373,37 @@ export function CompanyManagement() {
               </div>
             </div>
 
+            {/* Invoicing: bank / payment details (shown bottom-left of invoice) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className={labelCls}>{t('settings.company.bankName')}</label>
+                <input
+                  value={fromForm.bankName ?? ''}
+                  onChange={(e) => setFromForm({ ...fromForm, bankName: e.target.value })}
+                  className={inputCls}
+                  placeholder={t('settings.company.optional')}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>{t('settings.company.sortCode')}</label>
+                <input
+                  value={fromForm.sortCode ?? ''}
+                  onChange={(e) => setFromForm({ ...fromForm, sortCode: e.target.value })}
+                  className={inputCls}
+                  placeholder="00-00-00"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>{t('settings.company.accountNumber')}</label>
+                <input
+                  value={fromForm.accountNumber ?? ''}
+                  onChange={(e) => setFromForm({ ...fromForm, accountNumber: e.target.value })}
+                  className={inputCls}
+                  placeholder={t('settings.company.optional')}
+                />
+              </div>
+            </div>
+
             {/* Invoicing: logo */}
             <div>
               <label className={labelCls}>{t('settings.company.logo')}</label>

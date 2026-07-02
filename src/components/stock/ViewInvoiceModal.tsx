@@ -327,8 +327,18 @@ export function ViewInvoiceModal({ isOpen, onClose, invoice, onStatusChange, onE
             </div>
           )}
 
-          {/* Totals */}
-          <div className="flex justify-end mb-8">
+          {/* Totals (right) + payment details (bottom-left) */}
+          <div className="flex justify-between items-end gap-6 mb-8 flex-wrap">
+            {fromCompanyDetails && (fromCompanyDetails.bankName || fromCompanyDetails.sortCode || fromCompanyDetails.accountNumber) ? (
+              <div className="rounded-lg border border-[#e2e8e5] dark:border-gray-700 bg-[#f6f8f7] dark:bg-gray-900/40 px-3.5 py-2.5 text-sm">
+                <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#72A68E] mb-1">{t('stock.viewInvoice.paymentDetails')}</p>
+                {fromCompanyDetails.bankName && <p className="text-gray-900 dark:text-white font-medium">{fromCompanyDetails.bankName}</p>}
+                <div className="flex gap-4 text-gray-700 dark:text-gray-300 mt-0.5">
+                  {fromCompanyDetails.sortCode && <span>{t('stock.viewInvoice.sortCode')}: <span className="font-mono font-semibold">{fromCompanyDetails.sortCode}</span></span>}
+                  {fromCompanyDetails.accountNumber && <span>{t('stock.viewInvoice.accountNo')}: <span className="font-mono font-semibold">{fromCompanyDetails.accountNumber}</span></span>}
+                </div>
+              </div>
+            ) : <div />}
             <div className="w-64">
               <div className="flex justify-between py-2 text-gray-600 dark:text-gray-400">
                 <span>{t('stock.viewInvoice.subtotal')}</span>

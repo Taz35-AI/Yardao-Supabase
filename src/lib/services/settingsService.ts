@@ -34,6 +34,10 @@ export interface FromCompanyDetails {
   partsMarkupPercent?: number  // % added on top of part costs (parts only)
   discountPercent?: number     // % discount applied to the net (own invoice line)
   labourRate?: number          // £/hour override for invoices from this company
+  // Bank / payment details — shown bottom-left of the invoice so customers can pay.
+  bankName?: string
+  sortCode?: string
+  accountNumber?: string
 }
 
 export interface ToCompanyDetails {
