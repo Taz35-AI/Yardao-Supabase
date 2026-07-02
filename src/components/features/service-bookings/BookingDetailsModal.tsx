@@ -25,6 +25,7 @@ import {
   Receipt,
   Ban,
   CalendarClock,
+  Car,
 } from 'lucide-react'
 import type { ServiceBooking } from '@/types/serviceBookings'
 import type { Customer } from '@/types/customer'
@@ -268,7 +269,11 @@ export function BookingDetailsModal({
           {/* soft brand glow, purely decorative */}
           <div className="pointer-events-none absolute -top-10 -right-8 w-40 h-40 rounded-full bg-[#b3f243]/10 blur-2xl" aria-hidden />
           <div className="relative flex items-start justify-between gap-4">
-            <div className="flex-1 min-w-0">
+            <div className="flex items-start gap-3 flex-1 min-w-0">
+              <div className="hidden sm:flex flex-shrink-0 w-12 h-12 rounded-2xl bg-white/10 ring-1 ring-white/15 items-center justify-center backdrop-blur-sm">
+                <Car className="w-6 h-6 text-[#b3f243]" />
+              </div>
+              <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-2 flex-wrap">
                 <span className="text-xs font-black bg-[#f6d33c] text-[#1a1a1a] px-2 py-0.5 rounded-[5px] font-mono tracking-[0.08em] shadow-sm ring-1 ring-black/10">
                   {booking.registration || '—'}
@@ -300,6 +305,7 @@ export function BookingDetailsModal({
                   {t('serviceBookings.details.notInFleet')}
                 </p>
               )}
+              </div>
             </div>
             <button
               onClick={onClose}
@@ -332,23 +338,25 @@ export function BookingDetailsModal({
 
           {/* When + where */}
           <Section icon={<img src="/calendar.svg" alt="" className="w-8 h-8 object-contain" />} title={t('serviceBookings.details.sectionWhen')}>
-            <p className="text-sm text-gray-900 dark:text-white">
+            <p className="text-base font-bold text-[#012619] dark:text-white leading-tight">
               {formatDate(booking.date)}
             </p>
-            <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 flex items-center gap-1 flex-wrap">
-              <Clock className="w-3 h-3" />
-              {time || '—'}
+            <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#4a5e54] dark:text-gray-300 bg-[#f6f8f7] dark:bg-gray-900/40 border border-[#e2e8e5] dark:border-gray-700 rounded-lg px-2 py-1 tabular-nums">
+                <Clock className="w-3 h-3 text-[#72A68E]" />
+                {time || '—'}
+              </span>
               {!isExternal && booking.serviceBay ? (
-                <span className="ml-2 inline-flex items-center text-[10px] font-bold text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-900/30 px-1.5 py-0.5 rounded">
+                <span className="inline-flex items-center text-xs font-bold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-900/30 border border-sky-200 dark:border-sky-900/40 rounded-lg px-2 py-1">
                   {bayLabel(bayNames, booking.serviceBay, t('serviceBookings.details.bayBadge', { count: booking.serviceBay }))}
                 </span>
               ) : null}
               {!isExternal && span > 1 ? (
-                <span className="inline-flex items-center text-[10px] font-bold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/30 px-1.5 py-0.5 rounded">
+                <span className="inline-flex items-center text-xs font-bold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-900/40 rounded-lg px-2 py-1">
                   {t('serviceBookings.details.slotsBadge', { count: span })}
                 </span>
               ) : null}
-            </p>
+            </div>
           </Section>
 
           {/* Customer details — only renders when at least the name is set
@@ -385,8 +393,9 @@ export function BookingDetailsModal({
                   up by phone). Distinct from the booking's own notes —
                   these are sticky per-customer (e.g. "Prefers WhatsApp"). */}
               {customerPreferredNotes && (
-                <p className="mt-2 text-xs text-gray-700 dark:text-gray-200 italic bg-[#C5D9D0]/40 dark:bg-[#025940]/20 border border-[#72A68E]/40 dark:border-[#72A68E]/30 rounded px-2 py-1.5">
-                  📝 {customerPreferredNotes}
+                <p className="mt-2 text-xs text-gray-700 dark:text-gray-200 italic bg-[#C5D9D0]/40 dark:bg-[#025940]/20 border border-[#72A68E]/40 dark:border-[#72A68E]/30 rounded-lg px-2.5 py-1.5 flex items-start gap-1.5">
+                  <StickyNote className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-[#72A68E]" />
+                  <span>{customerPreferredNotes}</span>
                 </p>
               )}
             </Section>
@@ -439,8 +448,8 @@ export function BookingDetailsModal({
           {/* Mechanic */}
           {booking.assignedMechanicName && (
             <Section icon={<img src="/technician.svg" alt="" className="w-8 h-8 object-contain" />} title={t('serviceBookings.details.sectionAssignedMechanic')}>
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                👤 {booking.assignedMechanicName}
+              <p className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-[#72A68E]" /> {booking.assignedMechanicName}
               </p>
             </Section>
           )}
@@ -614,10 +623,10 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <div className="bg-[#f6f8f7] dark:bg-gray-800/50 rounded-2xl border border-[#e2e8e5] dark:border-gray-700 p-3.5 shadow-sm">
-      <div className="flex items-center gap-2 mb-2 text-[#025940] dark:text-[#72A68E]">
-        <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-[#025940]/10 dark:bg-[#025940]/25 [&_img]:w-4 [&_img]:h-4 [&_svg]:w-3.5 [&_svg]:h-3.5">{icon}</span>
-        <span className="text-[10px] font-bold uppercase tracking-[0.08em]">{title}</span>
+    <div className="bg-white dark:bg-gray-800/60 rounded-2xl border border-[#e2e8e5] dark:border-gray-700 p-4 shadow-sm hover:shadow-md hover:border-[#72A68E]/50 transition-all">
+      <div className="flex items-center gap-2.5 mb-2.5">
+        <span className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-br from-[#025940]/12 to-[#b3f243]/20 ring-1 ring-[#025940]/10 text-[#025940] dark:text-[#72A68E] [&_img]:w-4 [&_img]:h-4 [&_svg]:w-4 [&_svg]:h-4">{icon}</span>
+        <span className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#72A68E]">{title}</span>
       </div>
       {children}
     </div>
