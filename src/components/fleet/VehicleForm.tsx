@@ -13,6 +13,7 @@ import { VehicleDiagramSelector } from '@/components/common/DamageMapper/Vehicle
 import { getUniqueSizes } from '@/lib/fleetUtils'
 import { computeDefleetDue } from '@/lib/utils/defleetDue'
 import { useVehicleSuppliers } from '@/hooks/fleet/useVehicleSuppliers'
+import { useRouter } from 'next/navigation'
 import { useT } from '@/lib/i18n'
 
 // Shared field styling — solid, consistent, brand-aligned
@@ -124,6 +125,7 @@ export function VehicleForm({ onAdd, onCancel, conditions, existingVehicles = []
   } = useVehicleForm({ conditions, existingVehicles, onAdd, prefillData })
 
   const vehicleSuppliers = useVehicleSuppliers()
+  const router = useRouter()
 
   const [step, setStep] = useState(1)
 
@@ -425,30 +427,38 @@ export function VehicleForm({ onAdd, onCancel, conditions, existingVehicles = []
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className={labelCls}>{t('fleet.form.labelSupplier')}</label>
-                      <input
-                        list="fleet-vehicle-suppliers"
+                      <select
                         value={formData.supplier}
-                        onChange={e => handleChange('supplier', e.target.value)}
+                        onChange={e => {
+                          if (e.target.value === '__add_supplier__') {
+                            router.push('/settings?tab=vehicle-suppliers')
+                            return
+                          }
+                          handleChange('supplier', e.target.value)
+                        }}
                         className={inputCls}
-                        placeholder={t('fleet.form.supplierPlaceholder')}
-                      />
-                      <datalist id="fleet-vehicle-suppliers">
-                        {vehicleSuppliers.map(s => <option key={s} value={s} />)}
-                      </datalist>
+                      >
+                        <option value="">{t('fleet.form.supplierSelect')}</option>
+                        {formData.supplier && !vehicleSuppliers.includes(formData.supplier) && (
+                          <option value={formData.supplier}>{formData.supplier}</option>
+                        )}
+                        {vehicleSuppliers.map(s => <option key={s} value={s}>{s}</option>)}
+                        <option value="__add_supplier__">{t('fleet.form.supplierAdd')}</option>
+                      </select>
                     </div>
                     <div>
                       <label className={labelCls}>{t('fleet.form.labelRentalTerm')}</label>
                       <input
                         type="number" min="0" step="1"
-                        value={formData.rentalTermMonths}
-                        onChange={e => handleChange('rentalTermMonths', e.target.value)}
+                        value={formData.rentalTermWeeks}
+                        onChange={e => handleChange('rentalTermWeeks', e.target.value)}
                         className={inputCls}
                         placeholder={t('fleet.form.rentalTermPlaceholder')}
                       />
                     </div>
                   </div>
                   {(() => {
-                    const due = computeDefleetDue(formData.dateAcquired, formData.rentalTermMonths ? Number(formData.rentalTermMonths) : null)
+                    const due = computeDefleetDue(formData.dateAcquired, formData.rentalTermWeeks ? Number(formData.rentalTermWeeks) : null)
                     return due.dueDate ? (
                       <p className="text-[11px] font-medium text-[#025940] dark:text-[#72A68E] -mt-2">
                         {t('fleet.form.defleetDueHint', { date: formatDateForDisplay(due.dueDate) })}

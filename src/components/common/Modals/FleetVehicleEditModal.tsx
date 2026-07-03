@@ -16,6 +16,7 @@ import { InsuranceToggle } from '@/components/common/ui/InsuranceToggle'
 import { getUniqueSizes } from '@/lib/fleetUtils'
 import { computeDefleetDue } from '@/lib/utils/defleetDue'
 import { useVehicleSuppliers } from '@/hooks/fleet/useVehicleSuppliers'
+import { useRouter } from 'next/navigation'
 import { useT } from '@/lib/i18n'
 import {
   Edit,
@@ -213,6 +214,7 @@ export function FleetVehicleEditModal({
   const { user } = useAuth()
   const t = useT()
   const vehicleSuppliers = useVehicleSuppliers()
+  const router = useRouter()
   const [loading, setLoading]                   = useState(false)
   const [contracts, setContracts]               = useState<Contract[]>([])
   const [contractsLoading, setContractsLoading] = useState(true)
@@ -221,7 +223,7 @@ export function FleetVehicleEditModal({
   const [formData, setFormData] = useState({
     dateAcquired:       '',
     supplier:           '',
-    rentalTermMonths:   '',
+    rentalTermWeeks:   '',
     registration:       '',
     make:               '',
     model:              '',
@@ -273,7 +275,7 @@ export function FleetVehicleEditModal({
       setFormData({
         dateAcquired:       safeString(vehicle.dateAcquired),
         supplier:           safeString((vehicle as any).supplier),
-        rentalTermMonths:   (vehicle as any).rentalTermMonths != null ? String((vehicle as any).rentalTermMonths) : '',
+        rentalTermWeeks:   (vehicle as any).rentalTermWeeks != null ? String((vehicle as any).rentalTermWeeks) : '',
         registration:       safeString(vehicle.registration),
         make:               safeString(vehicle.make),
         model:              safeString(vehicle.model),
@@ -331,7 +333,7 @@ export function FleetVehicleEditModal({
         ...formData,
         dateAcquired:       formData.dateAcquired || null,
         supplier:           formData.supplier?.trim() || null,
-        rentalTermMonths:   formData.rentalTermMonths ? Number(formData.rentalTermMonths) : null,
+        rentalTermWeeks:   formData.rentalTermWeeks ? Number(formData.rentalTermWeeks) : null,
         contract:           formData.contract || null,
         contractColor:      formData.contractColor || null,
         contractId:         formData.contractId || null,
@@ -488,28 +490,36 @@ export function FleetVehicleEditModal({
                   </FieldWrap>
 
                   <FieldWrap icon={Truck} label={t('fleet.editModal.supplierLabel')}>
-                    <input
-                      list="edit-vehicle-suppliers"
+                    <select
                       value={formData.supplier}
-                      onChange={e => handleInputChange('supplier', e.target.value)}
+                      onChange={e => {
+                        if (e.target.value === '__add_supplier__') {
+                          router.push('/settings?tab=vehicle-suppliers')
+                          return
+                        }
+                        handleInputChange('supplier', e.target.value)
+                      }}
                       className={inputCls}
-                      placeholder={t('fleet.form.supplierPlaceholder')}
-                    />
-                    <datalist id="edit-vehicle-suppliers">
-                      {vehicleSuppliers.map(s => <option key={s} value={s} />)}
-                    </datalist>
+                    >
+                      <option value="">{t('fleet.form.supplierSelect')}</option>
+                      {formData.supplier && !vehicleSuppliers.includes(formData.supplier) && (
+                        <option value={formData.supplier}>{formData.supplier}</option>
+                      )}
+                      {vehicleSuppliers.map(s => <option key={s} value={s}>{s}</option>)}
+                      <option value="__add_supplier__">{t('fleet.form.supplierAdd')}</option>
+                    </select>
                   </FieldWrap>
 
                   <FieldWrap icon={CalendarClock} label={t('fleet.editModal.rentalTermLabel')}>
                     <input
                       type="number" min="0" step="1"
-                      value={formData.rentalTermMonths}
-                      onChange={e => handleInputChange('rentalTermMonths', e.target.value)}
+                      value={formData.rentalTermWeeks}
+                      onChange={e => handleInputChange('rentalTermWeeks', e.target.value)}
                       className={inputCls}
                       placeholder={t('fleet.form.rentalTermPlaceholder')}
                     />
                     {(() => {
-                      const due = computeDefleetDue(formData.dateAcquired, formData.rentalTermMonths ? Number(formData.rentalTermMonths) : null)
+                      const due = computeDefleetDue(formData.dateAcquired, formData.rentalTermWeeks ? Number(formData.rentalTermWeeks) : null)
                       return due.dueDate ? (
                         <p className="text-[11px] font-medium text-[#025940] dark:text-[#72A68E] mt-1">
                           {t('fleet.form.defleetDueHint', { date: new Date(due.dueDate + 'T00:00:00').toLocaleDateString('en-GB') })}

@@ -270,9 +270,9 @@ export interface Vehicle {
   dateAcquired?: string | null // When vehicle was acquired by the business (ISO format YYYY-MM-DD)
 
   // 🚚 Supplier + rental term → drives the defleet-due flag on the fleet page
-  // (defleet due = dateAcquired + rentalTermMonths).
+  // (defleet due = dateAcquired + rentalTermWeeks).
   supplier?: string | null
-  rentalTermMonths?: number | null
+  rentalTermWeeks?: number | null
 
   // ✅ NEW: Defleet tracking fields
   isDefleeted?: boolean              // Quick filter flag
@@ -325,9 +325,9 @@ export interface FleetVehicle {
   // ✨ NEW: Date Acquired field
   dateAcquired?: string | null // When vehicle was acquired by the business (ISO format YYYY-MM-DD)
 
-  // 🚚 Supplier + rental term → defleet-due flag (dateAcquired + rentalTermMonths)
+  // 🚚 Supplier + rental term → defleet-due flag (dateAcquired + rentalTermWeeks)
   supplier?: string | null
-  rentalTermMonths?: number | null
+  rentalTermWeeks?: number | null
 
   // ✅ NEW: Defleet tracking fields
   isDefleeted?: boolean

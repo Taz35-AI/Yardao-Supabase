@@ -178,6 +178,9 @@ export default function SettingsPage() {
       // ✅ NEW: support direct link to insurance policies tab
       setActiveTab('organization')
       setActiveOrgTab('insurance-policies')
+    } else if (tab === 'vehicle-suppliers') {
+      setActiveTab('organization')
+      setActiveOrgTab('vehicle-suppliers')
     } else if (tab === 'user') {
       setActiveTab('user')
     }

@@ -225,7 +225,7 @@ export function FleetTableRow({
           </span>
         )}
         {(() => {
-          const due = computeDefleetDue(vehicle.dateAcquired, vehicle.rentalTermMonths)
+          const due = computeDefleetDue(vehicle.dateAcquired, vehicle.rentalTermWeeks)
           if (due.state !== 'soon' && due.state !== 'overdue') return null
           const overdue = due.state === 'overdue'
           const dateStr = due.dueDate ? new Date(due.dueDate + 'T00:00:00').toLocaleDateString('en-GB') : ''

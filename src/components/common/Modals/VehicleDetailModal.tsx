@@ -40,6 +40,7 @@ import { InsuranceToggle } from '@/components/common/ui/InsuranceToggle'
 import { InsuranceWarningModal } from '@/components/common/Modals/InsuranceWarningModal'
 import { logger } from '@/lib/logger'
 import { useT, useLang, formatDateLocale } from '@/lib/i18n'
+import { computeDefleetDue } from '@/lib/utils/defleetDue'
 import { DamageMapper } from '@/components/common/DamageMapper/DamageMapper'
 import type { DamagePin, VehicleDiagramType } from '@/components/common/DamageMapper/DamageMapper'
 import { userProfileService } from '@/lib/firestore'
@@ -669,6 +670,24 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
               <InfoRow label={t('vehDetail.checkInRow')}>
                 {checkInDateString ? formatDate(checkInDateString) : '—'}
               </InfoRow>
+
+              {(vehicle as any).supplier && (
+                <InfoRow label={t('vehDetail.supplier')}>
+                  {safeString((vehicle as any).supplier)}
+                </InfoRow>
+              )}
+
+              {(() => {
+                const due = computeDefleetDue((vehicle as any).dateAcquired, (vehicle as any).rentalTermWeeks)
+                if (!due.dueDate) return null
+                const color = due.state === 'overdue' ? '#b91c1c' : due.state === 'soon' ? '#b45309' : '#024a36'
+                const bg    = due.state === 'overdue' ? '#fde8e8' : due.state === 'soon' ? '#fef3c7' : '#e7f1ec'
+                return (
+                  <InfoRow label={t('vehDetail.defleetDue')}>
+                    <StatusPill bg={bg} color={color}>{formatDate(due.dueDate)}</StatusPill>
+                  </InfoRow>
+                )
+              })()}
 
               {vehicleContract && (
                 <InfoRow label={t('vehDetail.contract')}>

@@ -1,6 +1,6 @@
 // src/lib/utils/defleetDue.ts
 // Defleet-due status for a fleet vehicle, from its acquisition date + rental
-// term: due date = dateAcquired + rentalTermMonths. Drives the fleet-page flag.
+// term: due date = dateAcquired + rentalTermWeeks. Drives the fleet-page flag.
 
 export type DefleetState = 'none' | 'ok' | 'soon' | 'overdue'
 
@@ -18,16 +18,16 @@ const ymd = (d: Date) =>
  */
 export function computeDefleetDue(
   dateAcquired?: string | null,
-  rentalTermMonths?: number | null,
+  rentalTermWeeks?: number | null,
   soonDays = 60,
 ): DefleetDue {
-  const term = Number(rentalTermMonths)
+  const term = Number(rentalTermWeeks)
   if (!dateAcquired || !term || term <= 0) return { dueDate: null, daysLeft: null, state: 'none' }
   const start = new Date(String(dateAcquired).slice(0, 10) + 'T00:00:00')
   if (isNaN(start.getTime())) return { dueDate: null, daysLeft: null, state: 'none' }
 
   const due = new Date(start)
-  due.setMonth(due.getMonth() + term)
+  due.setDate(due.getDate() + term * 7)   // rental term is in weeks
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const daysLeft = Math.round((due.getTime() - today.getTime()) / 86_400_000)
