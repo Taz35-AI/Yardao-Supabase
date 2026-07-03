@@ -671,11 +671,15 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
                 {checkInDateString ? formatDate(checkInDateString) : '—'}
               </InfoRow>
 
-              {(vehicle as any).supplier && (
-                <InfoRow label={t('vehDetail.supplier')}>
-                  {safeString((vehicle as any).supplier)}
-                </InfoRow>
-              )}
+              <InfoRow label={t('vehDetail.supplier')}>
+                {safeString((vehicle as any).supplier) || '—'}
+              </InfoRow>
+
+              <InfoRow label={t('vehDetail.rentalTerm')}>
+                {(vehicle as any).rentalTermWeeks
+                  ? t('vehDetail.rentalTermValue', { weeks: String((vehicle as any).rentalTermWeeks) })
+                  : '—'}
+              </InfoRow>
 
               {(() => {
                 const due = computeDefleetDue((vehicle as any).dateAcquired, (vehicle as any).rentalTermWeeks)

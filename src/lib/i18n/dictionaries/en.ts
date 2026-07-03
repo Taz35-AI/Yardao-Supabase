@@ -2863,6 +2863,8 @@ export const en = {
     bayLocation: 'Bay / Location',
     checkInRow: 'Check-in',
     supplier: 'Supplier',
+    rentalTerm: 'Rental term',
+    rentalTermValue: '{weeks} weeks',
     defleetDue: 'Defleet due',
     contract: 'Contract',
     policy: 'Policy',
