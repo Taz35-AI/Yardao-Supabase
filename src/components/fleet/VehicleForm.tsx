@@ -12,6 +12,7 @@ import { InsuranceToggle } from '@/components/common/ui/InsuranceToggle'
 import { VehicleDiagramSelector } from '@/components/common/DamageMapper/VehicleDiagramSelector'
 import { getUniqueSizes } from '@/lib/fleetUtils'
 import { computeDefleetDue } from '@/lib/utils/defleetDue'
+import { useVehicleSuppliers } from '@/hooks/fleet/useVehicleSuppliers'
 import { useT } from '@/lib/i18n'
 
 // Shared field styling — solid, consistent, brand-aligned
@@ -121,6 +122,8 @@ export function VehicleForm({ onAdd, onCancel, conditions, existingVehicles = []
     formatDateForDisplay,
     getContractBadgeStyle
   } = useVehicleForm({ conditions, existingVehicles, onAdd, prefillData })
+
+  const vehicleSuppliers = useVehicleSuppliers()
 
   const [step, setStep] = useState(1)
 
@@ -423,11 +426,15 @@ export function VehicleForm({ onAdd, onCancel, conditions, existingVehicles = []
                     <div>
                       <label className={labelCls}>{t('fleet.form.labelSupplier')}</label>
                       <input
+                        list="fleet-vehicle-suppliers"
                         value={formData.supplier}
                         onChange={e => handleChange('supplier', e.target.value)}
                         className={inputCls}
                         placeholder={t('fleet.form.supplierPlaceholder')}
                       />
+                      <datalist id="fleet-vehicle-suppliers">
+                        {vehicleSuppliers.map(s => <option key={s} value={s} />)}
+                      </datalist>
                     </div>
                     <div>
                       <label className={labelCls}>{t('fleet.form.labelRentalTerm')}</label>

@@ -154,6 +154,34 @@ export const settingsService = {
     }
   },
 
+  // ==================== VEHICLE SUPPLIERS ====================
+  // Separate from parts suppliers — leasing companies / dealers the fleet is
+  // acquired from. Powers the Supplier dropdown in the Add/Edit vehicle forms.
+
+  async getVehicleSuppliers(organizationId: string): Promise<string[]> {
+    try {
+      const row = await getSettingsRow(organizationId)
+      return (row?.vehicle_suppliers as string[]) || []
+    } catch (error) {
+      logger.error('Error getting vehicle suppliers:', error)
+      return []
+    }
+  },
+
+  async saveVehicleSuppliers(organizationId: string, suppliers: string[]): Promise<void> {
+    try {
+      await ensureSettingsDoc(organizationId)
+      const { error } = await supabase
+        .from(TABLE)
+        .update({ vehicle_suppliers: suppliers, updated_at: new Date().toISOString() })
+        .eq('organization_id', organizationId)
+      if (error) throw error
+    } catch (error) {
+      logger.error('Error saving vehicle suppliers:', error)
+      throw error
+    }
+  },
+
   // ==================== FROM COMPANIES ====================
 
   async getFromCompanies(organizationId: string): Promise<FromCompanyDetails[]> {

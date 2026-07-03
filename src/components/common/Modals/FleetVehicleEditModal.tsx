@@ -15,6 +15,7 @@ import { Contract, InsuranceStatus, FleetVehicle } from '@/types'
 import { InsuranceToggle } from '@/components/common/ui/InsuranceToggle'
 import { getUniqueSizes } from '@/lib/fleetUtils'
 import { computeDefleetDue } from '@/lib/utils/defleetDue'
+import { useVehicleSuppliers } from '@/hooks/fleet/useVehicleSuppliers'
 import { useT } from '@/lib/i18n'
 import {
   Edit,
@@ -211,6 +212,7 @@ export function FleetVehicleEditModal({
 }: FleetVehicleEditModalProps) {
   const { user } = useAuth()
   const t = useT()
+  const vehicleSuppliers = useVehicleSuppliers()
   const [loading, setLoading]                   = useState(false)
   const [contracts, setContracts]               = useState<Contract[]>([])
   const [contractsLoading, setContractsLoading] = useState(true)
@@ -487,11 +489,15 @@ export function FleetVehicleEditModal({
 
                   <FieldWrap icon={Truck} label={t('fleet.editModal.supplierLabel')}>
                     <input
+                      list="edit-vehicle-suppliers"
                       value={formData.supplier}
                       onChange={e => handleInputChange('supplier', e.target.value)}
                       className={inputCls}
                       placeholder={t('fleet.form.supplierPlaceholder')}
                     />
+                    <datalist id="edit-vehicle-suppliers">
+                      {vehicleSuppliers.map(s => <option key={s} value={s} />)}
+                    </datalist>
                   </FieldWrap>
 
                   <FieldWrap icon={CalendarClock} label={t('fleet.editModal.rentalTermLabel')}>
