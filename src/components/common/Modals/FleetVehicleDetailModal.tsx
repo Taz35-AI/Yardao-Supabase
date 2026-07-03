@@ -377,10 +377,14 @@ export function FleetVehicleDetailModal({
                 {(vehicle as any).supplier || '—'}
               </InfoRow>
               <InfoRow label={t('fleet.detailModal.rentalTermLabel')}>
-                {(vehicle as any).rentalTermWeeks ? t('fleet.detailModal.rentalTermValue', { weeks: (vehicle as any).rentalTermWeeks }) : '—'}
+                {(vehicle as any).defleetDueDate
+                  ? t('fleet.detailModal.rentalTermFixedDate')
+                  : (vehicle as any).rentalTermWeeks
+                    ? t('fleet.detailModal.rentalTermValue', { weeks: (vehicle as any).rentalTermWeeks })
+                    : '—'}
               </InfoRow>
               {(() => {
-                const due = computeDefleetDue(vehicle.dateAcquired, (vehicle as any).rentalTermWeeks)
+                const due = computeDefleetDue(vehicle.dateAcquired, (vehicle as any).rentalTermWeeks, 60, (vehicle as any).defleetDueDate)
                 if (!due.dueDate) return null
                 const cls = due.state === 'overdue' ? 'text-red-600 dark:text-red-400 font-semibold'
                   : due.state === 'soon' ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''

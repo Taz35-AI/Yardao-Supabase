@@ -676,13 +676,15 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
               </InfoRow>
 
               <InfoRow label={t('vehDetail.rentalTerm')}>
-                {(vehicle as any).rentalTermWeeks
-                  ? t('vehDetail.rentalTermValue', { weeks: String((vehicle as any).rentalTermWeeks) })
-                  : '—'}
+                {(vehicle as any).defleetDueDate
+                  ? t('vehDetail.rentalTermFixed')
+                  : (vehicle as any).rentalTermWeeks
+                    ? t('vehDetail.rentalTermValue', { weeks: String((vehicle as any).rentalTermWeeks) })
+                    : '—'}
               </InfoRow>
 
               {(() => {
-                const due = computeDefleetDue((vehicle as any).dateAcquired, (vehicle as any).rentalTermWeeks)
+                const due = computeDefleetDue((vehicle as any).dateAcquired, (vehicle as any).rentalTermWeeks, 60, (vehicle as any).defleetDueDate)
                 if (!due.dueDate) return null
                 const color = due.state === 'overdue' ? '#b91c1c' : due.state === 'soon' ? '#b45309' : '#024a36'
                 const bg    = due.state === 'overdue' ? '#fde8e8' : due.state === 'soon' ? '#fef3c7' : '#e7f1ec'

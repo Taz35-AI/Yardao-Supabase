@@ -339,6 +339,7 @@ export default function FleetInventoryPage() {
       dateAcquired: safeString(vehicle.dateAcquired),
       supplier: (vehicle as any).supplier ?? null,
       rentalTermWeeks: (vehicle as any).rentalTermWeeks ?? null,
+      defleetDueDate: (vehicle as any).defleetDueDate ?? null,
       isDefleeted: vehicle.isDefleeted,
       defleetDate: vehicle.defleetDate || undefined,
       defleetProcessedDate: vehicle.defleetProcessedDate || undefined,
