@@ -11,6 +11,7 @@ import { useVehicleForm } from '@/hooks/fleet/useVehicleForm'
 import { InsuranceToggle } from '@/components/common/ui/InsuranceToggle'
 import { VehicleDiagramSelector } from '@/components/common/DamageMapper/VehicleDiagramSelector'
 import { getUniqueSizes } from '@/lib/fleetUtils'
+import { computeDefleetDue } from '@/lib/utils/defleetDue'
 import { useT } from '@/lib/i18n'
 
 // Shared field styling — solid, consistent, brand-aligned
@@ -416,6 +417,37 @@ export function VehicleForm({ onAdd, onCancel, conditions, existingVehicles = []
                       </p>
                     )}
                   </div>
+
+                  {/* Supplier + rental term → drives the fleet defleet-due flag */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelCls}>{t('fleet.form.labelSupplier')}</label>
+                      <input
+                        value={formData.supplier}
+                        onChange={e => handleChange('supplier', e.target.value)}
+                        className={inputCls}
+                        placeholder={t('fleet.form.supplierPlaceholder')}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>{t('fleet.form.labelRentalTerm')}</label>
+                      <input
+                        type="number" min="0" step="1"
+                        value={formData.rentalTermMonths}
+                        onChange={e => handleChange('rentalTermMonths', e.target.value)}
+                        className={inputCls}
+                        placeholder={t('fleet.form.rentalTermPlaceholder')}
+                      />
+                    </div>
+                  </div>
+                  {(() => {
+                    const due = computeDefleetDue(formData.dateAcquired, formData.rentalTermMonths ? Number(formData.rentalTermMonths) : null)
+                    return due.dueDate ? (
+                      <p className="text-[11px] font-medium text-[#025940] dark:text-[#72A68E] -mt-2">
+                        {t('fleet.form.defleetDueHint', { date: formatDateForDisplay(due.dueDate) })}
+                      </p>
+                    ) : null
+                  })()}
 
                   <div>
                     <label className={labelCls}>{t('fleet.form.labelSize')}</label>

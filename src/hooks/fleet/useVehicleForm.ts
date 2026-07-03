@@ -12,6 +12,8 @@ import { VehicleDiagramType } from '@/components/common/DamageMapper/DamageMappe
 
 interface VehicleFormData {
   dateAcquired: string
+  supplier: string
+  rentalTermMonths: string   // months; parsed to a number on submit
   registration: string
   make: string
   model: string
@@ -51,6 +53,8 @@ export function useVehicleForm({ conditions, existingVehicles, onAdd, prefillDat
   // Form state
   const [formData, setFormData] = useState<VehicleFormData>({
     dateAcquired: getTodayDate(),
+    supplier: '',
+    rentalTermMonths: '',
     registration: '',
     make: '',
     model: '',
@@ -220,14 +224,18 @@ export function useVehicleForm({ conditions, existingVehicles, onAdd, prefillDat
         contractId: formData.contractId || null,
         insuranceStatus: formData.insuranceStatus,
         dateAcquired: formData.dateAcquired || getTodayDate(),
+        supplier: formData.supplier?.trim() || null,
+        rentalTermMonths: formData.rentalTermMonths ? Number(formData.rentalTermMonths) : null,
         vehicleDiagramType: formData.vehicleDiagramType || null,
       }
-      
+
       await onAdd(vehicleData)
-      
+
       // Clear form on success
       setFormData({
         dateAcquired: getTodayDate(),
+        supplier: '',
+        rentalTermMonths: '',
         registration: '',
         make: '',
         model: '',

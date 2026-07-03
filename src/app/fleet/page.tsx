@@ -337,6 +337,8 @@ export default function FleetInventoryPage() {
       insurancePolicyName: vehicle.insurancePolicyName   || null,  // ✅ NEW
       insurancePolicyExpiry: vehicle.insurancePolicyExpiry || null,  // ✅ NEW
       dateAcquired: safeString(vehicle.dateAcquired),
+      supplier: (vehicle as any).supplier ?? null,
+      rentalTermMonths: (vehicle as any).rentalTermMonths ?? null,
       isDefleeted: vehicle.isDefleeted,
       defleetDate: vehicle.defleetDate || undefined,
       defleetProcessedDate: vehicle.defleetProcessedDate || undefined,

@@ -14,6 +14,7 @@ import { userProfileService } from '@/lib/firestore'
 import { Contract, InsuranceStatus, FleetVehicle } from '@/types'
 import { InsuranceToggle } from '@/components/common/ui/InsuranceToggle'
 import { getUniqueSizes } from '@/lib/fleetUtils'
+import { computeDefleetDue } from '@/lib/utils/defleetDue'
 import { useT } from '@/lib/i18n'
 import {
   Edit,
@@ -33,7 +34,9 @@ import {
   Search,
   Loader2,
   AlertCircle,
-  Check
+  Check,
+  Truck,
+  CalendarClock,
 } from 'lucide-react'
 import { useRegLookup } from '@/hooks/useRegLookup'
 import { logger } from '@/lib/logger'
@@ -215,6 +218,8 @@ export function FleetVehicleEditModal({
 
   const [formData, setFormData] = useState({
     dateAcquired:       '',
+    supplier:           '',
+    rentalTermMonths:   '',
     registration:       '',
     make:               '',
     model:              '',
@@ -265,6 +270,8 @@ export function FleetVehicleEditModal({
     if (vehicle) {
       setFormData({
         dateAcquired:       safeString(vehicle.dateAcquired),
+        supplier:           safeString((vehicle as any).supplier),
+        rentalTermMonths:   (vehicle as any).rentalTermMonths != null ? String((vehicle as any).rentalTermMonths) : '',
         registration:       safeString(vehicle.registration),
         make:               safeString(vehicle.make),
         model:              safeString(vehicle.model),
@@ -321,6 +328,8 @@ export function FleetVehicleEditModal({
       const updateData = {
         ...formData,
         dateAcquired:       formData.dateAcquired || null,
+        supplier:           formData.supplier?.trim() || null,
+        rentalTermMonths:   formData.rentalTermMonths ? Number(formData.rentalTermMonths) : null,
         contract:           formData.contract || null,
         contractColor:      formData.contractColor || null,
         contractId:         formData.contractId || null,
@@ -474,6 +483,33 @@ export function FleetVehicleEditModal({
                       onChange={e => handleInputChange('dateAcquired', e.target.value)}
                       className={inputCls}
                     />
+                  </FieldWrap>
+
+                  <FieldWrap icon={Truck} label={t('fleet.editModal.supplierLabel')}>
+                    <input
+                      value={formData.supplier}
+                      onChange={e => handleInputChange('supplier', e.target.value)}
+                      className={inputCls}
+                      placeholder={t('fleet.form.supplierPlaceholder')}
+                    />
+                  </FieldWrap>
+
+                  <FieldWrap icon={CalendarClock} label={t('fleet.editModal.rentalTermLabel')}>
+                    <input
+                      type="number" min="0" step="1"
+                      value={formData.rentalTermMonths}
+                      onChange={e => handleInputChange('rentalTermMonths', e.target.value)}
+                      className={inputCls}
+                      placeholder={t('fleet.form.rentalTermPlaceholder')}
+                    />
+                    {(() => {
+                      const due = computeDefleetDue(formData.dateAcquired, formData.rentalTermMonths ? Number(formData.rentalTermMonths) : null)
+                      return due.dueDate ? (
+                        <p className="text-[11px] font-medium text-[#025940] dark:text-[#72A68E] mt-1">
+                          {t('fleet.form.defleetDueHint', { date: new Date(due.dueDate + 'T00:00:00').toLocaleDateString('en-GB') })}
+                        </p>
+                      ) : null
+                    })()}
                   </FieldWrap>
 
                   <FieldWrap icon={Car} label={t('fleet.editModal.registrationLabel')}>
