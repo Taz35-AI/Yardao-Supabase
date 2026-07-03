@@ -254,6 +254,15 @@ export const en = {
       errorHeading: 'Error',
       successHeading: 'Success',
     },
+    defleetAlerts: {
+      title: 'Upcoming defleets ({count})',
+      overdueSummary: '{overdue} overdue · {soon} due within 30 days',
+      soonSummary: '{count} due within the next 30 days',
+      inDays: 'in {days}d',
+      dueToday: 'due today',
+      overdueBadge: '{days}d overdue',
+      empty: 'No defleets due in the next 30 days',
+    },
     detailModal: {
       notSpecified: 'Not specified',
       statusValid: 'Valid',
