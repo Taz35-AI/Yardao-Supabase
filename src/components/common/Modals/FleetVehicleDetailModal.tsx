@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import { FleetVehicle } from '@/types'
 import { formatDate, getExpiryStatus } from '@/lib/fleetUtils'
+import { computeDefleetDue } from '@/lib/utils/defleetDue'
 import { InsuranceStatusBadge } from '@/components/common/ui/InsuranceToggle'
 import { DamageMapView } from '@/components/common/DamageMapper/DamageMapView'
 import { logger } from '@/lib/logger'
@@ -372,6 +373,30 @@ export function FleetVehicleDetailModal({
               <InfoRow label={t('fleet.detailModal.dateAcquiredLabel')}>
                 {vehicle.dateAcquired ? formatDateDisplay(vehicle.dateAcquired, t) : '—'}
               </InfoRow>
+              <InfoRow label={t('fleet.detailModal.supplierLabel')}>
+                {(vehicle as any).supplier || '—'}
+              </InfoRow>
+              <InfoRow label={t('fleet.detailModal.rentalTermLabel')}>
+                {(vehicle as any).defleetDueDate
+                  ? t('fleet.detailModal.rentalTermFixedDate')
+                  : (vehicle as any).rentalTermWeeks
+                    ? t('fleet.detailModal.rentalTermValue', { weeks: (vehicle as any).rentalTermWeeks })
+                    : '—'}
+              </InfoRow>
+              {(() => {
+                const due = computeDefleetDue(vehicle.dateAcquired, (vehicle as any).rentalTermWeeks, 60, (vehicle as any).defleetDueDate)
+                if (!due.dueDate) return null
+                const cls = due.state === 'overdue' ? 'text-red-600 dark:text-red-400 font-semibold'
+                  : due.state === 'soon' ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''
+                return (
+                  <InfoRow label={t('fleet.detailModal.defleetDueLabel')}>
+                    <span className={cls}>
+                      {new Date(due.dueDate + 'T00:00:00').toLocaleDateString('en-GB')}
+                      {due.state === 'overdue' ? ` · ${t('fleet.row.defleetOverdue')}` : ''}
+                    </span>
+                  </InfoRow>
+                )
+              })()}
 
               {/* Contract */}
               <InfoRow label={t('fleet.detailModal.contractLabel')}>

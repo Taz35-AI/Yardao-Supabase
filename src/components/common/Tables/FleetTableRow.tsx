@@ -3,9 +3,10 @@
 'use client'
 
 import React from 'react'
-import { Calendar, AlertTriangle, CheckCircle } from 'lucide-react'
+import { Calendar, AlertTriangle, CheckCircle, CalendarClock } from 'lucide-react'
 import { FleetVehicle } from '@/types'
 import { getConditionColor, getConditionTextColor, getConditionDisplayName } from '@/lib/conditionUtils'
+import { computeDefleetDue } from '@/lib/utils/defleetDue'
 import { useT } from '@/lib/i18n'
 
 type TFunc = (key: string, vars?: Record<string, string | number>) => string
@@ -223,6 +224,25 @@ export function FleetTableRow({
             {t('fleet.row.recallBadge')}
           </span>
         )}
+        {(() => {
+          const due = computeDefleetDue(vehicle.dateAcquired, vehicle.rentalTermWeeks, 60, (vehicle as any).defleetDueDate)
+          if (due.state !== 'soon' && due.state !== 'overdue') return null
+          const overdue = due.state === 'overdue'
+          const dateStr = due.dueDate ? new Date(due.dueDate + 'T00:00:00').toLocaleDateString('en-GB') : ''
+          return (
+            <span
+              title={t('fleet.row.defleetDueTooltip', { date: dateStr })}
+              className={`inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10px] font-bold border whitespace-nowrap ${
+                overdue
+                  ? 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
+                  : 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800'
+              }`}
+            >
+              <CalendarClock className="w-2.5 h-2.5" />
+              {overdue ? t('fleet.row.defleetOverdue') : t('fleet.row.defleetDueSoon', { days: due.daysLeft ?? 0 })}
+            </span>
+          )
+        })()}
       </td>
 
       {/* 2. Make - Better aligned */}

@@ -11,6 +11,9 @@ import { useVehicleForm } from '@/hooks/fleet/useVehicleForm'
 import { InsuranceToggle } from '@/components/common/ui/InsuranceToggle'
 import { VehicleDiagramSelector } from '@/components/common/DamageMapper/VehicleDiagramSelector'
 import { getUniqueSizes } from '@/lib/fleetUtils'
+import { computeDefleetDue } from '@/lib/utils/defleetDue'
+import { useVehicleSuppliers } from '@/hooks/fleet/useVehicleSuppliers'
+import { useRouter } from 'next/navigation'
 import { useT } from '@/lib/i18n'
 
 // Shared field styling — solid, consistent, brand-aligned
@@ -120,6 +123,12 @@ export function VehicleForm({ onAdd, onCancel, conditions, existingVehicles = []
     formatDateForDisplay,
     getContractBadgeStyle
   } = useVehicleForm({ conditions, existingVehicles, onAdd, prefillData })
+
+  const vehicleSuppliers = useVehicleSuppliers()
+  const router = useRouter()
+  // Rental term can be entered either as a number of weeks (defleet date is
+  // derived) or as an explicit defleet date given by the supplier.
+  const [termMode, setTermMode] = useState<'weeks' | 'date'>('weeks')
 
   const [step, setStep] = useState(1)
 
@@ -416,6 +425,80 @@ export function VehicleForm({ onAdd, onCancel, conditions, existingVehicles = []
                       </p>
                     )}
                   </div>
+
+                  {/* Supplier + rental term → drives the fleet defleet-due flag */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelCls}>{t('fleet.form.labelSupplier')}</label>
+                      <select
+                        value={formData.supplier}
+                        onChange={e => {
+                          if (e.target.value === '__add_supplier__') {
+                            router.push('/settings?tab=vehicle-suppliers')
+                            return
+                          }
+                          handleChange('supplier', e.target.value)
+                        }}
+                        className={inputCls}
+                      >
+                        <option value="">{t('fleet.form.supplierSelect')}</option>
+                        {formData.supplier && !vehicleSuppliers.includes(formData.supplier) && (
+                          <option value={formData.supplier}>{formData.supplier}</option>
+                        )}
+                        {vehicleSuppliers.map(s => <option key={s} value={s}>{s}</option>)}
+                        <option value="__add_supplier__">{t('fleet.form.supplierAdd')}</option>
+                      </select>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <label className={labelCls}>{t('fleet.form.labelRentalTerm')}</label>
+                        <div className="inline-flex rounded-md overflow-hidden border border-[#d6e3dc] dark:border-gray-600 text-[10px] font-semibold">
+                          <button
+                            type="button"
+                            onClick={() => { setTermMode('weeks'); handleChange('defleetDueDate', '') }}
+                            className={termMode === 'weeks'
+                              ? 'px-2 py-0.5 bg-[#025940] text-white'
+                              : 'px-2 py-0.5 text-[#5a6e64] dark:text-gray-300'}
+                          >
+                            {t('fleet.form.termModeWeeks')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setTermMode('date'); handleChange('rentalTermWeeks', '') }}
+                            className={termMode === 'date'
+                              ? 'px-2 py-0.5 bg-[#025940] text-white'
+                              : 'px-2 py-0.5 text-[#5a6e64] dark:text-gray-300'}
+                          >
+                            {t('fleet.form.termModeDate')}
+                          </button>
+                        </div>
+                      </div>
+                      {termMode === 'weeks' ? (
+                        <input
+                          type="number" min="0" step="1"
+                          value={formData.rentalTermWeeks}
+                          onChange={e => handleChange('rentalTermWeeks', e.target.value)}
+                          className={inputCls}
+                          placeholder={t('fleet.form.rentalTermPlaceholder')}
+                        />
+                      ) : (
+                        <input
+                          type="date"
+                          value={formData.defleetDueDate}
+                          onChange={e => handleChange('defleetDueDate', e.target.value)}
+                          className={inputCls}
+                        />
+                      )}
+                    </div>
+                  </div>
+                  {(() => {
+                    const due = computeDefleetDue(formData.dateAcquired, formData.rentalTermWeeks ? Number(formData.rentalTermWeeks) : null, 60, formData.defleetDueDate || null)
+                    return due.dueDate ? (
+                      <p className="text-[11px] font-medium text-[#025940] dark:text-[#72A68E] -mt-2">
+                        {t('fleet.form.defleetDueHint', { date: formatDateForDisplay(due.dueDate) })}
+                      </p>
+                    ) : null
+                  })()}
 
                   <div>
                     <label className={labelCls}>{t('fleet.form.labelSize')}</label>

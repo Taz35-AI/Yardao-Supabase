@@ -12,6 +12,9 @@ import { VehicleDiagramType } from '@/components/common/DamageMapper/DamageMappe
 
 interface VehicleFormData {
   dateAcquired: string
+  supplier: string
+  rentalTermWeeks: string   // weeks; parsed to a number on submit
+  defleetDueDate: string    // explicit defleet date (YYYY-MM-DD); alt to weeks
   registration: string
   make: string
   model: string
@@ -51,6 +54,9 @@ export function useVehicleForm({ conditions, existingVehicles, onAdd, prefillDat
   // Form state
   const [formData, setFormData] = useState<VehicleFormData>({
     dateAcquired: getTodayDate(),
+    supplier: '',
+    rentalTermWeeks: '',
+    defleetDueDate: '',
     registration: '',
     make: '',
     model: '',
@@ -220,14 +226,20 @@ export function useVehicleForm({ conditions, existingVehicles, onAdd, prefillDat
         contractId: formData.contractId || null,
         insuranceStatus: formData.insuranceStatus,
         dateAcquired: formData.dateAcquired || getTodayDate(),
+        supplier: formData.supplier?.trim() || null,
+        rentalTermWeeks: formData.rentalTermWeeks ? Number(formData.rentalTermWeeks) : null,
+        defleetDueDate: formData.defleetDueDate || null,
         vehicleDiagramType: formData.vehicleDiagramType || null,
       }
-      
+
       await onAdd(vehicleData)
-      
+
       // Clear form on success
       setFormData({
         dateAcquired: getTodayDate(),
+        supplier: '',
+        rentalTermWeeks: '',
+        defleetDueDate: '',
         registration: '',
         make: '',
         model: '',

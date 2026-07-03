@@ -31,7 +31,8 @@ import {
   GitBranch,
   User as UserIcon,
   Receipt,
-  Gauge
+  Gauge,
+  Truck
 } from 'lucide-react'
 import dynamic from 'next/dynamic'
 
@@ -76,6 +77,15 @@ const ContractManagement = dynamic(
 // Lazy load Supplier Management
 const SupplierManagement = dynamic(
   () => import('@/components/admin/SupplierManagement').then(mod => ({ default: mod.SupplierManagement })),
+  {
+    ssr: false,
+    loading: () => <LoadingLabel />
+  }
+)
+
+// Lazy load Vehicle Supplier Management (leasing companies / dealers)
+const VehicleSupplierManagement = dynamic(
+  () => import('@/components/admin/VehicleSupplierManagement').then(mod => ({ default: mod.VehicleSupplierManagement })),
   {
     ssr: false,
     loading: () => <LoadingLabel />
@@ -147,7 +157,7 @@ const CheckInServiceSettings = dynamic(
 
 type SettingsTab = 'user' | 'organization' | 'data'
 // ✅ UPDATED: Added 'companies' and 'insurance-policies' to OrganizationSubTab
-type OrganizationSubTab = 'branches' | 'conditions' | 'contracts' | 'suppliers' | 'companies' | 'insurance-policies' | 'external-garages' | 'check-in' | 'users' | 'general'
+type OrganizationSubTab = 'branches' | 'conditions' | 'contracts' | 'suppliers' | 'vehicle-suppliers' | 'companies' | 'insurance-policies' | 'external-garages' | 'check-in' | 'users' | 'general'
 
 export default function SettingsPage() {
   const t = useT()
@@ -168,6 +178,9 @@ export default function SettingsPage() {
       // ✅ NEW: support direct link to insurance policies tab
       setActiveTab('organization')
       setActiveOrgTab('insurance-policies')
+    } else if (tab === 'vehicle-suppliers') {
+      setActiveTab('organization')
+      setActiveOrgTab('vehicle-suppliers')
     } else if (tab === 'user') {
       setActiveTab('user')
     }
@@ -239,6 +252,13 @@ export default function SettingsPage() {
       description: t('settings.page.orgSuppliersDesc'),
       icon: Package,
       component: SupplierManagement
+    },
+    {
+      id: 'vehicle-suppliers' as const,
+      label: t('settings.page.orgVehicleSuppliers'),
+      description: t('settings.page.orgVehicleSuppliersDesc'),
+      icon: Truck,
+      component: VehicleSupplierManagement
     },
     {
       id: 'companies' as const,

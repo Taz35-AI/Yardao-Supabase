@@ -24,6 +24,7 @@ import { Pagination } from '@/components/common/Pagination'
 import { FleetVehicleDetailModal } from '@/components/common/Modals/FleetVehicleDetailModal'
 import { FleetVehicleEditModal } from '@/components/common/Modals/FleetVehicleEditModal'
 import { VehicleForm } from '@/components/fleet/VehicleForm'
+import { DefleetAlertsBanner } from '@/components/fleet/DefleetAlertsBanner'
 import { BulkDvlaRefreshModal } from '@/components/fleet/BulkDvlaRefreshModal'
 import { DuplicateVehicleModal } from '@/components/common/Modals/DuplicateVehicleModal'
 import { BulkRoadTaxModal } from '@/components/common/Modals/BulkRoadTaxModal'
@@ -337,6 +338,9 @@ export default function FleetInventoryPage() {
       insurancePolicyName: vehicle.insurancePolicyName   || null,  // ✅ NEW
       insurancePolicyExpiry: vehicle.insurancePolicyExpiry || null,  // ✅ NEW
       dateAcquired: safeString(vehicle.dateAcquired),
+      supplier: (vehicle as any).supplier ?? null,
+      rentalTermWeeks: (vehicle as any).rentalTermWeeks ?? null,
+      defleetDueDate: (vehicle as any).defleetDueDate ?? null,
       isDefleeted: vehicle.isDefleeted,
       defleetDate: vehicle.defleetDate || undefined,
       defleetProcessedDate: vehicle.defleetProcessedDate || undefined,
@@ -919,6 +923,10 @@ export default function FleetInventoryPage() {
               onClearError={() => setLocalError(null)}
               onClearSuccess={() => setLocalSuccess(null)}
             />
+
+            {/* Defleet-due alerts — vehicles within 30 days of / past their
+                defleet date (thresholds at 30/15/7/3/1). Click to open. */}
+            <DefleetAlertsBanner vehicles={fleetVehicles} onView={setViewingVehicle} />
 
             {/* ═══════════════════════════════════════════════
                 SEARCH HERO — smart search across every fleet column.
