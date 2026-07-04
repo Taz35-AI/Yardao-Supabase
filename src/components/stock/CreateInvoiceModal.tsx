@@ -1551,7 +1551,7 @@ const loadServiceBookingHoursAndCustomer = async () => {
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('stock.createInvoice.discountLabel')}</label>
                     <input
-                      type="number" min="0" max="100" step="0.1"
+                      type="number" min="0" max="100" step="any"
                       value={discountPercent || ''}
                       onChange={(e) => setDiscountPercent(e.target.value === '' ? 0 : parseFloat(e.target.value))}
                       placeholder="0"
