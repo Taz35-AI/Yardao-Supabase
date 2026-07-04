@@ -13,6 +13,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { exportDashboardVehicles } from '@/utils/dashboardExport'
 import { useVehicleTransfers } from '@/hooks/useVehicleTransfers'
 import { useServiceBookings } from '@/hooks/useServiceBookings' // ✅ ADDED: Import service bookings hook
+import { hireAgreementService } from '@/lib/services/hireAgreementService'
 import { CheckoutDestination } from '@/types/transfer'
 import type { 
   VehicleFormData, 
@@ -105,14 +106,29 @@ export function useDashboardBusinessLogic({
       return false
     }
 
-    // 🔒 Reserved vehicles can't go out on hire — UNLESS they're already
-    // assigned to a B2B hire agreement (currentAgreementLineId set). In that
-    // case the reservation was holding it for exactly this hire, so allow it.
+    // 🔒 Reserved vehicles can't go out on hire — UNLESS they're assigned to a
+    // B2B hire agreement. Resolve that the SAME way the Set-Out-on-Hire modal
+    // does: the stamped yard link, else an open line matched by fleet-vehicle-id
+    // or registration (active OR scheduled). If so, the reservation was holding
+    // it for exactly this hire, so allow it.
     const hireVehicle = checkedInVehicles.find(v => v.id === vehicleId)
-    const assignedToAgreement = !!hireVehicle?.currentAgreementLineId
-    if (hireVehicle?.isReserved && !assignedToAgreement) {
-      setReservationBlocked(hireVehicle)
-      return false
+    if (hireVehicle?.isReserved) {
+      const org = yardData?.userOrganizationId || userProfile?.organizationId
+      let assigned = !!hireVehicle.currentAgreementLineId
+      if (!assigned && org) {
+        try {
+          const line =
+            (hireVehicle.vehicleId ? await hireAgreementService.findOpenLineForVehicle(org, hireVehicle.vehicleId) : null) ||
+            (await hireAgreementService.findOpenLineByRegistration(org, hireVehicle.registration || ''))
+          assigned = !!(line && (line.status === 'active' || line.status === 'scheduled'))
+        } catch {
+          assigned = false
+        }
+      }
+      if (!assigned) {
+        setReservationBlocked(hireVehicle)
+        return false
+      }
     }
 
     try {
@@ -129,7 +145,7 @@ export function useDashboardBusinessLogic({
       showError(error instanceof Error ? error.message : t('dashboard.errors.setOutOnHireFailed'))
       return false
     }
-  }, [yardData, checkedInVehicles, showError, showSuccess])
+  }, [yardData, checkedInVehicles, userProfile, showError, showSuccess])
 
   // Handle quick check in
   const handleQuickCheckInConfirm = useCallback(async (vehicleId: string, returnNotes?: string, mileage?: string): Promise<boolean | undefined> => {
