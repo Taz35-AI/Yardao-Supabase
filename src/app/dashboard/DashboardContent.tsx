@@ -52,6 +52,7 @@ import { SetOutOnHireModal, QuickCheckInModal } from '@/components/features/dash
 import { InsuranceWarningPopup } from '@/components/features/dashboard/InsuranceWarningPopup'
 import { ReserveVehicleModal } from '@/components/common/Modals/ReserveVehicleModal'
 import { ReservationBlockedModal } from '@/components/common/Modals/ReservationBlockedModal'
+import { ReservationHireConfirmModal } from '@/components/common/Modals/ReservationHireConfirmModal'
 import { isAdminRole } from '@/lib/permissions'
 import { Lock } from 'lucide-react'
 
@@ -131,6 +132,10 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
   // 🔒 Admin-only vehicle reservation
   const isAdmin = isAdminRole(dataLayer.userProfile?.role)
   const [showReserveModal, setShowReserveModal] = React.useState(false)
+  // Pending "reserved — set out on hire anyway?" confirmation
+  const [reservedHireConfirm, setReservedHireConfirm] = React.useState<
+    { vehicle: CheckedInVehicle; contractLabel?: string } | null
+  >(null)
 
   React.useEffect(() => {
     const handler = () => modalController.showCheckInForm()
@@ -192,9 +197,23 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
     }
   }, [modalController.modalStates.bulkCheckoutVehicles, businessLogic, modalController])
 
-  const handleSetOutOnHire = useCallback((vehicle: any) => {
+  const openHireModal = useCallback((vehicle: any) => {
     modalController.handleSetOutOnHire(vehicle, dataLayer.dashboardLogic)
   }, [modalController, dataLayer.dashboardLogic])
+
+  const handleSetOutOnHire = useCallback(async (vehicle: any) => {
+    // 🔒 Reservation gate BEFORE the hire modal opens.
+    const decision = await businessLogic.resolveReservedHire(vehicle)
+    if (decision.action === 'block') {
+      businessLogic.showReservationBlock(vehicle)
+      return
+    }
+    if (decision.action === 'confirm') {
+      setReservedHireConfirm({ vehicle, contractLabel: decision.contractLabel })
+      return
+    }
+    openHireModal(vehicle)
+  }, [businessLogic, openHireModal])
 
   const handleQuickCheckIn = useCallback((vehicle: any) => {
     modalController.handleQuickCheckIn(vehicle, dataLayer.dashboardLogic)
@@ -1082,7 +1101,7 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
         <ReserveVehicleModal
           isOpen={showReserveModal}
           onClose={() => setShowReserveModal(false)}
-          getVehicleByRegistration={dataLayer.yardData.getVehicleByRegistration}
+          vehicles={dataLayer.vehiclesInYard}
           reserveVehicle={dataLayer.yardData.reserveVehicle}
           unreserveVehicle={dataLayer.yardData.unreserveVehicle}
           showSuccess={modalController.showSuccess}
@@ -1090,10 +1109,22 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
         />
       )}
 
-      {/* 🔒 Shown when a reserved vehicle's checkout / hire is attempted */}
+      {/* 🔒 Shown when a reserved vehicle's checkout / hire is hard-blocked */}
       <ReservationBlockedModal
         vehicle={businessLogic.reservationBlocked}
         onClose={businessLogic.clearReservationBlock}
+      />
+
+      {/* 🔒 Reserved-but-assigned → confirm before setting out on hire */}
+      <ReservationHireConfirmModal
+        vehicle={reservedHireConfirm?.vehicle ?? null}
+        contractLabel={reservedHireConfirm?.contractLabel}
+        onCancel={() => setReservedHireConfirm(null)}
+        onConfirm={() => {
+          const v = reservedHireConfirm?.vehicle
+          setReservedHireConfirm(null)
+          if (v) openHireModal(v)
+        }}
       />
 
       {modalController.hireModalStates.showSetOutOnHireModal && modalController.hireModalStates.selectedVehicleForHire && (
