@@ -8,11 +8,12 @@
 
 'use client'
 
-import { useCallback, useRef } from 'react' // ✅ SURGICAL FIX: Added useRef
+import { useCallback, useRef, useState } from 'react' // ✅ SURGICAL FIX: Added useRef
 import { useAuth } from '@/contexts/AuthContext'
 import { exportDashboardVehicles } from '@/utils/dashboardExport'
 import { useVehicleTransfers } from '@/hooks/useVehicleTransfers'
 import { useServiceBookings } from '@/hooks/useServiceBookings' // ✅ ADDED: Import service bookings hook
+import { hireAgreementService } from '@/lib/services/hireAgreementService'
 import { CheckoutDestination } from '@/types/transfer'
 import type { 
   VehicleFormData, 
@@ -57,6 +58,43 @@ export function useDashboardBusinessLogic({
   // ✅ CRITICAL FIX: Ref to prevent double garage checkout execution
   const garageCheckoutInProgressRef = useRef<boolean>(false)
 
+  // 🔒 Reservation block — when a reserved vehicle's checkout is attempted, we
+  // stash it here so the UI can show the "cannot go out — reserved" modal.
+  const [reservationBlocked, setReservationBlocked] = useState<CheckedInVehicle | null>(null)
+  const clearReservationBlock = useCallback(() => setReservationBlocked(null), [])
+  const showReservationBlock = useCallback((v: CheckedInVehicle) => setReservationBlocked(v), [])
+
+  // Decide what happens when set-out-on-hire is attempted on a reserved vehicle:
+  //   'open'    — not reserved, proceed normally
+  //   'block'   — reserved and NOT on any hire agreement → hard block
+  //   'confirm' — reserved AND assigned to a hire agreement → ask "are you sure?"
+  // The agreement is resolved the same way the hire modal does (stamped link,
+  // then open line by fleet-vehicle-id / registration, active or scheduled).
+  const resolveReservedHire = useCallback(async (
+    vehicle: CheckedInVehicle,
+  ): Promise<{ action: 'open' | 'block' | 'confirm'; contractLabel?: string }> => {
+    if (!vehicle?.isReserved) return { action: 'open' }
+    const org = yardData?.userOrganizationId || userProfile?.organizationId
+    let line: any = null
+    if (org) {
+      try {
+        line =
+          (vehicle.currentAgreementLineId ? await hireAgreementService.getLineById(vehicle.currentAgreementLineId) : null) ||
+          (vehicle.vehicleId ? await hireAgreementService.findOpenLineForVehicle(org, vehicle.vehicleId) : null) ||
+          (await hireAgreementService.findOpenLineByRegistration(org, vehicle.registration || ''))
+      } catch { line = null }
+    }
+    const assigned = !!(line && (line.status === 'active' || line.status === 'scheduled'))
+    if (!assigned) return { action: 'block' }
+
+    let contractLabel = ''
+    try {
+      const ag = await hireAgreementService.getAgreement(line.agreementId)
+      if (ag) contractLabel = [ag.customerName, ag.reference].filter(Boolean).join(' · ')
+    } catch { /* best-effort label */ }
+    return { action: 'confirm', contractLabel }
+  }, [yardData, userProfile])
+
   // Vehicle transfer operations hook
   const {
     loading: transferLoading,
@@ -100,13 +138,25 @@ export function useDashboardBusinessLogic({
       return false
     }
 
+    // NOTE: the reserved-vehicle gate now runs at the point the hire flow is
+    // OPENED (see resolveReservedHire + handleSetOutOnHire in DashboardContent),
+    // so by the time we get here the hire is authorised.
+    const hireVehicle = checkedInVehicles.find(v => v.id === vehicleId)
+
     try {
       const hireData: SetOutOnHireData = {
         vehicleId,
         hireNotes
       }
-      
+
       await yardData.setOutOnHire(hireData)
+
+      // 🔒 Once out on hire, the reservation is fulfilled — clear it so the
+      // vehicle drops off the reserved list automatically.
+      if (hireVehicle?.isReserved && yardData?.unreserveVehicle) {
+        try { await yardData.unreserveVehicle(vehicleId) } catch { /* non-fatal */ }
+      }
+
       showSuccess(t('dashboard.success.setOutOnHire'))
       return true
     } catch (error) {
@@ -114,7 +164,7 @@ export function useDashboardBusinessLogic({
       showError(error instanceof Error ? error.message : t('dashboard.errors.setOutOnHireFailed'))
       return false
     }
-  }, [yardData, showError, showSuccess])
+  }, [yardData, checkedInVehicles, showError, showSuccess])
 
   // Handle quick check in
   const handleQuickCheckInConfirm = useCallback(async (vehicleId: string, returnNotes?: string, mileage?: string): Promise<boolean | undefined> => {
@@ -272,6 +322,12 @@ showSuccess(t('dashboard.success.vehicleCheckedIn', { registration: cleanRegistr
     const vehicle = checkedInVehicles.find(v => v.id === vehicleId)
     if (!vehicle) {
       showError(t('dashboard.errors.vehicleNotFoundDot'))
+      return null
+    }
+
+    // 🔒 Reserved vehicles cannot leave the yard — surface the hold + note.
+    if (vehicle.isReserved) {
+      setReservationBlocked(vehicle)
       return null
     }
 
@@ -462,6 +518,13 @@ const executeReturnFromGarage = useCallback(async (vehicleId: string): Promise<b
   const handleBulkCheckoutConfirm = useCallback(async (vehicleIds: string[]) => {
     if (!vehicleIds.length || !yardData?.bulkCheckout) return
 
+    // 🔒 Block the whole batch if any selected vehicle is reserved.
+    const reserved = checkedInVehicles.find(v => vehicleIds.includes(v.id) && v.isReserved)
+    if (reserved) {
+      setReservationBlocked(reserved)
+      return false
+    }
+
     try {
       await yardData.bulkCheckout(vehicleIds)
       showSuccess(t('dashboard.success.bulkCheckedOut', { count: vehicleIds.length }))
@@ -471,7 +534,7 @@ const executeReturnFromGarage = useCallback(async (vehicleId: string): Promise<b
       showError(t('dashboard.errors.bulkCheckoutFailed'))
       return false
     }
-  }, [yardData, showError, showSuccess])
+  }, [yardData, checkedInVehicles, showError, showSuccess])
 
   // Handle detail modal actions
   const handleDetailModalEdit = useCallback(() => {
@@ -629,7 +692,13 @@ const executeReturnFromGarage = useCallback(async (vehicleId: string): Promise<b
     // ✅ NEW: Execute handlers (called by modal confirmation)
     executeReturnFromGarage,
     executeCancelTransfer,
-    
+
+    // 🔒 Reservation block state
+    reservationBlocked,
+    clearReservationBlock,
+    showReservationBlock,
+    resolveReservedHire,
+
     transferLoading
   }
 }

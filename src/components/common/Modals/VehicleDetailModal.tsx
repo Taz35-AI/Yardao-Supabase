@@ -664,6 +664,20 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
 
             {/* Left panel — vehicle info */}
             <div className="flex-1 p-4 sm:p-5">
+              {(vehicle as any).isReserved && (
+                <div className="mb-4 rounded-xl border border-red-300 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 p-3">
+                  <p className="text-[11px] font-extrabold uppercase tracking-wide text-red-600 dark:text-red-400 mb-0.5">
+                    🔒 Reserved — cannot go out
+                  </p>
+                  {(vehicle as any).reservedNote && (
+                    <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{(vehicle as any).reservedNote}</p>
+                  )}
+                  {(vehicle as any).reservedBy && (
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">Reserved by {(vehicle as any).reservedBy}</p>
+                  )}
+                </div>
+              )}
+
               <SectionTitle>{t('vehDetail.sectionVehicleInfo')}</SectionTitle>
 
               <InfoRow label={t('vehDetail.makeModel')}>{vehicleMake} {vehicleModel}</InfoRow>

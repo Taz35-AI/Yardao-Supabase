@@ -50,6 +50,11 @@ import { OnlineMembers } from '@/components/features/dashboard/OnlineMembers'
 import { DashboardTour } from '@/components/features/dashboard/DashboardTour'
 import { SetOutOnHireModal, QuickCheckInModal } from '@/components/features/dashboard/HireModals'
 import { InsuranceWarningPopup } from '@/components/features/dashboard/InsuranceWarningPopup'
+import { ReserveVehicleModal } from '@/components/common/Modals/ReserveVehicleModal'
+import { ReservationBlockedModal } from '@/components/common/Modals/ReservationBlockedModal'
+import { ReservationHireConfirmModal } from '@/components/common/Modals/ReservationHireConfirmModal'
+import { isAdminRole } from '@/lib/permissions'
+import { Lock } from 'lucide-react'
 
 // Component imports - Alert/Confirmation Modals
 import { ConfirmationModal } from '@/components/common/Modals/ConfirmationModal'
@@ -124,6 +129,14 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
     branchId: branchId
   })
 
+  // 🔒 Admin-only vehicle reservation
+  const isAdmin = isAdminRole(dataLayer.userProfile?.role)
+  const [showReserveModal, setShowReserveModal] = React.useState(false)
+  // Pending "reserved — set out on hire anyway?" confirmation
+  const [reservedHireConfirm, setReservedHireConfirm] = React.useState<
+    { vehicle: CheckedInVehicle; contractLabel?: string } | null
+  >(null)
+
   React.useEffect(() => {
     const handler = () => modalController.showCheckInForm()
     window.addEventListener('yardao:open-checkin', handler)
@@ -184,9 +197,23 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
     }
   }, [modalController.modalStates.bulkCheckoutVehicles, businessLogic, modalController])
 
-  const handleSetOutOnHire = useCallback((vehicle: any) => {
+  const openHireModal = useCallback((vehicle: any) => {
     modalController.handleSetOutOnHire(vehicle, dataLayer.dashboardLogic)
   }, [modalController, dataLayer.dashboardLogic])
+
+  const handleSetOutOnHire = useCallback(async (vehicle: any) => {
+    // 🔒 Reservation gate BEFORE the hire modal opens.
+    const decision = await businessLogic.resolveReservedHire(vehicle)
+    if (decision.action === 'block') {
+      businessLogic.showReservationBlock(vehicle)
+      return
+    }
+    if (decision.action === 'confirm') {
+      setReservedHireConfirm({ vehicle, contractLabel: decision.contractLabel })
+      return
+    }
+    openHireModal(vehicle)
+  }, [businessLogic, openHireModal])
 
   const handleQuickCheckIn = useCallback((vehicle: any) => {
     modalController.handleQuickCheckIn(vehicle, dataLayer.dashboardLogic)
@@ -364,6 +391,16 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
               {/* Desktop actions — Refresh / Clean / Export to Excel now live
                   inside the three-dot menu to keep the toolbar uncluttered. */}
               <div data-tour="actions-menu" className="hidden md:flex items-center">
+                {isAdmin && (
+                  <button
+                    onClick={() => setShowReserveModal(true)}
+                    title="Reserve a vehicle (admin)"
+                    className="p-1.5 rounded-md text-[#8a9e94] hover:text-[#025940] hover:bg-[#025940]/8 dark:hover:text-[#b3f243] transition-colors"
+                    aria-label="Reserve a vehicle"
+                  >
+                    <Lock className="w-4 h-4" />
+                  </button>
+                )}
                 <DashboardActionsMenu
                   onRefresh={dataLayer.forceDataRefresh}
                   onClean={handleCleanNotesClick}
@@ -422,6 +459,17 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
                     <Map className="w-4 h-4" />
                   </button>
                 </div>
+
+                {isAdmin && (
+                  <button
+                    onClick={() => setShowReserveModal(true)}
+                    title="Reserve a vehicle (admin)"
+                    className="p-1.5 rounded-md text-[#8a9e94] hover:text-[#025940] hover:bg-[#025940]/8 dark:hover:text-[#b3f243] transition-colors"
+                    aria-label="Reserve a vehicle"
+                  >
+                    <Lock className="w-4 h-4" />
+                  </button>
+                )}
 
                 <DashboardActionsMenu
                   onRefresh={dataLayer.forceDataRefresh}
@@ -1047,6 +1095,37 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
           fleetVehicles={dataLayer.fleetVehicles}
         />
       )}
+
+      {/* 🔒 Admin-only reservation panel */}
+      {isAdmin && (
+        <ReserveVehicleModal
+          isOpen={showReserveModal}
+          onClose={() => setShowReserveModal(false)}
+          vehicles={dataLayer.vehiclesInYard}
+          reserveVehicle={dataLayer.yardData.reserveVehicle}
+          unreserveVehicle={dataLayer.yardData.unreserveVehicle}
+          showSuccess={modalController.showSuccess}
+          showError={modalController.showError}
+        />
+      )}
+
+      {/* 🔒 Shown when a reserved vehicle's checkout / hire is hard-blocked */}
+      <ReservationBlockedModal
+        vehicle={businessLogic.reservationBlocked}
+        onClose={businessLogic.clearReservationBlock}
+      />
+
+      {/* 🔒 Reserved-but-assigned → confirm before setting out on hire */}
+      <ReservationHireConfirmModal
+        vehicle={reservedHireConfirm?.vehicle ?? null}
+        contractLabel={reservedHireConfirm?.contractLabel}
+        onCancel={() => setReservedHireConfirm(null)}
+        onConfirm={() => {
+          const v = reservedHireConfirm?.vehicle
+          setReservedHireConfirm(null)
+          if (v) openHireModal(v)
+        }}
+      />
 
       {modalController.hireModalStates.showSetOutOnHireModal && modalController.hireModalStates.selectedVehicleForHire && (
         <SetOutOnHireModal

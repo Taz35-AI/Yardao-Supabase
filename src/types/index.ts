@@ -144,7 +144,7 @@ export interface CheckedInVehicle {
   checkedOutToGarageAt?: Date | string
   checkedOutToGarageBy?: string
   checkedOutToGarageByName?: string
-  
+
   // 🆕 NEW: Insurance Status field
   insuranceStatus?: InsuranceStatus | null
 
@@ -152,7 +152,13 @@ export interface CheckedInVehicle {
   insurancePolicyId?: string | null
   insurancePolicyName?: string | null
   insurancePolicyExpiry?: string | null
-  
+
+  // 🔒 Admin reservation / hold — blocks checkout, flagged on the yard map
+  isReserved?: boolean
+  reservedNote?: string | null
+  reservedBy?: string | null       // display name of the admin who reserved it
+  reservedAt?: Date | null
+
   // NEW: Hire functionality
   hireStatus: VehicleHireStatus
   originalStatus?: VehicleStatus // Store original status when out on hire
