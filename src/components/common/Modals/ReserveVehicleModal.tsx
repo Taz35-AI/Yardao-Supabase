@@ -104,7 +104,7 @@ export function ReserveVehicleModal({
               {/* Search by partial registration */}
               <div className="relative">
                 <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Find a vehicle</label>
-                <div className="flex items-center gap-2 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus-within:ring-2 focus-within:ring-[#025940]/30 focus-within:border-[#025940]">
+                <div className="flex items-center gap-2 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus-within:border-[#025940] transition-colors">
                   <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
                   <input
                     value={query}
