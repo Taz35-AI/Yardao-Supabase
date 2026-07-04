@@ -56,6 +56,11 @@ interface FleetVehicleLike {
   registration?: string | null
   motExpiry?: string | null
   taxExpiry?: string | null
+  // Fleet-owned fields mirrored (read-only) into the dashboard detail modal.
+  supplier?: string | null
+  rentalTermWeeks?: number | null
+  defleetDueDate?: string | null
+  dateAcquired?: string | null
 }
 
 interface VehicleDetailModalProps {
@@ -475,6 +480,14 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
   const effectiveMotExpiry = fleetRecord?.motExpiry || vehicle.motExpiry || null
   const effectiveTaxExpiry = fleetRecord?.taxExpiry || vehicle.taxExpiry || null
 
+  // Supplier / rental term / defleet-due are fleet-owned — always read live from
+  // the matching fleet record (falling back to the yard record) so the dashboard
+  // stays in sync with the fleet page. Display-only; not editable here.
+  const effectiveSupplier     = fleetRecord?.supplier        ?? (vehicle as any).supplier        ?? null
+  const effectiveRentalWeeks  = fleetRecord?.rentalTermWeeks ?? (vehicle as any).rentalTermWeeks ?? null
+  const effectiveDefleetDue   = fleetRecord?.defleetDueDate  ?? (vehicle as any).defleetDueDate  ?? null
+  const effectiveDateAcquired = fleetRecord?.dateAcquired    ?? (vehicle as any).dateAcquired    ?? null
+
   logger.log('VehicleDetailModal doc dates:', {
     source: fleetRecord ? 'fleet' : 'yard',
     motExpiry: effectiveMotExpiry,
@@ -672,19 +685,19 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
               </InfoRow>
 
               <InfoRow label={t('vehDetail.supplier')}>
-                {safeString((vehicle as any).supplier) || '—'}
+                {safeString(effectiveSupplier) || '—'}
               </InfoRow>
 
               <InfoRow label={t('vehDetail.rentalTerm')}>
-                {(vehicle as any).defleetDueDate
+                {effectiveDefleetDue
                   ? t('vehDetail.rentalTermFixed')
-                  : (vehicle as any).rentalTermWeeks
-                    ? t('vehDetail.rentalTermValue', { weeks: String((vehicle as any).rentalTermWeeks) })
+                  : effectiveRentalWeeks
+                    ? t('vehDetail.rentalTermValue', { weeks: String(effectiveRentalWeeks) })
                     : '—'}
               </InfoRow>
 
               {(() => {
-                const due = computeDefleetDue((vehicle as any).dateAcquired, (vehicle as any).rentalTermWeeks, 60, (vehicle as any).defleetDueDate)
+                const due = computeDefleetDue(effectiveDateAcquired, effectiveRentalWeeks, 60, effectiveDefleetDue)
                 if (!due.dueDate) return null
                 const color = due.state === 'overdue' ? '#b91c1c' : due.state === 'soon' ? '#b45309' : '#024a36'
                 const bg    = due.state === 'overdue' ? '#fde8e8' : due.state === 'soon' ? '#fef3c7' : '#e7f1ec'
