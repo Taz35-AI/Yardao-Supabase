@@ -105,9 +105,12 @@ export function useDashboardBusinessLogic({
       return false
     }
 
-    // 🔒 Reserved vehicles can't go out on hire either.
+    // 🔒 Reserved vehicles can't go out on hire — UNLESS they're already
+    // assigned to a B2B hire agreement (currentAgreementLineId set). In that
+    // case the reservation was holding it for exactly this hire, so allow it.
     const hireVehicle = checkedInVehicles.find(v => v.id === vehicleId)
-    if (hireVehicle?.isReserved) {
+    const assignedToAgreement = !!hireVehicle?.currentAgreementLineId
+    if (hireVehicle?.isReserved && !assignedToAgreement) {
       setReservationBlocked(hireVehicle)
       return false
     }
