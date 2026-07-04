@@ -8,7 +8,7 @@
 
 'use client'
 
-import { useCallback, useRef } from 'react' // ✅ SURGICAL FIX: Added useRef
+import { useCallback, useRef, useState } from 'react' // ✅ SURGICAL FIX: Added useRef
 import { useAuth } from '@/contexts/AuthContext'
 import { exportDashboardVehicles } from '@/utils/dashboardExport'
 import { useVehicleTransfers } from '@/hooks/useVehicleTransfers'
@@ -57,6 +57,11 @@ export function useDashboardBusinessLogic({
   // ✅ CRITICAL FIX: Ref to prevent double garage checkout execution
   const garageCheckoutInProgressRef = useRef<boolean>(false)
 
+  // 🔒 Reservation block — when a reserved vehicle's checkout is attempted, we
+  // stash it here so the UI can show the "cannot go out — reserved" modal.
+  const [reservationBlocked, setReservationBlocked] = useState<CheckedInVehicle | null>(null)
+  const clearReservationBlock = useCallback(() => setReservationBlocked(null), [])
+
   // Vehicle transfer operations hook
   const {
     loading: transferLoading,
@@ -100,6 +105,13 @@ export function useDashboardBusinessLogic({
       return false
     }
 
+    // 🔒 Reserved vehicles can't go out on hire either.
+    const hireVehicle = checkedInVehicles.find(v => v.id === vehicleId)
+    if (hireVehicle?.isReserved) {
+      setReservationBlocked(hireVehicle)
+      return false
+    }
+
     try {
       const hireData: SetOutOnHireData = {
         vehicleId,
@@ -114,7 +126,7 @@ export function useDashboardBusinessLogic({
       showError(error instanceof Error ? error.message : t('dashboard.errors.setOutOnHireFailed'))
       return false
     }
-  }, [yardData, showError, showSuccess])
+  }, [yardData, checkedInVehicles, showError, showSuccess])
 
   // Handle quick check in
   const handleQuickCheckInConfirm = useCallback(async (vehicleId: string, returnNotes?: string, mileage?: string): Promise<boolean | undefined> => {
@@ -272,6 +284,12 @@ showSuccess(t('dashboard.success.vehicleCheckedIn', { registration: cleanRegistr
     const vehicle = checkedInVehicles.find(v => v.id === vehicleId)
     if (!vehicle) {
       showError(t('dashboard.errors.vehicleNotFoundDot'))
+      return null
+    }
+
+    // 🔒 Reserved vehicles cannot leave the yard — surface the hold + note.
+    if (vehicle.isReserved) {
+      setReservationBlocked(vehicle)
       return null
     }
 
@@ -462,6 +480,13 @@ const executeReturnFromGarage = useCallback(async (vehicleId: string): Promise<b
   const handleBulkCheckoutConfirm = useCallback(async (vehicleIds: string[]) => {
     if (!vehicleIds.length || !yardData?.bulkCheckout) return
 
+    // 🔒 Block the whole batch if any selected vehicle is reserved.
+    const reserved = checkedInVehicles.find(v => vehicleIds.includes(v.id) && v.isReserved)
+    if (reserved) {
+      setReservationBlocked(reserved)
+      return false
+    }
+
     try {
       await yardData.bulkCheckout(vehicleIds)
       showSuccess(t('dashboard.success.bulkCheckedOut', { count: vehicleIds.length }))
@@ -471,7 +496,7 @@ const executeReturnFromGarage = useCallback(async (vehicleId: string): Promise<b
       showError(t('dashboard.errors.bulkCheckoutFailed'))
       return false
     }
-  }, [yardData, showError, showSuccess])
+  }, [yardData, checkedInVehicles, showError, showSuccess])
 
   // Handle detail modal actions
   const handleDetailModalEdit = useCallback(() => {
@@ -629,7 +654,11 @@ const executeReturnFromGarage = useCallback(async (vehicleId: string): Promise<b
     // ✅ NEW: Execute handlers (called by modal confirmation)
     executeReturnFromGarage,
     executeCancelTransfer,
-    
+
+    // 🔒 Reservation block state
+    reservationBlocked,
+    clearReservationBlock,
+
     transferLoading
   }
 }

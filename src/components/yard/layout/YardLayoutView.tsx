@@ -29,6 +29,7 @@
 'use client'
 
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { Haptics, ImpactStyle } from '@capacitor/haptics'
 import { CheckedInVehicle } from '@/types'
 import { useYardLayout } from '@/hooks/useYardLayout'
@@ -61,6 +62,8 @@ import {
   Search,
   X,
   Undo2,
+  Info,
+  Lock,
 } from 'lucide-react'
 
 // ─── Sizing — must match the editor for layout consistency ─────────────────
@@ -1336,6 +1339,61 @@ function YardCanvas({
 // ────────────────────────────────────────────────────────────────────────
 // SPACE TILE — renders inside a single cell, shows label or vehicle chip
 // ────────────────────────────────────────────────────────────────────────
+// 🔒 Reserved overlay for a parked-vehicle tile: a "Reserved" ribbon + lock, and
+// an info icon that reveals the note in a portal bubble (so it escapes the
+// tile's overflow:hidden clip). Pointer events are stopped so it never starts a
+// drag or opens the detail modal.
+function ReservedOverlay({ note }: { note?: string | null }) {
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
+  const stop = (e: React.PointerEvent | React.MouseEvent) => { e.stopPropagation(); e.preventDefault() }
+
+  return (
+    <>
+      <div className="absolute top-0 right-0 flex items-center gap-0.5 z-10" onPointerDown={stop}>
+        <span className="flex items-center justify-center w-3.5 h-3.5 rounded-full bg-red-600 text-white shadow" title="Reserved">
+          <Lock className="w-2 h-2" />
+        </span>
+        {note && (
+          <button
+            type="button"
+            onPointerDown={stop}
+            onClick={(e) => {
+              stop(e)
+              if (pos) { setPos(null); return }
+              const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+              setPos({ x: r.left + r.width / 2, y: r.bottom + 6 })
+            }}
+            className="flex items-center justify-center w-3.5 h-3.5 rounded-full bg-white text-red-600 border border-red-300 shadow"
+            title="Show reservation note"
+          >
+            <Info className="w-2 h-2" />
+          </button>
+        )}
+      </div>
+
+      <span className="absolute bottom-0 inset-x-0 bg-red-600/90 text-white text-[7px] font-extrabold uppercase tracking-wide text-center leading-none py-[1px] pointer-events-none">
+        Reserved
+      </span>
+
+      {pos && note && createPortal(
+        <>
+          <div className="fixed inset-0 z-[998]" onPointerDown={() => setPos(null)} onClick={() => setPos(null)} />
+          <div
+            className="fixed z-[999] w-44 -translate-x-1/2 rounded-lg bg-gray-900 text-white text-[11px] p-2.5 shadow-2xl"
+            style={{ left: pos.x, top: pos.y }}
+            onPointerDown={stop}
+            onClick={stop}
+          >
+            <p className="font-bold mb-1 text-red-300 uppercase tracking-wide text-[9px]">Reserved — note</p>
+            <p className="whitespace-pre-wrap leading-snug">{note}</p>
+          </div>
+        </>,
+        document.body,
+      )}
+    </>
+  )
+}
+
 function SpaceTile({
   space,
   vehicle,
@@ -1374,6 +1432,7 @@ function SpaceTile({
     return (
       <div
         onPointerDown={(e) => onParkedPointerDown(e, vehicle.id)}
+        title={vehicle.isReserved ? `Reserved${vehicle.reservedNote ? `: ${vehicle.reservedNote}` : ''}` : undefined}
         className={`absolute inset-1 rounded flex flex-col items-center justify-center select-none text-center cursor-grab active:cursor-grabbing touch-none ${isMatch ? 'ylv-search-match' : ''}`}
         style={{
           background: chip.background,
@@ -1381,12 +1440,15 @@ function SpaceTile({
           padding: 2,
           lineHeight: 1.05,
           overflow: 'hidden',
-          boxShadow: isMatch
+          boxShadow: vehicle.isReserved
+    ? '0 0 0 2px #dc2626, 0 2px 8px rgba(220,38,38,0.4)'
+    : isMatch
     ? '0 0 0 1px #000, 0 0 0 5px #ec4899, 0 0 16px rgba(236,72,153,0.7), 0 4px 12px rgba(0,0,0,0.4)'
     : undefined,
           touchAction: 'none',
         }}
       >
+        {vehicle.isReserved && <ReservedOverlay note={vehicle.reservedNote} />}
         <span
           className="font-mono font-bold"
           style={{
@@ -1559,8 +1621,9 @@ function MergedSpaceTile({
           touchAction: 'none',
           zIndex: 2,
         }}
-        title={title}
+        title={vehicle.isReserved ? `Reserved${vehicle.reservedNote ? `: ${vehicle.reservedNote}` : ''}` : title}
       >
+        {vehicle.isReserved && <ReservedOverlay note={vehicle.reservedNote} />}
         <span
           className="font-mono font-bold"
           style={{

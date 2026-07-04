@@ -50,6 +50,10 @@ import { OnlineMembers } from '@/components/features/dashboard/OnlineMembers'
 import { DashboardTour } from '@/components/features/dashboard/DashboardTour'
 import { SetOutOnHireModal, QuickCheckInModal } from '@/components/features/dashboard/HireModals'
 import { InsuranceWarningPopup } from '@/components/features/dashboard/InsuranceWarningPopup'
+import { ReserveVehicleModal } from '@/components/common/Modals/ReserveVehicleModal'
+import { ReservationBlockedModal } from '@/components/common/Modals/ReservationBlockedModal'
+import { isAdminRole } from '@/lib/permissions'
+import { Lock } from 'lucide-react'
 
 // Component imports - Alert/Confirmation Modals
 import { ConfirmationModal } from '@/components/common/Modals/ConfirmationModal'
@@ -123,6 +127,10 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
     modalController: modalController,
     branchId: branchId
   })
+
+  // 🔒 Admin-only vehicle reservation
+  const isAdmin = isAdminRole(dataLayer.userProfile?.role)
+  const [showReserveModal, setShowReserveModal] = React.useState(false)
 
   React.useEffect(() => {
     const handler = () => modalController.showCheckInForm()
@@ -364,6 +372,16 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
               {/* Desktop actions — Refresh / Clean / Export to Excel now live
                   inside the three-dot menu to keep the toolbar uncluttered. */}
               <div data-tour="actions-menu" className="hidden md:flex items-center">
+                {isAdmin && (
+                  <button
+                    onClick={() => setShowReserveModal(true)}
+                    title="Reserve a vehicle (admin)"
+                    className="p-1.5 rounded-md text-[#8a9e94] hover:text-[#025940] hover:bg-[#025940]/8 dark:hover:text-[#b3f243] transition-colors"
+                    aria-label="Reserve a vehicle"
+                  >
+                    <Lock className="w-4 h-4" />
+                  </button>
+                )}
                 <DashboardActionsMenu
                   onRefresh={dataLayer.forceDataRefresh}
                   onClean={handleCleanNotesClick}
@@ -422,6 +440,17 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
                     <Map className="w-4 h-4" />
                   </button>
                 </div>
+
+                {isAdmin && (
+                  <button
+                    onClick={() => setShowReserveModal(true)}
+                    title="Reserve a vehicle (admin)"
+                    className="p-1.5 rounded-md text-[#8a9e94] hover:text-[#025940] hover:bg-[#025940]/8 dark:hover:text-[#b3f243] transition-colors"
+                    aria-label="Reserve a vehicle"
+                  >
+                    <Lock className="w-4 h-4" />
+                  </button>
+                )}
 
                 <DashboardActionsMenu
                   onRefresh={dataLayer.forceDataRefresh}
@@ -1047,6 +1076,25 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
           fleetVehicles={dataLayer.fleetVehicles}
         />
       )}
+
+      {/* 🔒 Admin-only reservation panel */}
+      {isAdmin && (
+        <ReserveVehicleModal
+          isOpen={showReserveModal}
+          onClose={() => setShowReserveModal(false)}
+          getVehicleByRegistration={dataLayer.yardData.getVehicleByRegistration}
+          reserveVehicle={dataLayer.yardData.reserveVehicle}
+          unreserveVehicle={dataLayer.yardData.unreserveVehicle}
+          showSuccess={modalController.showSuccess}
+          showError={modalController.showError}
+        />
+      )}
+
+      {/* 🔒 Shown when a reserved vehicle's checkout / hire is attempted */}
+      <ReservationBlockedModal
+        vehicle={businessLogic.reservationBlocked}
+        onClose={businessLogic.clearReservationBlock}
+      />
 
       {modalController.hireModalStates.showSetOutOnHireModal && modalController.hireModalStates.selectedVehicleForHire && (
         <SetOutOnHireModal

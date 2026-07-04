@@ -301,6 +301,11 @@ export function useYardDataInternal(props?: UseYardDataProps) {
         insurancePolicyId:     data.insurancePolicyId     || null,  // ✅ NEW
         insurancePolicyName:   data.insurancePolicyName   || null,  // ✅ NEW
         insurancePolicyExpiry: data.insurancePolicyExpiry || null,  // ✅ NEW
+        // 🔒 Admin reservation / hold
+        isReserved:   data.isReserved === true,
+        reservedNote: data.reservedNote || null,
+        reservedBy:   data.reservedBy || null,
+        reservedAt:   toDate(data.reservedAt),
         motExpiry: data.motExpiry ? safeString(data.motExpiry) : undefined,
         taxExpiry: data.taxExpiry ? safeString(data.taxExpiry) : undefined,
         location: data.location ? safeString(data.location) : undefined,
@@ -1938,6 +1943,56 @@ if (updates.damagePins !== undefined && vehicleIdForSync) {
     }
   }
 
+  // ── 🔒 Admin reservation / hold ────────────────────────────────────────────
+  // Mark a checked-in vehicle as reserved (with a note). Blocks checkout and
+  // flags "Reserved" on the yard map. Realtime propagates the change to tiles.
+  const reserveVehicle = useCallback(async (vehicleId: string, note: string) => {
+    if (!user || !userOrganizationId) throw new Error('User not authenticated')
+    if (!vehicleId) throw new Error('Invalid vehicle ID')
+    const auditLog = createAuditLog(`Reserved by ${userDisplayName}`, user.uid, userDisplayName)
+    const updateData: any = {
+      isReserved: true,
+      reservedNote: note?.trim() || null,
+      reservedBy: userDisplayName,
+      reservedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      lastEditLog: auditLog,
+    }
+    const { error: updErr } = await supabase
+      .from('checked_in_vehicles')
+      .update(toSnake(updateData))
+      .eq('id', vehicleId)
+    if (updErr) throw updErr
+  }, [user, userOrganizationId, userDisplayName])
+
+  const unreserveVehicle = useCallback(async (vehicleId: string) => {
+    if (!user || !userOrganizationId) throw new Error('User not authenticated')
+    if (!vehicleId) throw new Error('Invalid vehicle ID')
+    const auditLog = createAuditLog(`Reservation cleared by ${userDisplayName}`, user.uid, userDisplayName)
+    const updateData: any = {
+      isReserved: false,
+      reservedNote: null,
+      reservedBy: null,
+      reservedAt: null,
+      updatedAt: new Date().toISOString(),
+      lastEditLog: auditLog,
+    }
+    const { error: updErr } = await supabase
+      .from('checked_in_vehicles')
+      .update(toSnake(updateData))
+      .eq('id', vehicleId)
+    if (updErr) throw updErr
+  }, [user, userOrganizationId, userDisplayName])
+
+  // Find a currently checked-in vehicle by registration (space/case-insensitive).
+  const getVehicleByRegistration = useCallback((registration: string): CheckedInVehicle | null => {
+    const clean = (registration || '').trim().toUpperCase().replace(/\s+/g, '')
+    if (!clean) return null
+    return checkedInVehicles.find(
+      v => (v.registration || '').trim().toUpperCase().replace(/\s+/g, '') === clean,
+    ) || null
+  }, [checkedInVehicles])
+
   const clearError = () => {
     setError(null)
   }
@@ -1971,6 +2026,11 @@ if (updates.damagePins !== undefined && vehicleIdForSync) {
     // Hire Actions
     setOutOnHire,
     quickCheckIn,
+
+    // 🔒 Reservation Actions
+    reserveVehicle,
+    unreserveVehicle,
+    getVehicleByRegistration,
     
     // Insurance Query Functions
     getInsuredVehicles,
