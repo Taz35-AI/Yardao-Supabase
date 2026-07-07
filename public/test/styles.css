@@ -309,7 +309,7 @@ a:focus-visible {
 }
 
 .headline-line--white {
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .headline-line span {
@@ -5910,8 +5910,8 @@ a:focus-visible {
   }
 
   .hero h1 {
-    font-size: clamp(2.15rem, 12.8vw, 3.45rem);
-    line-height: 0.9;
+    font-size: clamp(1.9rem, 9.6vw, 3rem);
+    line-height: 0.98;
   }
 
   .hero__lead {
@@ -6198,7 +6198,7 @@ a:focus-visible {
   }
 
   .hero h1 {
-    font-size: clamp(2rem, 11.6vw, 2.85rem);
+    font-size: clamp(1.75rem, 9vw, 2.5rem);
   }
 }
 
