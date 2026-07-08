@@ -168,7 +168,7 @@ export function FleetTable({
       <Card>
         <CardContent className="p-0">
           <div className="w-full overflow-x-auto">
-            <table className={`w-full ${showCheckbox ? 'md:min-w-[1300px]' : 'md:min-w-[1250px]'}`}>
+            <table className={`w-full ${showCheckbox ? 'md:min-w-[1560px]' : 'md:min-w-[1510px]'}`}>
               <FleetTableHeader 
                 sortConfig={sortConfig}
                 onSort={onSort}

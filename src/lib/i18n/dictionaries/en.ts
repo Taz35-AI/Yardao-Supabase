@@ -191,6 +191,7 @@ export const en = {
       optionAll: 'All',
       labelCondition: 'Condition',
       labelContract: 'Contract',
+      labelSupplier: 'Supplier',
       optionNone: 'None',
       labelInsurance: 'Insurance',
       optionInsured: 'Insured',
@@ -229,6 +230,8 @@ export const en = {
       colMot: 'MOT',
       colTax: 'Tax',
       colCondition: 'Condition',
+      colSupplier: 'Supplier',
+      colDefleetDue: 'Defleet due',
     },
     row: {
       statusExpired: 'EXPIRED',

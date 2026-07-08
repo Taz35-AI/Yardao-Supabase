@@ -49,6 +49,7 @@ import { BulkRoadTaxService } from '@/lib/services/bulkRoadTaxService'
 import { userProfileService } from '@/lib/firestore'
 import { useT } from '@/lib/i18n'
 import { buildFleetVocab, parseFleetQuery, matchesFleetQuery } from '@/lib/search/smartFleetSearch'
+import { computeDefleetDue } from '@/lib/utils/defleetDue'
 
 // Icons
 import { Plus, X, Download, Share2, Upload, FileSpreadsheet, Loader2, RefreshCw, Car, Search } from 'lucide-react'
@@ -219,6 +220,7 @@ interface FilterConfig {
   condition: string
   status: string
   contract: string
+  supplier: string
   motExpiring: boolean
   recall: boolean
   dateFrom: string
@@ -361,6 +363,7 @@ export default function FleetInventoryPage() {
     condition: 'all',
     status: 'all',
     contract: 'all',
+    supplier: 'all',
     motExpiring: false,
     recall: false,
     dateFrom: '',
@@ -389,6 +392,13 @@ export default function FleetInventoryPage() {
   // Smart-search vocabulary built from the loaded fleet (makes/models/colours/
   // sizes/contracts/conditions). Status, insurance, MOT/tax & recall are fixed.
   const fleetVocab = useMemo(() => buildFleetVocab(fleetVehicles), [fleetVehicles])
+
+  // Distinct suppliers present in the fleet (for the supplier filter dropdown).
+  const fleetSuppliers = useMemo(() => {
+    const set = new Set<string>()
+    fleetVehicles.forEach(v => { const s = ((v as any).supplier || '').trim(); if (s) set.add(s) })
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [fleetVehicles])
 
   // Apply filters and sorting
   const filteredAndSortedVehicles = useMemo(() => {
@@ -438,6 +448,14 @@ export default function FleetInventoryPage() {
         filtered = filtered.filter(vehicle => !vehicle.contract)
       } else {
         filtered = filtered.filter(vehicle => vehicle.contract === filters.contract)
+      }
+    }
+
+    if (filters.supplier !== 'all') {
+      if (filters.supplier === 'none') {
+        filtered = filtered.filter(vehicle => !((vehicle as any).supplier || '').trim())
+      } else {
+        filtered = filtered.filter(vehicle => (vehicle as any).supplier === filters.supplier)
       }
     }
 
@@ -503,6 +521,19 @@ export default function FleetInventoryPage() {
           aValue = (a.contract || 'ZZZ').toLowerCase()
           bValue = (b.contract || 'ZZZ').toLowerCase()
           break
+        case 'supplier':
+          aValue = ((a as any).supplier || 'ZZZ').toLowerCase()
+          bValue = ((b as any).supplier || 'ZZZ').toLowerCase()
+          break
+        case 'defleetDue': {
+          // Sort by the effective defleet-due date (explicit date overrides the
+          // weeks calc). Vehicles with no defleet date sort to the very end.
+          const aDue = computeDefleetDue(a.dateAcquired, (a as any).rentalTermWeeks, 60, (a as any).defleetDueDate).dueDate
+          const bDue = computeDefleetDue(b.dateAcquired, (b as any).rentalTermWeeks, 60, (b as any).defleetDueDate).dueDate
+          aValue = aDue || '9999-12-31'
+          bValue = bDue || '9999-12-31'
+          break
+        }
         default:
           aValue = String((a as any)[sortKey] || '').toLowerCase()
           bValue = String((b as any)[sortKey] || '').toLowerCase()
@@ -667,6 +698,7 @@ export default function FleetInventoryPage() {
       condition: 'all',
       status: 'all',
       contract: 'all',
+      supplier: 'all',
       motExpiring: false,
       recall: false,
       dateFrom: '',
@@ -1032,6 +1064,7 @@ export default function FleetInventoryPage() {
                   onFiltersChange={setFilters}
                   conditions={conditions}
                   sizes={getUniqueSizes(fleetVehicles)}
+                  suppliers={fleetSuppliers}
                   onClearFilters={clearAllFilters}
                   hideSearch
                 />

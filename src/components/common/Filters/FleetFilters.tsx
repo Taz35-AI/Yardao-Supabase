@@ -33,6 +33,7 @@ interface FilterConfig {
   condition: string
   status: string
   contract: string
+  supplier: string
   motExpiring: boolean
   recall: boolean
   dateFrom: string
@@ -46,6 +47,7 @@ interface FleetFiltersProps {
   onFiltersChange: (filters: FilterConfig) => void
   conditions: any[]
   sizes: string[]
+  suppliers?: string[]
   onClearFilters: () => void
   /** Hide the built-in search box (search lives in the page hero instead). */
   hideSearch?: boolean
@@ -56,6 +58,7 @@ export function FleetFilters({
   onFiltersChange,
   conditions,
   sizes,
+  suppliers = [],
   onClearFilters,
   hideSearch = false
 }: FleetFiltersProps) {
@@ -72,6 +75,7 @@ export function FleetFilters({
     condition: 'all',
     status: 'all',
     contract: 'all',
+    supplier: 'all',
     motExpiring: false,
     recall: false,
     dateFrom: '',
@@ -125,6 +129,7 @@ export function FleetFilters({
     safeFilters.size !== 'all',
     safeFilters.condition !== 'all',
     safeFilters.contract !== 'all',
+    (safeFilters as any).supplier && (safeFilters as any).supplier !== 'all',
     safeFilters.insurance !== 'all',
     safeFilters.motExpiring,
     safeFilters.recall,
@@ -133,9 +138,10 @@ export function FleetFilters({
     safeFilters.showDefleeted
   ].filter(Boolean).length
 
-  const hasAdvancedFilters = safeFilters.size !== 'all' || 
-                            safeFilters.condition !== 'all' || 
+  const hasAdvancedFilters = safeFilters.size !== 'all' ||
+                            safeFilters.condition !== 'all' ||
                             safeFilters.contract !== 'all' ||
+                            ((safeFilters as any).supplier && (safeFilters as any).supplier !== 'all') ||
                             safeFilters.insurance !== 'all' ||
                             safeFilters.motExpiring ||
                             safeFilters.recall ||
@@ -318,12 +324,32 @@ export function FleetFilters({
                 <select
                   value={safeFilters.insurance}
                   onChange={(e) => handleFilterChange('insurance', e.target.value)}
-                  className="w-full px-1.5 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded 
+                  className="w-full px-1.5 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded
                            bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 >
                   <option value="all">{t('fleet.filters.optionAll')}</option>
                   <option value="insured">{t('fleet.filters.optionInsured')}</option>
                   <option value="not-insured">{t('fleet.filters.optionNotInsured')}</option>
+                </select>
+              </div>
+
+              {/* Supplier */}
+              <div>
+                <label className="block text-[10px] font-medium text-gray-700 dark:text-gray-300 mb-0.5">
+                  <Truck className="w-2.5 h-2.5 inline mr-0.5" />
+                  {t('fleet.filters.labelSupplier')}
+                </label>
+                <select
+                  value={(safeFilters as any).supplier || 'all'}
+                  onChange={(e) => handleFilterChange('supplier', e.target.value)}
+                  className="w-full px-1.5 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded
+                           bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                >
+                  <option value="all">{t('fleet.filters.optionAll')}</option>
+                  <option value="none">{t('fleet.filters.optionNone')}</option>
+                  {suppliers.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
                 </select>
               </div>
             </div>

@@ -362,12 +362,40 @@ export function FleetTableRow({
 
       {/* 10. Condition - Better aligned */}
       <td className="hidden md:table-cell py-3 px-4" style={{ width: '120px' }}>
-        <span 
+        <span
           className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border whitespace-nowrap"
           style={getConditionBadgeStyle(vehicle.condition || '')}
         >
           {getConditionDisplayName(vehicle.condition || 'N/A')}
         </span>
+      </td>
+
+      {/* 11. Supplier */}
+      <td className="hidden md:table-cell py-3 px-4" style={{ width: '130px' }}>
+        <div className="text-sm text-[#025940] dark:text-[#72A68E] whitespace-nowrap">
+          {safeString((vehicle as any).supplier) || <span className="text-gray-400">-</span>}
+        </div>
+      </td>
+
+      {/* 12. Defleet due — the effective date (explicit or weeks-derived),
+          colour-coded by urgency so it reads at a glance and sorts cleanly. */}
+      <td className="hidden md:table-cell py-3 px-4" style={{ width: '130px' }}>
+        {(() => {
+          const due = computeDefleetDue(vehicle.dateAcquired, vehicle.rentalTermWeeks, 60, (vehicle as any).defleetDueDate)
+          if (!due.dueDate) return <span className="text-xs text-gray-400">-</span>
+          const dateStr = new Date(due.dueDate + 'T00:00:00').toLocaleDateString('en-GB')
+          const cls = due.state === 'overdue'
+            ? 'text-red-600 dark:text-red-400 font-semibold'
+            : due.state === 'soon'
+              ? 'text-amber-600 dark:text-amber-400 font-semibold'
+              : 'text-[#025940] dark:text-[#72A68E]'
+          return (
+            <span className={`text-xs whitespace-nowrap inline-flex items-center gap-1 ${cls}`}>
+              <CalendarClock className="w-3 h-3" />
+              {dateStr}
+            </span>
+          )
+        })()}
       </td>
 
       {/* Comments and Date Acquired columns are REMOVED - they appear on hover only */}
