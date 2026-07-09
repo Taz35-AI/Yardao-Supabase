@@ -265,6 +265,8 @@ export const en = {
       dueToday: 'due today',
       overdueBadge: '{days}d overdue',
       download: 'Download',
+      chipLabel: 'Defleet due',
+      chipAria: 'Show upcoming defleets',
       empty: 'No defleets due in the next 30 days',
     },
     detailModal: {

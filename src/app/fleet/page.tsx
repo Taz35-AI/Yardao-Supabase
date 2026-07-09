@@ -24,7 +24,7 @@ import { Pagination } from '@/components/common/Pagination'
 import { FleetVehicleDetailModal } from '@/components/common/Modals/FleetVehicleDetailModal'
 import { FleetVehicleEditModal } from '@/components/common/Modals/FleetVehicleEditModal'
 import { VehicleForm } from '@/components/fleet/VehicleForm'
-import { DefleetAlertsBanner } from '@/components/fleet/DefleetAlertsBanner'
+import { DefleetAlertsBanner, computeDefleetItems } from '@/components/fleet/DefleetAlertsBanner'
 import { BulkDvlaRefreshModal } from '@/components/fleet/BulkDvlaRefreshModal'
 import { DuplicateVehicleModal } from '@/components/common/Modals/DuplicateVehicleModal'
 import { BulkRoadTaxModal } from '@/components/common/Modals/BulkRoadTaxModal'
@@ -410,6 +410,12 @@ export default function FleetInventoryPage() {
     fleetVehicles.forEach(v => { const s = ((v as any).supplier || '').trim(); if (s) set.add(s) })
     return Array.from(set).sort((a, b) => a.localeCompare(b))
   }, [fleetVehicles])
+
+  // Upcoming defleets (within 30 days / overdue) — surfaced as a chip in the
+  // metric strip that toggles an inline panel below it.
+  const defleetItems = useMemo(() => computeDefleetItems(fleetVehicles, 30), [fleetVehicles])
+  const defleetOverdueCount = useMemo(() => defleetItems.filter(i => i.overdue).length, [defleetItems])
+  const [showDefleetPanel, setShowDefleetPanel] = useState(false)
 
   // Apply filters and sorting
   const filteredAndSortedVehicles = useMemo(() => {
@@ -967,9 +973,6 @@ export default function FleetInventoryPage() {
               onClearSuccess={() => setLocalSuccess(null)}
             />
 
-            {/* Defleet-due alerts — vehicles within 30 days of / past their
-                defleet date (thresholds at 30/15/7/3/1). Click to open. */}
-            <DefleetAlertsBanner vehicles={fleetVehicles} onView={setViewingVehicle} />
 
             {/* ═══════════════════════════════════════════════
                 SEARCH HERO — smart search across every fleet column.
@@ -1032,6 +1035,10 @@ export default function FleetInventoryPage() {
                   onToggleMotFilter={() => setFilters(prev => ({ ...prev, motExpiring: !prev.motExpiring }))}
                   onSizeFilter={(size) => setFilters(prev => ({ ...prev, size: size || 'all' }))}
                   onInsuranceFilter={(status) => setFilters(prev => ({ ...prev, insurance: status || 'all' }))}
+                  defleetCount={defleetItems.length}
+                  defleetOverdue={defleetOverdueCount}
+                  defleetActive={showDefleetPanel}
+                  onDefleetClick={() => setShowDefleetPanel(v => !v)}
                   onAddVehicle={() => setShowAddForm(true)}
                   onBulkInsurance={handleDirectBulkInsurance}
                   filteredVehicles={filteredAndSortedVehicles}
@@ -1048,6 +1055,14 @@ export default function FleetInventoryPage() {
                   }
                 />
               </div>
+
+              {/* Inline upcoming-defleets panel — opened from the Defleet chip above */}
+              {showDefleetPanel && (
+                <DefleetAlertsBanner
+                  vehicles={fleetVehicles}
+                  onView={(v) => { setShowDefleetPanel(false); setViewingVehicle(v) }}
+                />
+              )}
 
               {/* FleetHeader — kept for Excel download/upload/share/template logic.
                   We render it hidden so its internal state and file ref stay alive,

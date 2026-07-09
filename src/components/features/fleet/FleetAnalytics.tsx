@@ -7,7 +7,7 @@
 'use client'
 
 import { useMemo, useState, useRef, useEffect, type ReactNode } from 'react'
-import { MoreVertical, Shield, Plus } from 'lucide-react'
+import { MoreVertical, Shield, Plus, CalendarClock } from 'lucide-react'
 import { FleetVehicle } from '@/types'
 import { useT } from '@/lib/i18n'
 
@@ -21,6 +21,11 @@ interface FleetAnalyticsProps {
   onToggleMotFilter: () => void
   onSizeFilter: (size: string) => void
   onInsuranceFilter?: (status: string) => void
+  // ── defleet chip (toggles the inline upcoming-defleets panel) ──
+  defleetCount?: number
+  defleetOverdue?: number
+  defleetActive?: boolean
+  onDefleetClick?: () => void
   // ── new action props ─────────────────────────────────────────
   onAddVehicle?: () => void
   onBulkInsurance?: (insuranceStatus: any, vehicleIds?: string[]) => Promise<void>
@@ -42,6 +47,10 @@ export function FleetAnalytics({
   onToggleMotFilter,
   onSizeFilter,
   onInsuranceFilter,
+  defleetCount = 0,
+  defleetOverdue = 0,
+  defleetActive = false,
+  onDefleetClick,
   onAddVehicle,
   onBulkInsurance,
   filteredVehicles,
@@ -165,6 +174,31 @@ export function FleetAnalytics({
           {analytics.notInsured}
         </span>
       </button>
+
+      {/* ── Defleet due — toggles the inline upcoming-defleets panel ── */}
+      {defleetCount > 0 && (
+        <button
+          onClick={onDefleetClick}
+          aria-label={t('fleet.defleetAlerts.chipAria')}
+          className={`${pillBase} flex-shrink-0 ${
+            defleetActive
+              ? (defleetOverdue > 0 ? 'bg-red-100 border-red-400 text-red-700' : 'bg-amber-100 border-amber-400 text-amber-800')
+              : (defleetOverdue > 0
+                  ? 'bg-white border-[#c8d5ce] text-red-700 hover:bg-red-50 hover:border-red-300'
+                  : 'bg-white border-[#c8d5ce] text-amber-700 hover:bg-amber-50 hover:border-amber-300')
+          }`}
+        >
+          <CalendarClock className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+          <span className="hidden sm:inline">{t('fleet.defleetAlerts.chipLabel')}</span>
+          <span
+            className={`min-w-[1.2rem] h-5 sm:h-6 flex items-center justify-center rounded-full text-[10px] sm:text-xs font-bold px-1.5 sm:px-2 ${
+              defleetOverdue > 0 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+            }`}
+          >
+            {defleetCount}
+          </span>
+        </button>
+      )}
 
       {/* ── Right-side actions — pushed to far right ──────────── */}
       <div className="ml-auto flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
