@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Activity, TrendingUp, AlertCircle } from 'lucide-react'
+import { Activity, TrendingUp, AlertCircle, Truck, CheckCircle2, Clock, Wrench, XCircle } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts'
 import { useT } from '@/lib/i18n'
 
@@ -31,66 +31,13 @@ interface SnapshotData {
   snapshotAt: Date
 }
 
-// Custom Icon Components - ALL SAME SIZE (32x32px)
-const OutOnHireIcon = () => {
-  const t = useT()
-  return (
-    <img
-      src="/reports/out-on-hire.png"
-      alt={t('dashboard.fleetUtil.altOutOnHire')}
-      className="w-8 h-8"
-      style={{ objectFit: 'contain' }}
-    />
-  )
-}
-
-const ReadyToRentIcon = () => {
-  const t = useT()
-  return (
-    <img
-      src="/reports/ready-to-rent.png"
-      alt={t('dashboard.fleetUtil.altReadyToRent')}
-      className="w-8 h-8"
-      style={{ objectFit: 'contain' }}
-    />
-  )
-}
-
-const PendingChecksIcon = () => {
-  const t = useT()
-  return (
-    <img
-      src="/reports/pending-checks.png"
-      alt={t('dashboard.fleetUtil.altPendingChecks')}
-      className="w-8 h-8"
-      style={{ objectFit: 'contain' }}
-    />
-  )
-}
-
-const RepairsNeededIcon = () => {
-  const t = useT()
-  return (
-    <img
-      src="/reports/repairs-needed.png"
-      alt={t('dashboard.fleetUtil.altRepairsNeeded')}
-      className="w-8 h-8"
-      style={{ objectFit: 'contain' }}
-    />
-  )
-}
-
-const NonStarterIcon = () => {
-  const t = useT()
-  return (
-    <img
-      src="/reports/non-starter.png"
-      alt={t('dashboard.fleetUtil.altNonStarter')}
-      className="w-8 h-8"
-      style={{ objectFit: 'contain' }}
-    />
-  )
-}
+// Status icons — Lucide SVGs (self-contained; the old /reports/*.png assets
+// weren't in the repo, so they 404'd and showed as broken images).
+const OutOnHireIcon = () => <Truck className="w-7 h-7 text-[#b3f243]" />
+const ReadyToRentIcon = () => <CheckCircle2 className="w-7 h-7 text-[#025940]" />
+const PendingChecksIcon = () => <Clock className="w-7 h-7 text-yellow-600 dark:text-yellow-400" />
+const RepairsNeededIcon = () => <Wrench className="w-7 h-7 text-orange-600 dark:text-orange-400" />
+const NonStarterIcon = () => <XCircle className="w-7 h-7 text-red-600 dark:text-red-400" />
 
 export default function FleetUtilizationSnapshot({ vehicles, totalFleetCount }: FleetUtilizationSnapshotProps) {
   const t = useT()
