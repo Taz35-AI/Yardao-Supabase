@@ -89,6 +89,9 @@ function FleetHeaderExcelItems({ vehicles, filteredVehicles, onBulkUpload }: Fle
       'Tax Expiry': v.taxExpiry ? new Date(v.taxExpiry).toLocaleDateString('en-GB') : '',
       'Comments': v.comments || '',
       'Date Acquired': v.dateAcquired ? new Date(v.dateAcquired).toLocaleDateString('en-GB') : '',
+      'Supplier': (v as any).supplier || '',
+      'Rental term (weeks)': (v as any).rentalTermWeeks ?? '',
+      'Defleet date': (v as any).defleetDueDate ? new Date((v as any).defleetDueDate).toLocaleDateString('en-GB') : '',
     }))
     const ws = XLSX.utils.json_to_sheet(data)
     const wb = XLSX.utils.book_new()
@@ -114,8 +117,8 @@ function FleetHeaderExcelItems({ vehicles, filteredVehicles, onBulkUpload }: Fle
     setIsDownloading(true)
     try {
       const template = [
-        { 'Registration': 'RS67MAW', 'Make': 'Ford', 'Model': 'Transit', 'Colour': 'White', 'Size': 'L2H1', 'MOT Expiry': '22/12/2030', 'Tax Expiry': '03/12/2025', 'Comments': 'Example vehicle 1', 'Date Acquired': '15/01/2024' },
-        { 'Registration': 'NY86ZMR', 'Make': 'Ford', 'Model': 'Fiesta', 'Colour': 'Bronze', 'Size': 'Car', 'MOT Expiry': '19/09/2023', 'Tax Expiry': '22/01/2020', 'Comments': 'Example vehicle 2', 'Date Acquired': '10/03/2024' },
+        { 'Registration': 'RS67MAW', 'Make': 'Ford', 'Model': 'Transit', 'Colour': 'White', 'Size': 'L2H1', 'MOT Expiry': '22/12/2030', 'Tax Expiry': '03/12/2025', 'Comments': 'Example vehicle 1', 'Date Acquired': '15/01/2024', 'Supplier': 'Regulus', 'Rental term (weeks)': '', 'Defleet date': '14/07/2026' },
+        { 'Registration': 'NY86ZMR', 'Make': 'Ford', 'Model': 'Fiesta', 'Colour': 'Bronze', 'Size': 'Car', 'MOT Expiry': '19/09/2023', 'Tax Expiry': '22/01/2020', 'Comments': 'Example vehicle 2', 'Date Acquired': '10/03/2024', 'Supplier': 'Arval', 'Rental term (weeks)': 52, 'Defleet date': '' },
       ]
       const ws = XLSX.utils.json_to_sheet(template)
       const wb = XLSX.utils.book_new()
@@ -172,6 +175,14 @@ function FleetHeaderExcelItems({ vehicles, filteredVehicles, onBulkUpload }: Fle
         comments: String(row['Comments'] || '').trim(),
         dateAcquired: toIsoDate(row['Date Acquired']),
         condition: 'Excellent',
+        // 🚚 Supplier + defleet: an explicit Defleet date wins; otherwise a
+        // Rental term (weeks) drives the computed defleet-due flag.
+        supplier: String(row['Supplier'] || '').trim() || null,
+        rentalTermWeeks: (() => {
+          const rt = String(row['Rental term (weeks)'] ?? '').trim()
+          return rt && !isNaN(Number(rt)) ? Number(rt) : null
+        })(),
+        defleetDueDate: toIsoDate(row['Defleet date']) || null,
       })).filter(v => v.registration)
       await onBulkUpload(processed)
     } catch (err) {
