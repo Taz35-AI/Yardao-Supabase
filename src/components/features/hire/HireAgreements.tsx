@@ -4,7 +4,7 @@
 'use client'
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, Search, Car, ChevronDown, Pencil, Trash2, X, Check, CalendarClock, RefreshCw } from 'lucide-react'
+import { Plus, Search, Car, ChevronDown, Pencil, Trash2, X, Check, CalendarClock, RefreshCw, CalendarPlus } from 'lucide-react'
 import { EmptyState, PrimaryBtn, Pill } from './hireUi'
 import { ContractIcon } from './ContractIcon'
 import { toast } from 'sonner'
@@ -22,6 +22,8 @@ import { canPerformAction } from '@/lib/insuranceUtils'
 import type { CheckedInVehicle } from '@/types'
 import type { HireAgreement, HireAgreementVehicle } from '@/types/hire'
 import { NewAgreementModal } from './NewAgreementModal'
+import { ExtendAgreementModal } from './ExtendAgreementModal'
+import { RenewSplitModal } from './RenewSplitModal'
 import { HireSwapModal } from './HireSwapModal'
 import { HireScheduleModal } from './HireScheduleModal'
 import { SetOutOnHireModal } from '@/components/features/dashboard/HireModals'
@@ -154,6 +156,7 @@ function AgreementCard({
   const [showEdit, setShowEdit] = useState(false)
   const [showSchedule, setShowSchedule] = useState(false)
   const [showRenew, setShowRenew] = useState(false)
+  const [showExtend, setShowExtend] = useState(false)
   // Set-on-hire goes through the normal yard "Set out on hire" modal so the
   // insurance gate + yard status flip run exactly as they do in the yard.
   const [hireVehicle, setHireVehicle] = useState<CheckedInVehicle | null>(null)
@@ -548,6 +551,11 @@ function AgreementCard({
         <button onClick={() => setShowSchedule(true)} title={t('hire.scheduleShort')} className="p-1.5 rounded-lg text-[#72A68E] hover:text-[#025940] hover:bg-[#f0f4f2] dark:hover:bg-gray-700 transition-colors flex-shrink-0">
           <CalendarClock className="w-4 h-4" />
         </button>
+        {!agreement.isRolling && (
+          <button onClick={() => setShowExtend(true)} title={t('hire.extendShort')} className="p-1.5 rounded-lg text-[#72A68E] hover:text-[#025940] hover:bg-[#f0f4f2] dark:hover:bg-gray-700 transition-colors flex-shrink-0">
+            <CalendarPlus className="w-4 h-4" />
+          </button>
+        )}
         <button onClick={() => setShowRenew(true)} title={t('hire.renewShort')} className="p-1.5 rounded-lg text-[#72A68E] hover:text-[#025940] hover:bg-[#f0f4f2] dark:hover:bg-gray-700 transition-colors flex-shrink-0">
           <RefreshCw className="w-4 h-4" />
         </button>
@@ -650,13 +658,25 @@ function AgreementCard({
       )}
 
       {showRenew && (
-        <NewAgreementModal
+        <RenewSplitModal
           organizationId={organizationId}
-          label={agreement.reference || t('hire.agreement')}
-          renewFrom={agreement}
+          agreement={agreement}
           onClose={() => setShowRenew(false)}
           onSaved={() => {
             setShowRenew(false)
+            loadLines()
+            onChange()
+          }}
+        />
+      )}
+
+      {showExtend && (
+        <ExtendAgreementModal
+          organizationId={organizationId}
+          agreement={agreement}
+          onClose={() => setShowExtend(false)}
+          onSaved={() => {
+            setShowExtend(false)
             onChange()
           }}
         />
