@@ -274,6 +274,160 @@ export const hireAgreementService = {
   },
 
   /**
+   * Extend a fixed-term contract by N of its own duration units (weeks/months).
+   * duration_value is bumped and end_date recomputed from start + new duration —
+   * the same recompute path the Edit form uses, so billing (derived from dates)
+   * simply covers the extra period. Works retroactively on a contract whose end
+   * date has already passed (agreements don't auto-complete). Rolling contracts
+   * have no end date and cannot be extended. Returns the new end date.
+   */
+  async extendAgreement(input: {
+    organizationId: string
+    agreementId: string
+    extendBy: number // N duration units (must be > 0)
+    actorId?: string | null
+    actorName?: string | null
+  }): Promise<string> {
+    const extendBy = Math.floor(input.extendBy)
+    if (!Number.isFinite(extendBy) || extendBy <= 0) throw new Error('Extension must be a positive number of periods')
+    const agreement = await this.getAgreement(input.agreementId)
+    if (!agreement || agreement.organizationId !== input.organizationId) throw new Error('Agreement not found')
+    if (agreement.isRolling) throw new Error('Rolling contracts have no end date to extend')
+    const newDuration = agreement.durationValue + extendBy
+    const newEnd = prorationService.computeEndDate(agreement.startDate, newDuration, agreement.durationUnit)
+    const { error } = await supabase
+      .from(AGREEMENTS)
+      .update({ duration_value: newDuration, end_date: newEnd, updated_at: nowIso() })
+      .eq('organization_id', input.organizationId)
+      .eq('id', input.agreementId)
+    if (error) throw error
+    activityLogService.log({
+      organizationId: input.organizationId,
+      actionType: 'rental_extend',
+      actorId: input.actorId,
+      actorName: input.actorName,
+      summary: `Extended ${agreement.reference || agreement.customerName || 'contract'} by ${extendBy} ${agreement.durationUnit} → ends ${newEnd}`,
+      details: { agreementId: input.agreementId, extendBy, unit: agreement.durationUnit, newEnd },
+    })
+    return newEnd
+  },
+
+  /**
+   * Renew a contract into ONE OR MORE new contracts ("Renew & split"): each
+   * group gets its own new agreement (own term / rate / reference) and its
+   * vehicles are rolled straight over WITHOUT returning (they stay Out on Hire,
+   * just re-linked) — the exact plumbing renewAgreement uses, once per group.
+   * Old lines close at the handover date (no early-return credits); the old
+   * contract is completed once no active lines remain on it. Returns the new
+   * agreement ids in group order.
+   */
+  async renewAgreementSplit(input: {
+    organizationId: string
+    oldAgreementId: string
+    customerId: string
+    customerName?: string | null
+    startDate: string // handover date = every new contract's start
+    groups: Array<{
+      reference?: string | null
+      durationValue: number
+      durationUnit: HireDurationUnit
+      rateType: HireRateType
+      rateAmount: number
+      chargeDay?: number | null
+      lineIds: string[] // active lines of the old agreement rolling into this group
+    }>
+    createdBy?: string | null
+    createdByName?: string | null
+    actorId?: string | null
+    actorName?: string | null
+  }): Promise<string[]> {
+    if (!input.groups.length) throw new Error('At least one contract group is required')
+    const seen = new Set<string>()
+    for (const g of input.groups) {
+      for (const id of g.lineIds) {
+        if (seen.has(id)) throw new Error('A vehicle can only be in one group')
+        seen.add(id)
+      }
+    }
+
+    const oldLines = (await this.getLines(input.organizationId, input.oldAgreementId)).filter((l) => l.status === 'active')
+    const byId = new Map(oldLines.map((l) => [l.id, l]))
+    const renewalIso = `${input.startDate}T00:00:00`
+
+    const newIds: string[] = []
+    for (const g of input.groups) {
+      const newId = await this.createAgreement({
+        organizationId: input.organizationId,
+        customerId: input.customerId,
+        customerName: input.customerName ?? null,
+        reference: g.reference ?? null,
+        startDate: input.startDate,
+        durationValue: g.durationValue,
+        durationUnit: g.durationUnit,
+        rateType: g.rateType,
+        rateAmount: g.rateAmount,
+        chargeDay: g.chargeDay ?? null,
+        createdBy: input.createdBy ?? null,
+        createdByName: input.createdByName ?? null,
+      })
+      newIds.push(newId)
+
+      const newEnd = prorationService.computeEndDate(input.startDate, g.durationValue, g.durationUnit)
+      for (const lineId of g.lineIds) {
+        const l = byId.get(lineId)
+        if (!l) continue // not an active line of the old agreement — ignore defensively
+        // Close the old line (vehicle does NOT physically return).
+        await this.updateLine(l.id, {
+          status: 'returned',
+          actual_return_at: renewalIso,
+          notes: `Renewed → ${g.reference || newId.slice(0, 8)}`,
+        })
+        if (!l.vehicleId) continue
+        // Open the same vehicle on the group's new contract, on hire from the handover date.
+        try {
+          await this.importOnHireVehicle({
+            organizationId: input.organizationId,
+            agreementId: newId,
+            vehicleId: l.vehicleId,
+            registration: l.registration || '',
+            make: l.make,
+            model: l.model,
+            scheduledStart: input.startDate,
+            scheduledEnd: newEnd,
+            rateType: g.rateType,
+            rateAmount: g.rateAmount,
+            outDate: input.startDate,
+            createdBy: input.createdBy,
+            createdByName: input.createdByName,
+            actorId: input.actorId,
+            actorName: input.actorName,
+          })
+        } catch (err) {
+          logger.error('renewAgreementSplit: rolling a vehicle onto a new contract failed:', err)
+        }
+      }
+      await this.updateAgreement(newId, { status: 'active' })
+    }
+
+    // Complete the old contract only when nothing active is left on it (lines
+    // deliberately left out of every group stay live on the old agreement).
+    const remaining = (await this.getLines(input.organizationId, input.oldAgreementId)).filter((l) => l.status === 'active')
+    if (remaining.length === 0) {
+      await this.updateAgreement(input.oldAgreementId, { status: 'completed' })
+    }
+
+    activityLogService.log({
+      organizationId: input.organizationId,
+      actionType: 'rental_split_renew',
+      actorId: input.actorId,
+      actorName: input.actorName,
+      summary: `Renewed contract into ${input.groups.length} new contract(s) (${seen.size} vehicle(s) rolled over)`,
+      details: { from: input.oldAgreementId, to: newIds },
+    })
+    return newIds
+  },
+
+  /**
    * Edit a contract's core details and CASCADE the single contract rate to every
    * vehicle line (the rate is always per-vehicle and identical across the
    * contract). End date is recomputed from start + duration.

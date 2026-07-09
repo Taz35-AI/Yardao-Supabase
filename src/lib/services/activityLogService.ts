@@ -18,6 +18,7 @@ export type ActivityActionType =
   | 'registration_changed'
   | 'transfer'
   | 'rental_on_hire' | 'rental_swap' | 'rental_end' | 'rental_temp_return' | 'rental_renew'
+  | 'rental_extend' | 'rental_split_renew'
 
 export interface ActivityRecord {
   id: string

@@ -65,6 +65,8 @@ const ACTION: Record<ActivityActionType | 'default', { icon: React.ElementType; 
   rental_end:           { icon: Truck,          label: 'Hire ended',     tone: 'indigo' },
   rental_temp_return:   { icon: ArrowDownLeft,  label: 'Temp return',    tone: 'amber' },
   rental_renew:         { icon: Activity,       label: 'Renewed',        tone: 'purple' },
+  rental_extend:        { icon: CalendarClock,  label: 'Extended',       tone: 'purple' },
+  rental_split_renew:   { icon: Activity,       label: 'Renewed (split)', tone: 'purple' },
   default:              { icon: Activity,       label: 'Event',          tone: 'slate' },
 }
 
