@@ -5,7 +5,8 @@
 'use client'
 
 import React, { useMemo, useState } from 'react'
-import { AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronRight, Download } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import { FleetVehicle } from '@/types'
 import { computeDefleetDue } from '@/lib/utils/defleetDue'
 import { useT } from '@/lib/i18n'
@@ -69,30 +70,70 @@ export function DefleetAlertsBanner({ vehicles, onView, windowDays = 30 }: Props
     return t('fleet.defleetAlerts.inDays', { days: daysLeft })
   }
 
+  const handleDownload = () => {
+    const data = items.map(({ v, dueDate, daysLeft, overdue }) => ({
+      'Registration': v.registration || '',
+      'Make': v.make || '',
+      'Model': v.model || '',
+      'Supplier': (v as any).supplier || '',
+      'Defleet due': fmt(dueDate),
+      'Status': overdue
+        ? `Overdue ${Math.abs(daysLeft)}d`
+        : daysLeft === 0 ? 'Due today' : `In ${daysLeft}d`,
+    }))
+    const ws = XLSX.utils.json_to_sheet(data)
+    ws['!cols'] = [{ wch: 11 }, { wch: 15 }, { wch: 16 }, { wch: 18 }, { wch: 13 }, { wch: 12 }]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Upcoming defleets')
+    const ts = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(wb, `upcoming-defleets-${ts}.xlsx`)
+  }
+
   return (
     <div className="mb-3 rounded-2xl border border-amber-300/70 dark:border-amber-700/50 bg-amber-50/80 dark:bg-amber-950/20 overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen(!expanded)}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left"
-      >
-        <span className="flex-shrink-0 w-9 h-9 rounded-xl bg-amber-500/15 flex items-center justify-center">
-          <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-        </span>
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold text-amber-900 dark:text-amber-200">
-            {t('fleet.defleetAlerts.title', { count: items.length })}
+      <div className="w-full flex items-center gap-2 px-4 py-3">
+        <button
+          type="button"
+          onClick={() => setOpen(!expanded)}
+          className="flex items-center gap-3 flex-1 min-w-0 text-left"
+        >
+          <span className="flex-shrink-0 w-9 h-9 rounded-xl bg-amber-500/15 flex items-center justify-center">
+            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+          </span>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-bold text-amber-900 dark:text-amber-200">
+              {t('fleet.defleetAlerts.title', { count: items.length })}
+            </div>
+            <div className="text-[11px] text-amber-700/80 dark:text-amber-300/70">
+              {overdueCount > 0
+                ? t('fleet.defleetAlerts.overdueSummary', { overdue: overdueCount, soon: items.length - overdueCount })
+                : t('fleet.defleetAlerts.soonSummary', { count: items.length })}
+            </div>
           </div>
-          <div className="text-[11px] text-amber-700/80 dark:text-amber-300/70">
-            {overdueCount > 0
-              ? t('fleet.defleetAlerts.overdueSummary', { overdue: overdueCount, soon: items.length - overdueCount })
-              : t('fleet.defleetAlerts.soonSummary', { count: items.length })}
-          </div>
-        </div>
-        {expanded
-          ? <ChevronDown className="w-4 h-4 text-amber-700 dark:text-amber-400 flex-shrink-0" />
-          : <ChevronRight className="w-4 h-4 text-amber-700 dark:text-amber-400 flex-shrink-0" />}
-      </button>
+        </button>
+
+        <button
+          type="button"
+          onClick={handleDownload}
+          title={t('fleet.defleetAlerts.download')}
+          aria-label={t('fleet.defleetAlerts.download')}
+          className="flex-shrink-0 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-amber-800 dark:text-amber-200 bg-white/70 dark:bg-amber-900/30 border border-amber-300/70 dark:border-amber-700/50 hover:bg-white transition-colors"
+        >
+          <Download className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">{t('fleet.defleetAlerts.download')}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setOpen(!expanded)}
+          className="flex-shrink-0 p-1 text-amber-700 dark:text-amber-400"
+          aria-label="Toggle"
+        >
+          {expanded
+            ? <ChevronDown className="w-4 h-4" />
+            : <ChevronRight className="w-4 h-4" />}
+        </button>
+      </div>
 
       {expanded && (
         <div className="px-3 pb-3 flex flex-wrap gap-2">
