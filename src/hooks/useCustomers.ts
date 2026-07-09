@@ -150,6 +150,9 @@ export function useCustomers(): UseCustomersReturn {
     if (code === 'permission-denied') {
       return t('customers.errPermissionDenied')
     }
+    // Unique (organization_id, phone_normalized) — a customer with this phone
+    // already exists (often auto-created from a past booking).
+    if (code === '23505') return t('customers.errDuplicatePhone')
     if (code) return `${fallback} (${code})`
     if (msg) return `${fallback}: ${msg}`
     return fallback

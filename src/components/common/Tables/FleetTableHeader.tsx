@@ -98,6 +98,12 @@ export function FleetTableHeader({
         <th className="hidden md:table-cell px-4 py-3 text-left" style={{ width: '120px' }}>
           <SortButton field="condition">{t('fleet.table.colCondition')}</SortButton>
         </th>
+        <th className="hidden md:table-cell px-4 py-3 text-left" style={{ width: '130px' }}>
+          <SortButton field="supplier">{t('fleet.table.colSupplier')}</SortButton>
+        </th>
+        <th className="hidden md:table-cell px-4 py-3 text-left" style={{ width: '130px' }}>
+          <SortButton field="defleetDue">{t('fleet.table.colDefleetDue')}</SortButton>
+        </th>
         {/* Comments and Date Acquired columns are REMOVED - they appear on hover only */}
       </tr>
     </thead>

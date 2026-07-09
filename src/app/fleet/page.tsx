@@ -49,6 +49,7 @@ import { BulkRoadTaxService } from '@/lib/services/bulkRoadTaxService'
 import { userProfileService } from '@/lib/firestore'
 import { useT } from '@/lib/i18n'
 import { buildFleetVocab, parseFleetQuery, matchesFleetQuery } from '@/lib/search/smartFleetSearch'
+import { computeDefleetDue } from '@/lib/utils/defleetDue'
 
 // Icons
 import { Plus, X, Download, Share2, Upload, FileSpreadsheet, Loader2, RefreshCw, Car, Search } from 'lucide-react'
@@ -88,6 +89,9 @@ function FleetHeaderExcelItems({ vehicles, filteredVehicles, onBulkUpload }: Fle
       'Tax Expiry': v.taxExpiry ? new Date(v.taxExpiry).toLocaleDateString('en-GB') : '',
       'Comments': v.comments || '',
       'Date Acquired': v.dateAcquired ? new Date(v.dateAcquired).toLocaleDateString('en-GB') : '',
+      'Supplier': (v as any).supplier || '',
+      'Rental term (weeks)': (v as any).rentalTermWeeks ?? '',
+      'Defleet date': (v as any).defleetDueDate ? new Date((v as any).defleetDueDate).toLocaleDateString('en-GB') : '',
     }))
     const ws = XLSX.utils.json_to_sheet(data)
     const wb = XLSX.utils.book_new()
@@ -113,8 +117,8 @@ function FleetHeaderExcelItems({ vehicles, filteredVehicles, onBulkUpload }: Fle
     setIsDownloading(true)
     try {
       const template = [
-        { 'Registration': 'RS67MAW', 'Make': 'Ford', 'Model': 'Transit', 'Colour': 'White', 'Size': 'L2H1', 'MOT Expiry': '22/12/2030', 'Tax Expiry': '03/12/2025', 'Comments': 'Example vehicle 1', 'Date Acquired': '15/01/2024' },
-        { 'Registration': 'NY86ZMR', 'Make': 'Ford', 'Model': 'Fiesta', 'Colour': 'Bronze', 'Size': 'Car', 'MOT Expiry': '19/09/2023', 'Tax Expiry': '22/01/2020', 'Comments': 'Example vehicle 2', 'Date Acquired': '10/03/2024' },
+        { 'Registration': 'RS67MAW', 'Make': 'Ford', 'Model': 'Transit', 'Colour': 'White', 'Size': 'L2H1', 'MOT Expiry': '22/12/2030', 'Tax Expiry': '03/12/2025', 'Comments': 'Example vehicle 1', 'Date Acquired': '15/01/2024', 'Supplier': 'Regulus', 'Rental term (weeks)': '', 'Defleet date': '14/07/2026' },
+        { 'Registration': 'NY86ZMR', 'Make': 'Ford', 'Model': 'Fiesta', 'Colour': 'Bronze', 'Size': 'Car', 'MOT Expiry': '19/09/2023', 'Tax Expiry': '22/01/2020', 'Comments': 'Example vehicle 2', 'Date Acquired': '10/03/2024', 'Supplier': 'Arval', 'Rental term (weeks)': 52, 'Defleet date': '' },
       ]
       const ws = XLSX.utils.json_to_sheet(template)
       const wb = XLSX.utils.book_new()
@@ -171,6 +175,14 @@ function FleetHeaderExcelItems({ vehicles, filteredVehicles, onBulkUpload }: Fle
         comments: String(row['Comments'] || '').trim(),
         dateAcquired: toIsoDate(row['Date Acquired']),
         condition: 'Excellent',
+        // 🚚 Supplier + defleet: an explicit Defleet date wins; otherwise a
+        // Rental term (weeks) drives the computed defleet-due flag.
+        supplier: String(row['Supplier'] || '').trim() || null,
+        rentalTermWeeks: (() => {
+          const rt = String(row['Rental term (weeks)'] ?? '').trim()
+          return rt && !isNaN(Number(rt)) ? Number(rt) : null
+        })(),
+        defleetDueDate: toIsoDate(row['Defleet date']) || null,
       })).filter(v => v.registration)
       await onBulkUpload(processed)
     } catch (err) {
@@ -219,6 +231,7 @@ interface FilterConfig {
   condition: string
   status: string
   contract: string
+  supplier: string
   motExpiring: boolean
   recall: boolean
   dateFrom: string
@@ -361,6 +374,7 @@ export default function FleetInventoryPage() {
     condition: 'all',
     status: 'all',
     contract: 'all',
+    supplier: 'all',
     motExpiring: false,
     recall: false,
     dateFrom: '',
@@ -389,6 +403,13 @@ export default function FleetInventoryPage() {
   // Smart-search vocabulary built from the loaded fleet (makes/models/colours/
   // sizes/contracts/conditions). Status, insurance, MOT/tax & recall are fixed.
   const fleetVocab = useMemo(() => buildFleetVocab(fleetVehicles), [fleetVehicles])
+
+  // Distinct suppliers present in the fleet (for the supplier filter dropdown).
+  const fleetSuppliers = useMemo(() => {
+    const set = new Set<string>()
+    fleetVehicles.forEach(v => { const s = ((v as any).supplier || '').trim(); if (s) set.add(s) })
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [fleetVehicles])
 
   // Apply filters and sorting
   const filteredAndSortedVehicles = useMemo(() => {
@@ -438,6 +459,14 @@ export default function FleetInventoryPage() {
         filtered = filtered.filter(vehicle => !vehicle.contract)
       } else {
         filtered = filtered.filter(vehicle => vehicle.contract === filters.contract)
+      }
+    }
+
+    if (filters.supplier !== 'all') {
+      if (filters.supplier === 'none') {
+        filtered = filtered.filter(vehicle => !((vehicle as any).supplier || '').trim())
+      } else {
+        filtered = filtered.filter(vehicle => (vehicle as any).supplier === filters.supplier)
       }
     }
 
@@ -503,6 +532,19 @@ export default function FleetInventoryPage() {
           aValue = (a.contract || 'ZZZ').toLowerCase()
           bValue = (b.contract || 'ZZZ').toLowerCase()
           break
+        case 'supplier':
+          aValue = ((a as any).supplier || 'ZZZ').toLowerCase()
+          bValue = ((b as any).supplier || 'ZZZ').toLowerCase()
+          break
+        case 'defleetDue': {
+          // Sort by the effective defleet-due date (explicit date overrides the
+          // weeks calc). Vehicles with no defleet date sort to the very end.
+          const aDue = computeDefleetDue(a.dateAcquired, (a as any).rentalTermWeeks, 60, (a as any).defleetDueDate).dueDate
+          const bDue = computeDefleetDue(b.dateAcquired, (b as any).rentalTermWeeks, 60, (b as any).defleetDueDate).dueDate
+          aValue = aDue || '9999-12-31'
+          bValue = bDue || '9999-12-31'
+          break
+        }
         default:
           aValue = String((a as any)[sortKey] || '').toLowerCase()
           bValue = String((b as any)[sortKey] || '').toLowerCase()
@@ -667,6 +709,7 @@ export default function FleetInventoryPage() {
       condition: 'all',
       status: 'all',
       contract: 'all',
+      supplier: 'all',
       motExpiring: false,
       recall: false,
       dateFrom: '',
@@ -1032,6 +1075,7 @@ export default function FleetInventoryPage() {
                   onFiltersChange={setFilters}
                   conditions={conditions}
                   sizes={getUniqueSizes(fleetVehicles)}
+                  suppliers={fleetSuppliers}
                   onClearFilters={clearAllFilters}
                   hideSearch
                 />
