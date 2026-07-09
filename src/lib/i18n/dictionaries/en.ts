@@ -264,6 +264,7 @@ export const en = {
       inDays: 'in {days}d',
       dueToday: 'due today',
       overdueBadge: '{days}d overdue',
+      download: 'Download',
       empty: 'No defleets due in the next 30 days',
     },
     detailModal: {
