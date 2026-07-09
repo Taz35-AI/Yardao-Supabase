@@ -1992,6 +1992,7 @@ export const en = {
     errPermissionDenied: 'Permission denied — the customers collection has no Firestore rule yet. Add a rule for /customers/{id} in the Firebase Console.',
     errNotAuthenticated: 'Not authenticated',
     errCreate: 'Failed to create customer',
+    errDuplicatePhone: 'A customer with this phone number already exists — search for them in Garage Customers and edit that record instead.',
     errUpdate: 'Failed to update customer',
     errDelete: 'Failed to delete customer',
   },
