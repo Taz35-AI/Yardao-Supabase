@@ -24,7 +24,6 @@ import { Pagination } from '@/components/common/Pagination'
 import { FleetVehicleDetailModal } from '@/components/common/Modals/FleetVehicleDetailModal'
 import { FleetVehicleEditModal } from '@/components/common/Modals/FleetVehicleEditModal'
 import { VehicleForm } from '@/components/fleet/VehicleForm'
-import { DefleetAlertsBanner, computeDefleetItems } from '@/components/fleet/DefleetAlertsBanner'
 import { BulkDvlaRefreshModal } from '@/components/fleet/BulkDvlaRefreshModal'
 import { DuplicateVehicleModal } from '@/components/common/Modals/DuplicateVehicleModal'
 import { BulkRoadTaxModal } from '@/components/common/Modals/BulkRoadTaxModal'
@@ -49,7 +48,7 @@ import { BulkRoadTaxService } from '@/lib/services/bulkRoadTaxService'
 import { userProfileService } from '@/lib/firestore'
 import { useT } from '@/lib/i18n'
 import { buildFleetVocab, parseFleetQuery, matchesFleetQuery } from '@/lib/search/smartFleetSearch'
-import { computeDefleetDue } from '@/lib/utils/defleetDue'
+import { computeDefleetDue, computeDefleetItems } from '@/lib/utils/defleetDue'
 
 // Icons
 import { Plus, X, Download, Share2, Upload, FileSpreadsheet, Loader2, RefreshCw, Car, Search } from 'lucide-react'
@@ -233,6 +232,8 @@ interface FilterConfig {
   contract: string
   supplier: string
   motExpiring: boolean
+  // Chip filter: vehicles overdue / due for defleet within 30 days.
+  defleetDue?: boolean
   recall: boolean
   dateFrom: string
   dateTo: string
@@ -376,6 +377,7 @@ export default function FleetInventoryPage() {
     contract: 'all',
     supplier: 'all',
     motExpiring: false,
+    defleetDue: false,
     recall: false,
     dateFrom: '',
     dateTo: '',
@@ -412,10 +414,9 @@ export default function FleetInventoryPage() {
   }, [fleetVehicles])
 
   // Upcoming defleets (within 30 days / overdue) — surfaced as a chip in the
-  // metric strip that toggles an inline panel below it.
+  // metric strip that filters the fleet table to those vehicles.
   const defleetItems = useMemo(() => computeDefleetItems(fleetVehicles, 30), [fleetVehicles])
   const defleetOverdueCount = useMemo(() => defleetItems.filter(i => i.overdue).length, [defleetItems])
-  const [showDefleetPanel, setShowDefleetPanel] = useState(false)
 
   // Apply filters and sorting
   const filteredAndSortedVehicles = useMemo(() => {
@@ -493,6 +494,13 @@ export default function FleetInventoryPage() {
       )
     }
 
+    if (filters.defleetDue) {
+      filtered = filtered.filter(vehicle => {
+        const due = computeDefleetDue(vehicle.dateAcquired, vehicle.rentalTermWeeks, 60, (vehicle as any).defleetDueDate)
+        return due.daysLeft !== null && due.daysLeft <= 30
+      })
+    }
+
     if (filters.recall) {
       filtered = filtered.filter(vehicle => vehicle.hasRecall === true)
     }
@@ -518,8 +526,10 @@ export default function FleetInventoryPage() {
       let aValue: any
       let bValue: any
 
-      const sortKey = filters.motExpiring ? 'motExpiry' : sortConfig.key
-      const sortDirection = filters.motExpiring ? 'asc' : sortConfig.direction
+      // Chip filters force a natural sort: MOT chip → soonest MOT first;
+      // defleet chip → soonest defleet-due first.
+      const sortKey = filters.motExpiring ? 'motExpiry' : filters.defleetDue ? 'defleetDue' : sortConfig.key
+      const sortDirection = filters.motExpiring || filters.defleetDue ? 'asc' : sortConfig.direction
 
       switch (sortKey) {
         case 'createdAt':
@@ -717,6 +727,7 @@ export default function FleetInventoryPage() {
       contract: 'all',
       supplier: 'all',
       motExpiring: false,
+      defleetDue: false,
       recall: false,
       dateFrom: '',
       dateTo: '',
@@ -1037,8 +1048,14 @@ export default function FleetInventoryPage() {
                   onInsuranceFilter={(status) => setFilters(prev => ({ ...prev, insurance: status || 'all' }))}
                   defleetCount={defleetItems.length}
                   defleetOverdue={defleetOverdueCount}
-                  defleetActive={showDefleetPanel}
-                  onDefleetClick={() => setShowDefleetPanel(v => !v)}
+                  defleetActive={!!filters.defleetDue}
+                  onDefleetClick={() => {
+                    const enabling = !filters.defleetDue
+                    setFilters(prev => ({ ...prev, defleetDue: !prev.defleetDue }))
+                    // Show the result as rows: switch to the table view when
+                    // the chip is switched ON (leave the view alone on OFF).
+                    if (enabling) setFleetViewMode('table')
+                  }}
                   onAddVehicle={() => setShowAddForm(true)}
                   onBulkInsurance={handleDirectBulkInsurance}
                   filteredVehicles={filteredAndSortedVehicles}
@@ -1055,14 +1072,6 @@ export default function FleetInventoryPage() {
                   }
                 />
               </div>
-
-              {/* Inline upcoming-defleets panel — opened from the Defleet chip above */}
-              {showDefleetPanel && (
-                <DefleetAlertsBanner
-                  vehicles={fleetVehicles}
-                  onView={(v) => { setShowDefleetPanel(false); setViewingVehicle(v) }}
-                />
-              )}
 
               {/* FleetHeader — kept for Excel download/upload/share/template logic.
                   We render it hidden so its internal state and file ref stay alive,
