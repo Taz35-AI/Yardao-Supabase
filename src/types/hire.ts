@@ -32,8 +32,45 @@ export interface RentalCustomer {
   bankAccountName?: string | null
   bankSortCode?: string | null
   bankAccountNumber?: string | null
+  /** Per-customer PCN/damage admin fee (ex VAT), e.g. 15 or 25 (migration 0062). */
+  pcnAdminFee?: number | null
   notes?: string | null
   isActive: boolean
+  createdAt: string
+  updatedAt?: string | null
+}
+
+// ── PCNs & damages charge ledger (migration 0062) ────────────────────────────
+
+export type HireChargeType = 'pcn' | 'damage'
+export type HirePcnKind = 'nominated' | 'paid'
+export type HireChargeStatus = 'outstanding' | 'paid' | 'waived'
+
+export interface HireCharge {
+  id: string
+  organizationId: string
+  chargeType: HireChargeType
+  pcnKind?: HirePcnKind | null
+  reference?: string | null
+  issuer?: string | null
+  registration?: string | null
+  vehicleId?: string | null
+  customerId?: string | null
+  customerName?: string | null
+  agreementId?: string | null
+  agreementReference?: string | null
+  lineId?: string | null
+  incidentDate?: string | null // YYYY-MM-DD
+  description?: string | null
+  baseAmount: number
+  adminFee: number
+  vatAmount: number
+  totalAmount: number
+  status: HireChargeStatus
+  paidAt?: string | null
+  notes?: string | null
+  createdBy?: string | null
+  createdByName?: string | null
   createdAt: string
   updatedAt?: string | null
 }

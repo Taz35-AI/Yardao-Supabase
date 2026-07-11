@@ -3,7 +3,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Users, CalendarRange, Coins, Settings, LayoutDashboard } from 'lucide-react'
+import { Users, CalendarRange, Coins, Settings, LayoutDashboard, Receipt } from 'lucide-react'
 import { ContractIcon } from './ContractIcon'
 import { useHire } from '@/contexts/HireContext'
 import { useT } from '@/lib/i18n'
@@ -12,9 +12,10 @@ import { HireCustomers } from './HireCustomers'
 import { HireAgreements } from './HireAgreements'
 import { HireGantt } from './HireGantt'
 import { HireCredits } from './HireCredits'
+import { HireCharges } from './HireCharges'
 import { HireSettingsModal } from './HireSettingsModal'
 
-type Tab = 'overview' | 'customers' | 'agreements' | 'schedule' | 'credits'
+type Tab = 'overview' | 'customers' | 'agreements' | 'schedule' | 'credits' | 'charges'
 
 export function HireHub() {
   const t = useT()
@@ -28,6 +29,7 @@ export function HireHub() {
     { key: 'agreements', icon: <ContractIcon className="w-4 h-4" />, label: settings.agreementLabelPlural },
     { key: 'schedule', icon: <CalendarRange className="w-4 h-4" />, label: t('hire.tabSchedule') },
     { key: 'credits', icon: <Coins className="w-4 h-4" />, label: t('hire.tabCredits') },
+    { key: 'charges', icon: <Receipt className="w-4 h-4" />, label: t('hire.tabCharges') },
   ]
 
   return (
@@ -65,6 +67,7 @@ export function HireHub() {
       {tab === 'agreements' && <HireAgreements />}
       {tab === 'schedule' && <HireGantt />}
       {tab === 'credits' && <HireCredits />}
+      {tab === 'charges' && <HireCharges />}
 
       {showSettings && <HireSettingsModal onClose={() => setShowSettings(false)} />}
     </div>

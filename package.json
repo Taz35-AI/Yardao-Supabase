@@ -18,7 +18,8 @@
     "cap:sync": "npx cap sync",
     "cap:copy": "npx cap copy",
     "cap:build": "npm run build && npx cap copy && npx cap sync",
-    "cap:clean": "npx cap clean"
+    "cap:clean": "npx cap clean",
+    "test:charges": "npx --yes tsx src/lib/services/__tests__/hireCharges.test.ts"
   },
   "dependencies": {
     "@capacitor-community/file-opener": "^7.0.1",

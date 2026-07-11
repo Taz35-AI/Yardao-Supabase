@@ -61,6 +61,7 @@ export const hireCustomerService = {
     bankAccountName?: string | null
     bankSortCode?: string | null
     bankAccountNumber?: string | null
+    pcnAdminFee?: number | null
     notes?: string | null
     createdBy?: string | null
     createdByName?: string | null
@@ -86,6 +87,7 @@ export const hireCustomerService = {
         bank_account_name: input.bankAccountName ?? null,
         bank_sort_code: input.bankSortCode ?? null,
         bank_account_number: input.bankAccountNumber ?? null,
+        pcn_admin_fee: input.pcnAdminFee ?? null,
         notes: input.notes ?? null,
         created_by: input.createdBy ?? null,
         created_by_name: input.createdByName ?? null,

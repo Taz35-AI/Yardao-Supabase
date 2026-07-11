@@ -47,6 +47,8 @@ export function AddCustomerModal({
   const [bankSortCode, setBankSortCode] = useState(editing?.bankSortCode || '')
   const [bankAccountNumber, setBankAccountNumber] = useState(editing?.bankAccountNumber || '')
   const [notes, setNotes] = useState(editing?.notes || '')
+  // Per-customer PCN/damage admin fee (ex VAT) — prefills the charges ledger.
+  const [pcnAdminFee, setPcnAdminFee] = useState(editing?.pcnAdminFee != null ? String(editing.pcnAdminFee) : '')
   // One or more fleet-insurance policies (some customers insure vans
   // individually). Each row = policy number + expiry. `id` present = an existing
   // saved policy (used to reconcile add/edit/remove on save).
@@ -140,6 +142,7 @@ export function AddCustomerModal({
           bank_account_name: nz(bankAccountName),
           bank_sort_code: nz(bankSortCode),
           bank_account_number: nz(bankAccountNumber),
+          pcn_admin_fee: pcnAdminFee.trim() && Number.isFinite(parseFloat(pcnAdminFee)) ? parseFloat(pcnAdminFee) : null,
           notes: nz(notes),
         })
         // Reconcile the customer's insurance policies (add / edit / remove).
@@ -168,6 +171,7 @@ export function AddCustomerModal({
         bankAccountName: nz(bankAccountName),
         bankSortCode: nz(bankSortCode),
         bankAccountNumber: nz(bankAccountNumber),
+        pcnAdminFee: pcnAdminFee.trim() && Number.isFinite(parseFloat(pcnAdminFee)) ? parseFloat(pcnAdminFee) : null,
         notes: nz(notes),
         createdBy: user?.uid || null,
         createdByName: actorName,
@@ -243,6 +247,10 @@ export function AddCustomerModal({
               <Field label={t('hire.custAccountNumber')}><input value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} className={inputCls} /></Field>
             </div>
           </Section>
+
+          <Field label={t('hire.custPcnAdminFee')}>
+            <input type="number" min="0" step="0.01" value={pcnAdminFee} onChange={(e) => setPcnAdminFee(e.target.value)} placeholder="e.g. 15.00" className={inputCls} />
+          </Field>
 
           <Field label={t('hire.custNotes')}><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={inputCls} /></Field>
 
