@@ -4,6 +4,38 @@
 
 export type DefleetState = 'none' | 'ok' | 'soon' | 'overdue'
 
+/** Minimal vehicle shape needed to compute defleet-due status. */
+interface DefleetVehicleLike {
+  isDefleeted?: boolean
+  dateAcquired?: string | null
+  rentalTermWeeks?: number | null
+  defleetDueDate?: string | null
+}
+
+export interface DefleetAlertItem<V extends DefleetVehicleLike = DefleetVehicleLike> {
+  v: V
+  dueDate: string
+  daysLeft: number
+  overdue: boolean
+}
+
+/** Vehicles overdue or due for defleet within `windowDays`, soonest-first. */
+export function computeDefleetItems<V extends DefleetVehicleLike>(
+  vehicles: V[],
+  windowDays = 30,
+): DefleetAlertItem<V>[] {
+  const out: DefleetAlertItem<V>[] = []
+  for (const v of vehicles) {
+    if (v.isDefleeted) continue
+    const due = computeDefleetDue(v.dateAcquired, v.rentalTermWeeks, windowDays, v.defleetDueDate)
+    if (!due.dueDate || due.daysLeft == null) continue
+    if (due.daysLeft > windowDays) continue
+    out.push({ v, dueDate: due.dueDate, daysLeft: due.daysLeft, overdue: due.daysLeft < 0 })
+  }
+  out.sort((a, b) => a.daysLeft - b.daysLeft)
+  return out
+}
+
 export interface DefleetDue {
   dueDate: string | null   // YYYY-MM-DD, or null when not enough info
   daysLeft: number | null  // negative = overdue
