@@ -247,22 +247,65 @@ export function KeyBoxLog() {
     return missing.filter((v: any) => normKeyReg(v.registration).includes(q))
   }, [missing, q])
 
+  // Export mirrors the ORIGINAL paper key-log spreadsheet exactly: boxes laid
+  // out side by side (6 columns + 1 spacer each), a merged "SPARE KEY Bn"
+  // title over every block, "Modle" spelling and all, slots numbered 1..100
+  // down the page even when empty, and the queue as a "Spare Keys" section
+  // in columns B–E under five blank rows.
   const exportExcel = () => {
-    const data = enriched.map((k) => ({
-      'Box': k.box || 'QUEUE',
-      'Slot': k.slot ?? '',
-      'Registration': k.registration,
-      'Make': k.fleetMake || k.make || '',
-      'Model': k.fleetModel || k.model || '',
-      'Type': k.vehicleType || '',
-      'Logbook': k.logbook ? 'YES' : '',
-      'In fleet': k.inFleet ? 'YES' : 'NO',
-      'Notes': k.notes || '',
-    }))
-    const ws = XLSX.utils.json_to_sheet(data)
-    ws['!cols'] = [{ wch: 6 }, { wch: 6 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 9 }, { wch: 8 }, { wch: 8 }, { wch: 22 }]
+    const BLOCK = 7
+    const rows: any[][] = []
+    const merges: any[] = []
+    const maxSlot = Math.max(100, ...located.map((k) => k.slot || 0))
+
+    const titleRow: any[] = []
+    const headRow: any[] = []
+    boxes.forEach(([box], bi) => {
+      const c = bi * BLOCK
+      const cells = ['No', 'Registration', 'Make', 'Modle', 'Type', 'Logbook', '']
+      for (let i = 0; i < BLOCK; i++) {
+        titleRow[c + i] = i === 0 ? `SPARE KEY ${box}` : ''
+        headRow[c + i] = cells[i]
+      }
+      merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 5 } })
+    })
+    rows.push(titleRow, headRow)
+
+    const bySlot = boxes.map(([, list]) => {
+      const m = new Map<number, EnrichedKey>()
+      list.forEach((k) => { if (k.slot != null) m.set(k.slot, k) })
+      return m
+    })
+    for (let slot = 1; slot <= maxSlot; slot++) {
+      const row: any[] = []
+      boxes.forEach((_, bi) => {
+        const c = bi * BLOCK
+        const k = bySlot[bi].get(slot)
+        row[c] = slot
+        row[c + 1] = k?.registration || ''
+        row[c + 2] = k ? (k.fleetMake || k.make || '') : ''
+        row[c + 3] = k ? (k.fleetModel || k.model || '') : ''
+        row[c + 4] = k?.vehicleType || ''
+        row[c + 5] = k?.logbook ? 'YES' : ''
+        row[c + 6] = ''
+      })
+      rows.push(row)
+    }
+
+    if (queued.length > 0) {
+      for (let i = 0; i < 5; i++) rows.push([])
+      const headIdx = rows.length
+      rows.push(['', 'Spare Keys'])
+      merges.push({ s: { r: headIdx, c: 1 }, e: { r: headIdx, c: 4 } })
+      for (const k of queued) {
+        rows.push(['', k.registration, k.fleetMake || k.make || '', k.fleetModel || k.model || '', k.vehicleType || ''])
+      }
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    ws['!merges'] = merges
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Key box')
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1')
     XLSX.writeFile(wb, `key-box-${new Date().toISOString().slice(0, 10)}.xlsx`)
   }
 
