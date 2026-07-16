@@ -17,7 +17,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { useFleetData } from '@/hooks/useFleetData'
 import { supabase } from '@/lib/supabaseClient'
-import { spareKeyService, normKeyReg, SlotOccupiedError, type SpareKey } from '@/lib/services/spareKeyService'
+import { spareKeyService, normKeyReg, keyRegTokens, SlotOccupiedError, type SpareKey } from '@/lib/services/spareKeyService'
 import { useT } from '@/lib/i18n'
 
 const inputCls =
@@ -86,13 +86,18 @@ export function KeyBoxLog() {
     return m
   }, [fleetData?.vehicles])
 
+  // Dual-plate aware: "41WP (HK72XXL)" matches the fleet on EITHER token.
   const enriched = useMemo<EnrichedKey[]>(() =>
     keys.map((k) => {
-      const fv = fleetByReg.get(normKeyReg(k.registration))
+      const fv = keyRegTokens(k.registration).map((t) => fleetByReg.get(t)).find(Boolean)
       return { ...k, fleetMake: fv?.make ?? null, fleetModel: fv?.model ?? null, inFleet: !!fv }
     }), [keys, fleetByReg])
 
-  const keyRegs = useMemo(() => new Set(keys.map((k) => normKeyReg(k.registration))), [keys])
+  const keyRegs = useMemo(() => {
+    const s = new Set<string>()
+    for (const k of keys) for (const t of keyRegTokens(k.registration)) s.add(t)
+    return s
+  }, [keys])
 
   // Fleet vehicles WITHOUT a spare key.
   const missing = useMemo(() => {
@@ -497,12 +502,39 @@ function KeyFormModal({
   const slotNum = parseInt(slot, 10)
   const slotConflict = Number.isFinite(slotNum) && takenSlots.has(slotNum)
 
-  const fleetMatch = fleetByReg.get(normKeyReg(registration))
+  // Dual-plate aware fleet match ("41WP (HK72XXL)" matches on either token).
+  const fleetMatch = keyRegTokens(registration).map((t) => fleetByReg.get(t)).find(Boolean)
+
   const dupKey = useMemo(() => {
-    const reg = normKeyReg(registration)
-    if (!reg) return null
-    return keys.find((k) => normKeyReg(k.registration) === reg && k.id !== existing?.id) || null
+    const toks = keyRegTokens(registration)
+    if (!toks.length) return null
+    return keys.find((k) =>
+      k.id !== existing?.id && keyRegTokens(k.registration).some((t) => toks.includes(t)),
+    ) || null
   }, [keys, registration, existing?.id])
+
+  // Autocomplete: 3+ typed characters → suggest matching fleet registrations.
+  const keyRegSet = useMemo(() => {
+    const s = new Set<string>()
+    for (const k of keys) {
+      if (k.id === existing?.id) continue
+      for (const t of keyRegTokens(k.registration)) s.add(t)
+    }
+    return s
+  }, [keys, existing?.id])
+
+  const regSuggestions = useMemo(() => {
+    const qn = normKeyReg(registration)
+    if (qn.length < 3) return []
+    const out: any[] = []
+    for (const [reg, v] of fleetByReg) {
+      if (reg !== qn && reg.includes(qn)) {
+        out.push(v)
+        if (out.length >= 8) break
+      }
+    }
+    return out
+  }, [registration, fleetByReg])
 
   const save = async () => {
     if (!normKeyReg(registration)) { toast.error(t('fleet.keyBox.needReg')); return }
@@ -588,6 +620,27 @@ function KeyFormModal({
               autoFocus={!isEdit}
               className={`${inputCls} uppercase font-mono font-bold`}
             />
+            {regSuggestions.length > 0 && (
+              <div className="mt-1 rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">
+                {regSuggestions.map((v: any) => {
+                  const hasKey = keyRegSet.has(normKeyReg(v.registration))
+                  return (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => setRegistration((v.registration || '').toUpperCase())}
+                      className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-[#f0faf4] dark:hover:bg-gray-700/50 border-b border-[#eef2f0] dark:border-gray-700 last:border-0"
+                    >
+                      <span className="font-mono font-bold text-sm text-[#012619] dark:text-white">{v.registration}</span>
+                      <span className="text-[11px] text-[#72A68E] truncate">
+                        {[v.make, v.model].filter(Boolean).join(' ')}
+                        {hasKey && <span className="ml-1.5 text-amber-600 dark:text-amber-400 font-bold">· {t('fleet.keyBox.suggestHasKey')}</span>}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
             {fleetMatch ? (
               <p className="mt-1 text-[11px] text-[#72A68E] inline-flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3" /> {[fleetMatch.make, fleetMatch.model].filter(Boolean).join(' ')} · {t('fleet.keyBox.inFleet')}

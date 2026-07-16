@@ -12,6 +12,18 @@ const nowIso = () => new Date().toISOString()
 
 export const normKeyReg = (s?: string | null) => (s || '').toUpperCase().replace(/\s+/g, '')
 
+/**
+ * A key's registration can carry TWO plates — a private plate plus the fleet
+ * reg, e.g. "41WP (HK72XXL)", "2HDN/LO75WMC", "11NLB-YB72TNV". Return every
+ * plate-like token (plus the whole normalised string) so searching and fleet
+ * matching hit on EITHER.
+ */
+export const keyRegTokens = (s?: string | null): string[] => {
+  const raw = (s || '').toUpperCase()
+  const tokens = raw.split(/[^A-Z0-9]+/).filter((t) => t.length >= 2)
+  return Array.from(new Set([normKeyReg(raw), ...tokens].filter(Boolean)))
+}
+
 export interface SpareKey {
   id: string
   organizationId: string

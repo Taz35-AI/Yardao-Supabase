@@ -294,6 +294,7 @@ export const en = {
       inFleet: 'in fleet',
       notInFleetHint: 'This registration isn’t in your fleet — it will still be saved and searchable.',
       dupWarn: 'This reg already has a key in {box} · slot {slot}.',
+      suggestHasKey: 'has key',
       logbook: 'Logbook (V5)',
       logbookHint: 'The V5 logbook is stored in the box with the key.',
       regLabel: 'Registration',
