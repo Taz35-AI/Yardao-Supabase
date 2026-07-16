@@ -16,8 +16,9 @@ export interface SpareKey {
   id: string
   organizationId: string
   registration: string
-  box: string
-  slot: number
+  /** NULL box/slot = the key is in the QUEUE, waiting to be assigned a slot. */
+  box: string | null
+  slot: number | null
   make?: string | null
   model?: string | null
   vehicleType?: string | null
@@ -58,8 +59,9 @@ export const spareKeyService = {
   async addKey(input: {
     organizationId: string
     registration: string
-    box: string
-    slot: number
+    /** Omit box/slot (null) to add the key to the QUEUE. */
+    box?: string | null
+    slot?: number | null
     make?: string | null
     model?: string | null
     vehicleType?: string | null
@@ -73,8 +75,8 @@ export const spareKeyService = {
       .insert({
         organization_id: input.organizationId,
         registration: normKeyReg(input.registration),
-        box: input.box.trim().toUpperCase(),
-        slot: input.slot,
+        box: input.box ? input.box.trim().toUpperCase() : null,
+        slot: input.slot ?? null,
         make: input.make?.trim() || null,
         model: input.model?.trim() || null,
         vehicle_type: input.vehicleType?.trim() || null,
@@ -86,17 +88,18 @@ export const spareKeyService = {
       .select('id')
       .single()
     if (error) {
-      if ((error as any).code === '23505') throw new SlotOccupiedError(input.box, input.slot)
+      if ((error as any).code === '23505') throw new SlotOccupiedError(String(input.box), Number(input.slot))
       throw error
     }
     return data.id as string
   },
 
-  /** Patch a key (move box/slot, toggle logbook, notes …). */
+  /** Patch a key (move box/slot, toggle logbook, notes …). Passing box/slot as
+   *  explicit null moves the key back to the QUEUE. */
   async updateKey(id: string, patch: {
     registration?: string
-    box?: string
-    slot?: number
+    box?: string | null
+    slot?: number | null
     make?: string | null
     model?: string | null
     vehicleType?: string | null
@@ -106,8 +109,8 @@ export const spareKeyService = {
   }): Promise<void> {
     const row: Record<string, any> = { updated_at: nowIso() }
     if (patch.registration !== undefined) row.registration = normKeyReg(patch.registration)
-    if (patch.box !== undefined) row.box = patch.box.trim().toUpperCase()
-    if (patch.slot !== undefined) row.slot = patch.slot
+    if (patch.box !== undefined) row.box = patch.box ? patch.box.trim().toUpperCase() : null
+    if (patch.slot !== undefined) row.slot = patch.slot ?? null
     if (patch.make !== undefined) row.make = patch.make?.trim() || null
     if (patch.model !== undefined) row.model = patch.model?.trim() || null
     if (patch.vehicleType !== undefined) row.vehicle_type = patch.vehicleType?.trim() || null

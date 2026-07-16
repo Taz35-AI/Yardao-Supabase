@@ -42,7 +42,7 @@ export function KeyBoxLog() {
   const [keys, setKeys] = useState<SpareKey[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [tab, setTab] = useState<'box' | 'missing'>('box')
+  const [tab, setTab] = useState<'box' | 'queue' | 'missing'>('box')
   const [editKey, setEditKey] = useState<SpareKey | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [prefillReg, setPrefillReg] = useState('')
@@ -115,19 +115,24 @@ export function KeyBoxLog() {
     if (!q) return []
     return enriched.filter((k) =>
       normKeyReg(k.registration).includes(q) ||
-      k.box.toUpperCase() === q ||
+      (k.box || '').toUpperCase() === q ||
       `${k.fleetMake || k.make || ''} ${k.fleetModel || k.model || ''}`.toLowerCase().includes(qLower),
     )
   }, [enriched, q, qLower])
 
+  // Queue = keys waiting for a slot (box/slot null). Boxes = the located ones.
+  const queued = useMemo(() => enriched.filter((k) => !k.box || k.slot == null), [enriched])
+  const located = useMemo(() => enriched.filter((k) => k.box && k.slot != null), [enriched])
+
   const boxes = useMemo(() => {
     const map = new Map<string, EnrichedKey[]>()
-    for (const k of enriched) {
-      if (!map.has(k.box)) map.set(k.box, [])
-      map.get(k.box)!.push(k)
+    for (const k of located) {
+      const b = k.box as string
+      if (!map.has(b)) map.set(b, [])
+      map.get(b)!.push(k)
     }
     return Array.from(map.entries()).sort((a, b) => boxSort(a[0], b[0]))
-  }, [enriched])
+  }, [located])
 
   const boxNames = useMemo(() => boxes.map(([b]) => b), [boxes])
 
@@ -141,8 +146,8 @@ export function KeyBoxLog() {
 
   const exportExcel = () => {
     const data = enriched.map((k) => ({
-      'Box': k.box,
-      'Slot': k.slot,
+      'Box': k.box || 'QUEUE',
+      'Slot': k.slot ?? '',
       'Registration': k.registration,
       'Make': k.fleetMake || k.make || '',
       'Model': k.fleetModel || k.model || '',
@@ -172,9 +177,15 @@ export function KeyBoxLog() {
         <span className={`font-mono font-extrabold text-[#012619] dark:text-white ${big ? 'text-base' : 'text-[13px]'}`}>
           {k.registration}
         </span>
-        <span className="inline-flex items-center gap-1 rounded-lg bg-[#012619] text-[#b3f243] font-extrabold px-2 py-0.5 text-[11px] tracking-wide">
-          {k.box}·{k.slot}
-        </span>
+        {k.box && k.slot != null ? (
+          <span className="inline-flex items-center gap-1 rounded-lg bg-[#012619] text-[#b3f243] font-extrabold px-2 py-0.5 text-[11px] tracking-wide">
+            {k.box}·{k.slot}
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-extrabold px-2 py-0.5 text-[10px] uppercase tracking-wide">
+            {t('fleet.keyBox.queueBadge')}
+          </span>
+        )}
       </div>
       <div className="mt-1 flex items-center gap-1.5 min-h-[16px]">
         <span className={`text-[11px] truncate ${k.inFleet ? 'text-[#72A68E]' : 'text-[#9db0a6] italic'}`}>
@@ -232,6 +243,14 @@ export function KeyBoxLog() {
             <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 text-white px-3 py-1.5">
               <CheckCircle2 className="w-3.5 h-3.5 text-[#b3f243]" /> {t('fleet.keyBox.statCoverage', { pct: coveragePct })}
             </span>
+            {queued.length > 0 && (
+              <button
+                onClick={() => setTab('queue')}
+                className="inline-flex items-center gap-1.5 rounded-full bg-[#b3f243]/15 text-[#d9f8a1] px-3 py-1.5 hover:bg-[#b3f243]/25 transition-colors"
+              >
+                <KeyRound className="w-3.5 h-3.5" /> {t('fleet.keyBox.statQueue', { count: queued.length })}
+              </button>
+            )}
             <button
               onClick={() => setTab('missing')}
               className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition-colors ${
@@ -273,6 +292,7 @@ export function KeyBoxLog() {
         <div className="flex gap-1 bg-white dark:bg-gray-800 border border-[#e2e8e5] dark:border-gray-700 rounded-xl p-1 shadow-sm">
           {([
             { key: 'box' as const, label: t('fleet.keyBox.tabBox') },
+            { key: 'queue' as const, label: t('fleet.keyBox.tabQueue', { count: queued.length }) },
             { key: 'missing' as const, label: t('fleet.keyBox.tabMissing', { count: missing.length }) },
           ]).map((tb) => (
             <button
@@ -336,6 +356,38 @@ export function KeyBoxLog() {
                 </div>
               </div>
             ))}
+          </div>
+        )
+      ) : tab === 'queue' ? (
+        // Queue — keys at head office waiting for a box + slot
+        queued.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-[#c8d5ce] dark:border-gray-700 p-8 text-center">
+            <KeyRound className="w-8 h-8 text-[#c8d5ce] mx-auto mb-2" />
+            <p className="text-sm font-bold text-[#4a5e54] dark:text-gray-300">{t('fleet.keyBox.queueEmptyTitle')}</p>
+            <p className="text-xs text-[#8a9e94] mt-1">{t('fleet.keyBox.queueEmptyBody')}</p>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-950/10 shadow-sm overflow-hidden">
+            <div className="px-3.5 py-2.5 bg-amber-100/60 dark:bg-amber-900/20 border-b border-amber-200/70 dark:border-amber-800/40">
+              <p className="text-sm font-bold text-amber-900 dark:text-amber-200">{t('fleet.keyBox.queueTitle', { count: queued.length })}</p>
+              <p className="text-[11px] text-amber-700/80 dark:text-amber-300/70">{t('fleet.keyBox.queueHint')}</p>
+            </div>
+            <div className="divide-y divide-amber-100 dark:divide-amber-900/30">
+              {queued.map((k) => (
+                <div key={k.id} className="flex items-center gap-3 px-3.5 py-2.5 bg-white/60 dark:bg-transparent">
+                  <span className="font-mono font-bold text-sm text-[#012619] dark:text-white flex-shrink-0">{k.registration}</span>
+                  <span className="text-xs text-[#72A68E] flex-1 truncate">
+                    {(k.fleetMake || k.make) ? `${k.fleetMake || k.make} ${k.fleetModel || k.model || ''}`.trim() : k.inFleet ? '' : t('fleet.keyBox.notInFleet')}
+                  </span>
+                  <button
+                    onClick={() => setEditKey(k)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-[#025940] hover:bg-[#012619] text-white text-[11px] font-bold px-2.5 py-1.5 transition-colors flex-shrink-0"
+                  >
+                    <MapPin className="w-3 h-3" /> {t('fleet.keyBox.assign')}
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )
       ) : (
@@ -409,13 +461,16 @@ function KeyFormModal({
   const t = useT()
   const isEdit = !!existing
   const [registration, setRegistration] = useState(existing?.registration || prefillReg)
+  // Queue mode: the key exists but has no slot yet. Editing a queued key starts
+  // with the toggle ON — unticking it becomes the "assign to a box" flow.
+  const [toQueue, setToQueue] = useState(isEdit ? existing!.box == null || existing!.slot == null : false)
   const [box, setBox] = useState(existing?.box || boxNames[0] || 'B1')
   const [newBox, setNewBox] = useState('')
-  const [slot, setSlot] = useState(existing ? String(existing.slot) : '')
+  const [slot, setSlot] = useState(existing?.slot != null ? String(existing.slot) : '')
   const [logbook, setLogbook] = useState(existing?.logbook || false)
   const [notes, setNotes] = useState(existing?.notes || '')
   const [saving, setSaving] = useState(false)
-  const slotTouched = useRef(isEdit)
+  const slotTouched = useRef(isEdit && existing?.slot != null)
 
   const effectiveBox = (newBox.trim() || box).toUpperCase()
 
@@ -424,7 +479,7 @@ function KeyFormModal({
   const takenSlots = useMemo(() => {
     const s = new Set<number>()
     for (const k of keys) {
-      if (k.box.toUpperCase() === effectiveBox && k.id !== existing?.id) s.add(k.slot)
+      if (k.box && k.slot != null && k.box.toUpperCase() === effectiveBox && k.id !== existing?.id) s.add(k.slot)
     }
     return s
   }, [keys, effectiveBox, existing?.id])
@@ -451,15 +506,19 @@ function KeyFormModal({
 
   const save = async () => {
     if (!normKeyReg(registration)) { toast.error(t('fleet.keyBox.needReg')); return }
-    if (!effectiveBox) { toast.error(t('fleet.keyBox.needBox')); return }
-    if (!Number.isFinite(slotNum) || slotNum <= 0) { toast.error(t('fleet.keyBox.needSlot')); return }
+    if (!toQueue) {
+      if (!effectiveBox) { toast.error(t('fleet.keyBox.needBox')); return }
+      if (!Number.isFinite(slotNum) || slotNum <= 0) { toast.error(t('fleet.keyBox.needSlot')); return }
+    }
     setSaving(true)
     try {
+      const targetBox = toQueue ? null : effectiveBox
+      const targetSlot = toQueue ? null : slotNum
       if (isEdit && existing) {
         await spareKeyService.updateKey(existing.id, {
           registration,
-          box: effectiveBox,
-          slot: slotNum,
+          box: targetBox,
+          slot: targetSlot,
           make: fleetMatch?.make ?? existing.make ?? null,
           model: fleetMatch?.model ?? existing.model ?? null,
           logbook,
@@ -470,8 +529,8 @@ function KeyFormModal({
         await spareKeyService.addKey({
           organizationId,
           registration,
-          box: effectiveBox,
-          slot: slotNum,
+          box: targetBox,
+          slot: targetSlot,
           make: fleetMatch?.make ?? null,
           model: fleetMatch?.model ?? null,
           vehicleType: fleetMatch?.size ?? null,
@@ -481,7 +540,9 @@ function KeyFormModal({
           createdByName: actorName,
         })
       }
-      toast.success(t('fleet.keyBox.saved', { reg: normKeyReg(registration), box: effectiveBox, slot: slotNum }))
+      toast.success(toQueue
+        ? t('fleet.keyBox.savedQueue', { reg: normKeyReg(registration) })
+        : t('fleet.keyBox.saved', { reg: normKeyReg(registration), box: effectiveBox, slot: slotNum }))
       onSaved()
     } catch (err) {
       if (err instanceof SlotOccupiedError) toast.error(t('fleet.keyBox.slotTaken', { box: effectiveBox, slot: slotNum }))
@@ -536,11 +597,24 @@ function KeyFormModal({
             ) : null}
             {dupKey && (
               <p className="mt-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400 inline-flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3" /> {t('fleet.keyBox.dupWarn', { box: dupKey.box, slot: dupKey.slot })}
+                <AlertTriangle className="w-3 h-3" />
+                {dupKey.box && dupKey.slot != null
+                  ? t('fleet.keyBox.dupWarn', { box: dupKey.box, slot: dupKey.slot })
+                  : t('fleet.keyBox.dupWarnQueue')}
               </p>
             )}
           </div>
 
+          {/* Queue toggle — key exists, slot comes later */}
+          <label className="flex items-center gap-2.5 rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2.5 cursor-pointer select-none">
+            <input type="checkbox" checked={toQueue} onChange={(e) => setToQueue(e.target.checked)} className="w-4 h-4 accent-[#025940]" />
+            <span className="min-w-0">
+              <span className="block text-sm font-bold text-[#012619] dark:text-white">{t('fleet.keyBox.queueToggle')}</span>
+              <span className="block text-[11px] text-amber-700/80 dark:text-amber-300/70">{t('fleet.keyBox.queueToggleHint')}</span>
+            </span>
+          </label>
+
+          {!toQueue && (
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">{t('fleet.keyBox.boxLabel')}</label>
@@ -576,6 +650,7 @@ function KeyFormModal({
               </p>
             </div>
           </div>
+          )}
 
           <label className="flex items-center gap-2.5 rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-[#f6f8f7] dark:bg-gray-800/50 px-3 py-2.5 cursor-pointer select-none">
             <input type="checkbox" checked={logbook} onChange={(e) => setLogbook(e.target.checked)} className="w-4 h-4 accent-[#025940]" />
@@ -608,7 +683,7 @@ function KeyFormModal({
             </button>
             <button
               onClick={save}
-              disabled={saving || slotConflict}
+              disabled={saving || (!toQueue && slotConflict)}
               className="flex-1 px-4 py-2.5 rounded-lg bg-[#025940] hover:bg-[#012619] text-white text-sm font-bold disabled:opacity-60 inline-flex items-center justify-center gap-2"
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Pencil className="w-4 h-4" />}
