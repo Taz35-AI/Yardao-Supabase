@@ -135,58 +135,63 @@ export function KeyBoxLog() {
   }, [keys, enriched])
   const [showDups, setShowDups] = useState(false)
 
-  // Search across reg / box / make / model — PLATE matches always rank first,
-  // so "ARO" puts CA24ARO ahead of 50 Vivaros whose model merely contains it.
+  // Search: REGISTRATION ONLY — never make/model, so "ARO" can't drown the
+  // real plate under 50 Vivaros. (Exact box name, e.g. "B3", still lists a box.)
   const q = normKeyReg(search)
-  const qLower = search.trim().toLowerCase()
+  const regHits = useMemo(() => {
+    if (!q) return []
+    return enriched.filter((k) => normKeyReg(k.registration).includes(q))
+  }, [enriched, q])
   const searchHits = useMemo(() => {
     if (!q) return []
-    const regHits: EnrichedKey[] = []
-    const otherHits: EnrichedKey[] = []
-    for (const k of enriched) {
-      if (normKeyReg(k.registration).includes(q)) regHits.push(k)
-      else if (
-        (k.box || '').toUpperCase() === q ||
-        `${k.fleetMake || k.make || ''} ${k.fleetModel || k.model || ''}`.toLowerCase().includes(qLower)
-      ) otherHits.push(k)
-    }
-    return [...regHits, ...otherHits]
-  }, [enriched, q, qLower])
+    if (regHits.length > 0) return regHits
+    return enriched.filter((k) => (k.box || '').toUpperCase() === q)
+  }, [enriched, q, regHits])
 
-  // ── Spotlight: the "FOUND IT" moment. The instant the search pins down the
-  // actual plate (exact token match, or ≤3 plate matches at 4+ chars), a
-  // full-screen overlay jumps up with the location — impossible to miss.
-  const spotTargets = useMemo(() => {
-    if (!q || q.length < 3) return []
-    const exact = enriched.filter((k) => keyRegTokens(k.registration).includes(q))
-    if (exact.length > 0 && exact.length <= 4) return exact
-    if (q.length < 4) return []
-    const regHits = enriched.filter((k) => normKeyReg(k.registration).includes(q))
-    return regHits.length >= 1 && regHits.length <= 3 ? regHits : []
-  }, [enriched, q])
-
-  const [spotKeys, setSpotKeys] = useState<EnrichedKey[] | null>(null)
-  const [spotDismissedFor, setSpotDismissedFor] = useState('')
+  // ── Spotlight: full-screen live search. Pops at 3 typed characters and
+  // narrows as you type — the search box carries on INSIDE the overlay.
+  const [spotOpen, setSpotOpen] = useState(false)
+  const [spotMuted, setSpotMuted] = useState(false)
   useEffect(() => {
-    if (spotTargets.length === 0 || spotDismissedFor === q) {
-      setSpotKeys(null)
+    if (q.length < 3) {
+      setSpotOpen(false)
+      setSpotMuted(false)
       return
     }
-    const timer = setTimeout(() => setSpotKeys(spotTargets), 350)
+    if (spotMuted) return
+    const timer = setTimeout(() => setSpotOpen(true), 300)
     return () => clearTimeout(timer)
-  }, [spotTargets, q, spotDismissedFor])
+  }, [q, spotMuted])
 
   const dismissSpot = useCallback(() => {
-    setSpotDismissedFor(q)
-    setSpotKeys(null)
-  }, [q])
+    setSpotMuted(true)
+    setSpotOpen(false)
+  }, [])
 
   useEffect(() => {
-    if (!spotKeys) return
+    if (!spotOpen) return
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') dismissSpot() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [spotKeys, dismissSpot])
+  }, [spotOpen, dismissSpot])
+
+  // Keep typing seamlessly when the overlay takes over.
+  const spotInputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (!spotOpen) return
+    const timer = setTimeout(() => {
+      const el = spotInputRef.current
+      if (el) {
+        el.focus()
+        const n = el.value.length
+        el.setSelectionRange(n, n)
+      }
+    }, 30)
+    return () => clearTimeout(timer)
+  }, [spotOpen])
+
+  const SPOT_MAX = 12
+  const spotHits = useMemo(() => regHits.slice(0, SPOT_MAX), [regHits])
 
   // Queue = keys waiting for a slot (box/slot null). Boxes = the located ones.
   const queued = useMemo(() => enriched.filter((k) => !k.box || k.slot == null), [enriched])
@@ -234,11 +239,8 @@ export function KeyBoxLog() {
 
   const missingFiltered = useMemo(() => {
     if (!q) return missing
-    return missing.filter((v: any) =>
-      normKeyReg(v.registration).includes(q) ||
-      `${v.make || ''} ${v.model || ''}`.toLowerCase().includes(qLower),
-    )
-  }, [missing, q, qLower])
+    return missing.filter((v: any) => normKeyReg(v.registration).includes(q))
+  }, [missing, q])
 
   const exportExcel = () => {
     const data = enriched.map((k) => ({
@@ -428,10 +430,11 @@ export function KeyBoxLog() {
         </div>
       )}
 
-      {/* ── Spotlight overlay: search resolved to the plate → shout the location */}
-      {spotKeys && spotKeys.length > 0 && (
+      {/* ── Spotlight overlay: live reg search — pops at 3 chars, narrows as
+          you type (the input carries on inside the overlay) */}
+      {spotOpen && (
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+          className="fixed inset-0 z-[70] flex items-start sm:items-center justify-center p-4 pt-10 sm:pt-4 bg-black/70 backdrop-blur-sm"
           onClick={dismissSpot}
         >
           <div
@@ -441,15 +444,60 @@ export function KeyBoxLog() {
             <div className="px-5 pt-5 pb-2 flex items-center justify-between">
               <p className="inline-flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-widest text-[#b3f243]">
                 <CheckCircle2 className="w-4 h-4" />
-                {spotKeys.length > 1 ? t('fleet.keyBox.spotTitleMulti', { count: spotKeys.length }) : t('fleet.keyBox.spotTitle')}
+                {spotHits.length === 0
+                  ? t('fleet.keyBox.spotNone')
+                  : spotHits.length > 1
+                    ? t('fleet.keyBox.spotTitleMulti', { count: regHits.length })
+                    : t('fleet.keyBox.spotTitle')}
               </p>
               <button onClick={dismissSpot} className="text-[#a9c6b9] hover:text-white p-1">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="px-5 pb-4 space-y-3 max-h-[60vh] overflow-y-auto">
-              {spotKeys.map((k) => (
+            {/* Live search inside the spotlight */}
+            <div className="px-5 pb-3">
+              <div className="flex items-center gap-2 bg-white rounded-2xl px-3.5 py-2.5 shadow-lg">
+                <Search className="w-4 h-4 text-[#74877d] flex-shrink-0" />
+                <input
+                  ref={spotInputRef}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={t('fleet.keyBox.searchPlaceholder')}
+                  className="flex-1 bg-transparent outline-none text-[#06251a] font-semibold placeholder:text-[#9bafa5] text-sm min-w-0 uppercase"
+                />
+                {search && (
+                  <button onClick={() => setSearch('')} className="text-[#9bafa5] hover:text-[#06251a] flex-shrink-0">
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="px-5 pb-4 space-y-3 max-h-[55vh] overflow-y-auto">
+              {spotHits.length === 0 && (
+                <div className="rounded-2xl bg-white/[0.07] ring-1 ring-white/10 p-4 text-center">
+                  <p className="text-sm text-[#a9c6b9]">{t('fleet.keyBox.noKeyFound')}</p>
+                  {history.length > 0 && (
+                    <div className="mt-3 text-left space-y-1.5">
+                      {history.map((e) => (
+                        <p key={e.id} className="text-xs text-[#a9c6b9]">
+                          <span className={`font-bold ${e.action === 'removed' ? 'text-red-300' : 'text-[#b3f243]'}`}>{eventLine(e)}</span>
+                          <span className="opacity-70"> · {fmtEventWhen(e.createdAt)}{e.actorName ? ` · ${t('fleet.keyBox.histBy', { name: e.actorName })}` : ''}</span>
+                          {e.note && <span className="block italic opacity-80 mt-0.5">“{e.note}”</span>}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => { dismissSpot(); openAdd(search.toUpperCase()) }}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#b3f243] text-[#012619] text-xs font-black px-3.5 py-2"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> {t('fleet.keyBox.addThisReg', { reg: search.toUpperCase() })}
+                  </button>
+                </div>
+              )}
+              {spotHits.map((k) => (
                 <div key={k.id} className="rounded-2xl bg-white/[0.07] ring-1 ring-white/10 p-4 text-center">
                   <p className="font-mono font-black text-white text-2xl tracking-wider">{k.registration}</p>
                   <p className="text-xs text-[#a9c6b9] mt-0.5 min-h-[16px]">
@@ -476,6 +524,11 @@ export function KeyBoxLog() {
                   </button>
                 </div>
               ))}
+              {regHits.length > SPOT_MAX && (
+                <p className="text-center text-[11px] font-bold text-[#a9c6b9]">
+                  {t('fleet.keyBox.spotMore', { count: regHits.length - SPOT_MAX })}
+                </p>
+              )}
             </div>
 
             <div className="px-5 pb-5">

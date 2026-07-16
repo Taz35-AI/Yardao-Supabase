@@ -329,6 +329,8 @@ export const en = {
       historyTitle: 'Key history',
       spotTitle: 'Key located',
       spotTitleMulti: '{count} keys located',
+      spotNone: 'Key search',
+      spotMore: '+ {count} more — keep typing to narrow it down',
       spotQueue: 'In the queue',
       spotOpen: 'Open key',
       spotClose: 'Got it',
