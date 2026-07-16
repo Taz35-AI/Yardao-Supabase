@@ -9,7 +9,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   KeyRound, Search, Plus, X, Loader2, Download, Pencil, Trash2,
-  BookOpen, MapPin, CheckCircle2, AlertTriangle, RefreshCw,
+  BookOpen, MapPin, CheckCircle2, AlertTriangle, RefreshCw, ChevronDown,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { toast } from 'sonner'
@@ -208,6 +208,11 @@ export function KeyBoxLog() {
   }, [located])
 
   const boxNames = useMemo(() => boxes.map(([b]) => b), [boxes])
+
+  // Chevron-collapsible boxes (collapsed by default — the search/spotlight
+  // panels above are separate, so folding boxes never hides a search result).
+  const [openBoxes, setOpenBoxes] = useState<Record<string, boolean>>({})
+  const toggleBox = (b: string) => setOpenBoxes((m) => ({ ...m, [b]: !m[b] }))
 
   // Search dead-end → check the permanent log: "removed on <date>: <note>".
   const [history, setHistory] = useState<SpareKeyEvent[]>([])
@@ -602,14 +607,26 @@ export function KeyBoxLog() {
           <div className="space-y-3">
             {boxes.map(([box, list]) => (
               <div key={box} className="rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-[#f8faf9] dark:bg-gray-900 shadow-sm overflow-hidden">
-                <div className="flex items-center gap-2.5 px-3.5 py-2.5 bg-white dark:bg-gray-800 border-b border-[#eef2f0] dark:border-gray-700">
+                <button
+                  onClick={() => toggleBox(box)}
+                  aria-expanded={!!openBoxes[box]}
+                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 bg-white dark:bg-gray-800 text-left hover:bg-[#f0f4f2] dark:hover:bg-gray-700/50 transition-colors ${
+                    openBoxes[box] ? 'border-b border-[#eef2f0] dark:border-gray-700' : ''
+                  }`}
+                >
                   <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[#012619] text-[#b3f243] font-black text-sm">{box}</span>
                   <span className="text-sm font-bold text-[#012619] dark:text-white">{t('fleet.keyBox.boxTitle', { box })}</span>
                   <span className="text-[11px] font-bold text-[#8a9e94]">{t('fleet.keyBox.boxCount', { count: list.length })}</span>
-                </div>
-                <div className="p-2.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-2">
-                  {list.map((k) => <KeyChip key={k.id} k={k} />)}
-                </div>
+                  <span className="flex-1" />
+                  <ChevronDown
+                    className={`w-4 h-4 text-[#72A68E] flex-shrink-0 transition-transform duration-200 ${openBoxes[box] ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                {openBoxes[box] && (
+                  <div className="p-2.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+                    {list.map((k) => <KeyChip key={k.id} k={k} />)}
+                  </div>
+                )}
               </div>
             ))}
           </div>
