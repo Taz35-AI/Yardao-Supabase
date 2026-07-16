@@ -51,7 +51,8 @@ import { buildFleetVocab, parseFleetQuery, matchesFleetQuery } from '@/lib/searc
 import { computeDefleetDue, computeDefleetItems } from '@/lib/utils/defleetDue'
 
 // Icons
-import { Plus, X, Download, Share2, Upload, FileSpreadsheet, Loader2, RefreshCw, Car, Search } from 'lucide-react'
+import Link from 'next/link'
+import { Plus, X, Download, Share2, Upload, FileSpreadsheet, Loader2, RefreshCw, Car, Search, KeyRound } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 // ─── FleetHeaderExcelItems ────────────────────────────────────────────────────
@@ -1020,6 +1021,10 @@ export default function FleetInventoryPage() {
                     className="inline-flex items-center gap-1.5 text-[12px] font-extrabold rounded-full px-3.5 py-2 bg-white/12 hover:bg-white/20 text-white transition-colors">
                     <Plus className="w-4 h-4" /> Add vehicle
                   </button>
+                  <Link href="/fleet/keys"
+                    className="inline-flex items-center gap-1.5 text-[12px] font-extrabold rounded-full px-3.5 py-2 bg-white/12 hover:bg-white/20 text-white transition-colors">
+                    <KeyRound className="w-4 h-4 text-[#b3f243]" /> Key Box
+                  </Link>
                   {filters.search.trim() && (
                     <span className="inline-flex items-center gap-1.5 text-[12px] font-extrabold rounded-full px-3 py-2 bg-white/10 text-[#cce0d8]">
                       {filteredAndSortedVehicles.length} match{filteredAndSortedVehicles.length === 1 ? '' : 'es'}
