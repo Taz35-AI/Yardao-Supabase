@@ -17,7 +17,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { useFleetData } from '@/hooks/useFleetData'
 import { supabase } from '@/lib/supabaseClient'
-import { spareKeyService, normKeyReg, SlotOccupiedError, type SpareKey } from '@/lib/services/spareKeyService'
+import { spareKeyService, normKeyReg, keyRegTokens, SlotOccupiedError, type SpareKey } from '@/lib/services/spareKeyService'
 import { useT } from '@/lib/i18n'
 
 const inputCls =
@@ -75,38 +75,65 @@ export function KeyBoxLog() {
     return () => { supabase.removeChannel(channel) }
   }, [organizationId, load])
 
-  // Live fleet index (active vehicles only) by normalised reg.
+  // Active fleet vehicles + a TOKEN index. Fleet regs can carry dual plates
+  // too ("1YEB（LO75WLB）"), so every token of every fleet reg maps to its
+  // vehicle — matching works from either direction.
+  const activeFleet = useMemo(
+    () => (fleetData?.vehicles || []).filter((v: any) => !v.isDefleeted && normKeyReg(v.registration)),
+    [fleetData?.vehicles],
+  )
   const fleetByReg = useMemo(() => {
     const m = new Map<string, any>()
-    for (const v of (fleetData?.vehicles || [])) {
-      if (v.isDefleeted) continue
-      const reg = normKeyReg(v.registration)
-      if (reg) m.set(reg, v)
+    for (const v of activeFleet) {
+      for (const t of keyRegTokens(v.registration)) if (!m.has(t)) m.set(t, v)
     }
     return m
-  }, [fleetData?.vehicles])
+  }, [activeFleet])
 
+  // Dual-plate aware: "41WP (HK72XXL)" matches the fleet on EITHER token.
   const enriched = useMemo<EnrichedKey[]>(() =>
     keys.map((k) => {
-      const fv = fleetByReg.get(normKeyReg(k.registration))
+      const fv = keyRegTokens(k.registration).map((t) => fleetByReg.get(t)).find(Boolean)
       return { ...k, fleetMake: fv?.make ?? null, fleetModel: fv?.model ?? null, inFleet: !!fv }
     }), [keys, fleetByReg])
 
-  const keyRegs = useMemo(() => new Set(keys.map((k) => normKeyReg(k.registration))), [keys])
+  const keyRegs = useMemo(() => {
+    const s = new Set<string>()
+    for (const k of keys) for (const t of keyRegTokens(k.registration)) s.add(t)
+    return s
+  }, [keys])
 
-  // Fleet vehicles WITHOUT a spare key.
+  // Fleet vehicles WITHOUT a spare key — covered if ANY of the vehicle's reg
+  // tokens matches ANY key token (dual plates work in both directions).
   const missing = useMemo(() => {
-    const out: any[] = []
-    for (const [reg, v] of fleetByReg) {
-      if (!keyRegs.has(reg)) out.push(v)
-    }
-    out.sort((a, b) => (a.registration || '').localeCompare(b.registration || ''))
+    const out = activeFleet.filter(
+      (v: any) => !keyRegTokens(v.registration).some((t) => keyRegs.has(t)),
+    )
+    out.sort((a: any, b: any) => (a.registration || '').localeCompare(b.registration || ''))
     return out
-  }, [fleetByReg, keyRegs])
+  }, [activeFleet, keyRegs])
 
-  const coveragePct = fleetByReg.size > 0
-    ? Math.round(((fleetByReg.size - missing.length) / fleetByReg.size) * 100)
+  const coveragePct = activeFleet.length > 0
+    ? Math.round(((activeFleet.length - missing.length) / activeFleet.length) * 100)
     : 0
+
+  // Duplicate keys: two or more keys sharing any plate token (could be a
+  // legitimate second spare — flagged for review, never blocked).
+  const dupKeys = useMemo(() => {
+    const byTok = new Map<string, string[]>()
+    for (const k of keys) {
+      for (const t of keyRegTokens(k.registration)) {
+        if (!byTok.has(t)) byTok.set(t, [])
+        byTok.get(t)!.push(k.id)
+      }
+    }
+    const ids = new Set<string>()
+    for (const arr of byTok.values()) if (arr.length > 1) arr.forEach((id) => ids.add(id))
+    return enriched
+      .filter((k) => ids.has(k.id))
+      .sort((a, b) => a.registration.localeCompare(b.registration))
+  }, [keys, enriched])
+  const [showDups, setShowDups] = useState(false)
 
   // Search across reg / box / make / model.
   const q = normKeyReg(search)
@@ -138,7 +165,7 @@ export function KeyBoxLog() {
 
   const missingFiltered = useMemo(() => {
     if (!q) return missing
-    return missing.filter((v) =>
+    return missing.filter((v: any) =>
       normKeyReg(v.registration).includes(q) ||
       `${v.make || ''} ${v.model || ''}`.toLowerCase().includes(qLower),
     )
@@ -251,6 +278,16 @@ export function KeyBoxLog() {
                 <KeyRound className="w-3.5 h-3.5" /> {t('fleet.keyBox.statQueue', { count: queued.length })}
               </button>
             )}
+            {dupKeys.length > 0 && (
+              <button
+                onClick={() => setShowDups((v) => !v)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition-colors ${
+                  showDups ? 'bg-amber-400/40 text-amber-100' : 'bg-amber-400/20 text-amber-200 hover:bg-amber-400/30'
+                }`}
+              >
+                <AlertTriangle className="w-3.5 h-3.5" /> {t('fleet.keyBox.statDups', { count: dupKeys.length })}
+              </button>
+            )}
             <button
               onClick={() => setTab('missing')}
               className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition-colors ${
@@ -262,6 +299,19 @@ export function KeyBoxLog() {
           </div>
         </div>
       </div>
+
+      {/* ── Duplicate keys panel (toggled from the amber hero chip) ────────── */}
+      {showDups && dupKeys.length > 0 && (
+        <div className="rounded-2xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-950/10 shadow-sm p-3.5">
+          <p className="text-[11px] font-extrabold uppercase tracking-widest text-amber-700 dark:text-amber-400 mb-1 inline-flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5" /> {t('fleet.keyBox.dupsTitle', { count: dupKeys.length })}
+          </p>
+          <p className="text-[11px] text-amber-700/80 dark:text-amber-300/70 mb-2.5">{t('fleet.keyBox.dupsHint')}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {dupKeys.map((k) => <KeyChip key={k.id} k={k} big />)}
+          </div>
+        </div>
+      )}
 
       {/* ── Search results (front and centre when typing) ─────────────────── */}
       {q && (
@@ -399,7 +449,7 @@ export function KeyBoxLog() {
           </div>
         ) : (
           <div className="rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm divide-y divide-[#eef2f0] dark:divide-gray-800">
-            {missingFiltered.map((v) => (
+            {missingFiltered.map((v: any) => (
               <div key={v.id} className="flex items-center gap-3 px-3.5 py-2.5">
                 <span className="font-mono font-bold text-sm text-[#012619] dark:text-white flex-shrink-0">{v.registration}</span>
                 <span className="text-xs text-[#72A68E] flex-1 truncate">{[v.make, v.model].filter(Boolean).join(' ')}</span>
@@ -497,12 +547,42 @@ function KeyFormModal({
   const slotNum = parseInt(slot, 10)
   const slotConflict = Number.isFinite(slotNum) && takenSlots.has(slotNum)
 
-  const fleetMatch = fleetByReg.get(normKeyReg(registration))
+  // Dual-plate aware fleet match ("41WP (HK72XXL)" matches on either token).
+  const fleetMatch = keyRegTokens(registration).map((t) => fleetByReg.get(t)).find(Boolean)
+
   const dupKey = useMemo(() => {
-    const reg = normKeyReg(registration)
-    if (!reg) return null
-    return keys.find((k) => normKeyReg(k.registration) === reg && k.id !== existing?.id) || null
+    const toks = keyRegTokens(registration)
+    if (!toks.length) return null
+    return keys.find((k) =>
+      k.id !== existing?.id && keyRegTokens(k.registration).some((t) => toks.includes(t)),
+    ) || null
   }, [keys, registration, existing?.id])
+
+  // Autocomplete: 3+ typed characters → suggest matching fleet registrations.
+  const keyRegSet = useMemo(() => {
+    const s = new Set<string>()
+    for (const k of keys) {
+      if (k.id === existing?.id) continue
+      for (const t of keyRegTokens(k.registration)) s.add(t)
+    }
+    return s
+  }, [keys, existing?.id])
+
+  const regSuggestions = useMemo(() => {
+    const qn = normKeyReg(registration)
+    if (qn.length < 3) return []
+    const out: any[] = []
+    const seenIds = new Set<string>()
+    for (const [reg, v] of fleetByReg) {
+      // Token map lists a vehicle once per plate token — dedupe by vehicle.
+      if (reg !== qn && reg.includes(qn) && !seenIds.has(v.id)) {
+        seenIds.add(v.id)
+        out.push(v)
+        if (out.length >= 8) break
+      }
+    }
+    return out
+  }, [registration, fleetByReg])
 
   const save = async () => {
     if (!normKeyReg(registration)) { toast.error(t('fleet.keyBox.needReg')); return }
@@ -588,21 +668,42 @@ function KeyFormModal({
               autoFocus={!isEdit}
               className={`${inputCls} uppercase font-mono font-bold`}
             />
-            {fleetMatch ? (
-              <p className="mt-1 text-[11px] text-[#72A68E] inline-flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3" /> {[fleetMatch.make, fleetMatch.model].filter(Boolean).join(' ')} · {t('fleet.keyBox.inFleet')}
-              </p>
-            ) : normKeyReg(registration) ? (
-              <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">{t('fleet.keyBox.notInFleetHint')}</p>
-            ) : null}
+            {regSuggestions.length > 0 && (
+              <div className="mt-1 rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">
+                {regSuggestions.map((v: any) => {
+                  const hasKey = keyRegSet.has(normKeyReg(v.registration))
+                  return (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => setRegistration((v.registration || '').toUpperCase())}
+                      className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-[#f0faf4] dark:hover:bg-gray-700/50 border-b border-[#eef2f0] dark:border-gray-700 last:border-0"
+                    >
+                      <span className="font-mono font-bold text-sm text-[#012619] dark:text-white">{v.registration}</span>
+                      <span className="text-[11px] text-[#72A68E] truncate">
+                        {[v.make, v.model].filter(Boolean).join(' ')}
+                        {hasKey && <span className="ml-1.5 text-amber-600 dark:text-amber-400 font-bold">· {t('fleet.keyBox.suggestHasKey')}</span>}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
             {dupKey && (
-              <p className="mt-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400 inline-flex items-center gap-1">
+              <p className="mt-1 text-[11px] font-bold text-amber-700 dark:text-amber-400 inline-flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3" />
                 {dupKey.box && dupKey.slot != null
                   ? t('fleet.keyBox.dupWarn', { box: dupKey.box, slot: dupKey.slot })
                   : t('fleet.keyBox.dupWarnQueue')}
               </p>
             )}
+            {fleetMatch ? (
+              <p className="mt-1 text-[11px] text-[#72A68E] inline-flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" /> {[fleetMatch.make, fleetMatch.model].filter(Boolean).join(' ')} · {t('fleet.keyBox.inFleet')}
+              </p>
+            ) : normKeyReg(registration).length >= 3 && !dupKey ? (
+              <p className="mt-1 text-[11px] text-[#9db0a6]">{t('fleet.keyBox.notInFleetHint')}</p>
+            ) : null}
           </div>
 
           {/* Queue toggle — key exists, slot comes later */}
