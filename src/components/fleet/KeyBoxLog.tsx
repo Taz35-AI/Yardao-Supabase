@@ -135,17 +135,58 @@ export function KeyBoxLog() {
   }, [keys, enriched])
   const [showDups, setShowDups] = useState(false)
 
-  // Search across reg / box / make / model.
+  // Search across reg / box / make / model — PLATE matches always rank first,
+  // so "ARO" puts CA24ARO ahead of 50 Vivaros whose model merely contains it.
   const q = normKeyReg(search)
   const qLower = search.trim().toLowerCase()
   const searchHits = useMemo(() => {
     if (!q) return []
-    return enriched.filter((k) =>
-      normKeyReg(k.registration).includes(q) ||
-      (k.box || '').toUpperCase() === q ||
-      `${k.fleetMake || k.make || ''} ${k.fleetModel || k.model || ''}`.toLowerCase().includes(qLower),
-    )
+    const regHits: EnrichedKey[] = []
+    const otherHits: EnrichedKey[] = []
+    for (const k of enriched) {
+      if (normKeyReg(k.registration).includes(q)) regHits.push(k)
+      else if (
+        (k.box || '').toUpperCase() === q ||
+        `${k.fleetMake || k.make || ''} ${k.fleetModel || k.model || ''}`.toLowerCase().includes(qLower)
+      ) otherHits.push(k)
+    }
+    return [...regHits, ...otherHits]
   }, [enriched, q, qLower])
+
+  // ── Spotlight: the "FOUND IT" moment. The instant the search pins down the
+  // actual plate (exact token match, or ≤3 plate matches at 4+ chars), a
+  // full-screen overlay jumps up with the location — impossible to miss.
+  const spotTargets = useMemo(() => {
+    if (!q || q.length < 3) return []
+    const exact = enriched.filter((k) => keyRegTokens(k.registration).includes(q))
+    if (exact.length > 0 && exact.length <= 4) return exact
+    if (q.length < 4) return []
+    const regHits = enriched.filter((k) => normKeyReg(k.registration).includes(q))
+    return regHits.length >= 1 && regHits.length <= 3 ? regHits : []
+  }, [enriched, q])
+
+  const [spotKeys, setSpotKeys] = useState<EnrichedKey[] | null>(null)
+  const [spotDismissedFor, setSpotDismissedFor] = useState('')
+  useEffect(() => {
+    if (spotTargets.length === 0 || spotDismissedFor === q) {
+      setSpotKeys(null)
+      return
+    }
+    const timer = setTimeout(() => setSpotKeys(spotTargets), 350)
+    return () => clearTimeout(timer)
+  }, [spotTargets, q, spotDismissedFor])
+
+  const dismissSpot = useCallback(() => {
+    setSpotDismissedFor(q)
+    setSpotKeys(null)
+  }, [q])
+
+  useEffect(() => {
+    if (!spotKeys) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') dismissSpot() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [spotKeys, dismissSpot])
 
   // Queue = keys waiting for a slot (box/slot null). Boxes = the located ones.
   const queued = useMemo(() => enriched.filter((k) => !k.box || k.slot == null), [enriched])
@@ -384,6 +425,68 @@ export function KeyBoxLog() {
               {searchHits.map((k) => <KeyChip key={k.id} k={k} big />)}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Spotlight overlay: search resolved to the plate → shout the location */}
+      {spotKeys && spotKeys.length > 0 && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+          onClick={dismissSpot}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-3xl overflow-hidden shadow-2xl ring-1 ring-[#b3f243]/30 bg-gradient-to-br from-[#012619] via-[#024733] to-[#025940]"
+          >
+            <div className="px-5 pt-5 pb-2 flex items-center justify-between">
+              <p className="inline-flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-widest text-[#b3f243]">
+                <CheckCircle2 className="w-4 h-4" />
+                {spotKeys.length > 1 ? t('fleet.keyBox.spotTitleMulti', { count: spotKeys.length }) : t('fleet.keyBox.spotTitle')}
+              </p>
+              <button onClick={dismissSpot} className="text-[#a9c6b9] hover:text-white p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="px-5 pb-4 space-y-3 max-h-[60vh] overflow-y-auto">
+              {spotKeys.map((k) => (
+                <div key={k.id} className="rounded-2xl bg-white/[0.07] ring-1 ring-white/10 p-4 text-center">
+                  <p className="font-mono font-black text-white text-2xl tracking-wider">{k.registration}</p>
+                  <p className="text-xs text-[#a9c6b9] mt-0.5 min-h-[16px]">
+                    {(k.fleetMake || k.make) ? `${k.fleetMake || k.make} ${k.fleetModel || k.model || ''}`.trim() : ''}
+                    {k.logbook && <span className="ml-1.5 font-bold text-amber-300">· V5</span>}
+                  </p>
+                  {k.box && k.slot != null ? (
+                    <div className="mt-3 inline-flex items-baseline gap-2 rounded-2xl bg-[#b3f243] px-6 py-3 animate-pulse">
+                      <span className="text-4xl font-black text-[#012619] tracking-tight">{k.box}</span>
+                      <span className="text-2xl font-black text-[#012619]/60">·</span>
+                      <span className="text-4xl font-black text-[#012619] tracking-tight">{k.slot}</span>
+                    </div>
+                  ) : (
+                    <div className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-amber-400 px-6 py-3">
+                      <span className="text-xl font-black text-[#3d2c00] uppercase tracking-wide">{t('fleet.keyBox.spotQueue')}</span>
+                    </div>
+                  )}
+                  {k.notes && <p className="mt-2.5 text-[11px] italic text-[#a9c6b9]">“{k.notes}”</p>}
+                  <button
+                    onClick={() => { dismissSpot(); setEditKey(k) }}
+                    className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-bold text-[#b3f243]/80 hover:text-[#b3f243]"
+                  >
+                    <Pencil className="w-3 h-3" /> {t('fleet.keyBox.spotOpen')}
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="px-5 pb-5">
+              <button
+                onClick={dismissSpot}
+                className="w-full rounded-xl bg-white/10 hover:bg-white/20 text-white text-sm font-bold py-3 transition-colors"
+              >
+                {t('fleet.keyBox.spotClose')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
