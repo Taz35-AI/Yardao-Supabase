@@ -8,6 +8,7 @@ import { toCamel, toCamelList } from '@/lib/dbMap'
 import { logger } from '@/lib/logger'
 
 const TABLE = 'spare_keys'
+const LOG = 'spare_key_log'
 const nowIso = () => new Date().toISOString()
 
 export const normKeyReg = (s?: string | null) => (s || '').toUpperCase().replace(/\s+/g, '')
@@ -50,7 +51,96 @@ export class SlotOccupiedError extends Error {
   }
 }
 
+/** A permanent key-box history event (migration 0064). Never edited/deleted. */
+export interface SpareKeyEvent {
+  id: string
+  organizationId: string
+  registration: string
+  action: 'added' | 'moved' | 'removed'
+  box?: string | null
+  slot?: number | null
+  fromBox?: string | null
+  fromSlot?: number | null
+  note?: string | null
+  actorId?: string | null
+  actorName?: string | null
+  createdAt: string
+}
+
 export const spareKeyService = {
+  /** Write a history event. Best-effort — never blocks the main operation. */
+  async logEvent(input: {
+    organizationId: string
+    registration: string
+    action: 'added' | 'moved' | 'removed'
+    box?: string | null
+    slot?: number | null
+    fromBox?: string | null
+    fromSlot?: number | null
+    note?: string | null
+    actorId?: string | null
+    actorName?: string | null
+  }): Promise<void> {
+    try {
+      const { error } = await supabase.from(LOG).insert({
+        organization_id: input.organizationId,
+        registration: normKeyReg(input.registration),
+        action: input.action,
+        box: input.box ?? null,
+        slot: input.slot ?? null,
+        from_box: input.fromBox ?? null,
+        from_slot: input.fromSlot ?? null,
+        note: input.note?.trim() || null,
+        actor_id: input.actorId ?? null,
+        actor_name: input.actorName ?? null,
+      })
+      if (error) throw error
+    } catch (err) {
+      logger.error('spareKeyService.logEvent failed (run migration 0064?):', err)
+    }
+  },
+
+  /** History for a registration — matches on any plate token (dual plates). */
+  async getHistoryForReg(organizationId: string, registration: string, limit = 20): Promise<SpareKeyEvent[]> {
+    if (!organizationId || !registration) return []
+    const tokens = keyRegTokens(registration).filter((t) => t.length >= 3)
+    if (!tokens.length) return []
+    try {
+      const { data, error } = await supabase
+        .from(LOG)
+        .select('*')
+        .eq('organization_id', organizationId)
+        .or(tokens.map((t) => `registration.ilike.%${t}%`).join(','))
+        .order('created_at', { ascending: false })
+        .limit(limit)
+      if (error) throw error
+      return toCamelList<SpareKeyEvent>(data)
+    } catch (err) {
+      logger.error('spareKeyService.getHistoryForReg failed:', err)
+      return []
+    }
+  },
+
+  /** Remove a key from the box — logs a permanent 'removed' event (with the
+   *  why-note) before deleting the live row. */
+  async removeKey(
+    key: Pick<SpareKey, 'id' | 'organizationId' | 'registration' | 'box' | 'slot'>,
+    opts: { note?: string | null; actorId?: string | null; actorName?: string | null },
+  ): Promise<void> {
+    await this.logEvent({
+      organizationId: key.organizationId,
+      registration: key.registration,
+      action: 'removed',
+      box: key.box,
+      slot: key.slot,
+      note: opts.note ?? null,
+      actorId: opts.actorId ?? null,
+      actorName: opts.actorName ?? null,
+    })
+    const { error } = await supabase.from(TABLE).delete().eq('id', key.id)
+    if (error) throw error
+  },
+
   async getKeys(organizationId: string): Promise<SpareKey[]> {
     if (!organizationId) return []
     try {
@@ -103,6 +193,15 @@ export const spareKeyService = {
       if ((error as any).code === '23505') throw new SlotOccupiedError(String(input.box), Number(input.slot))
       throw error
     }
+    await this.logEvent({
+      organizationId: input.organizationId,
+      registration: input.registration,
+      action: 'added',
+      box: input.box ?? null,
+      slot: input.slot ?? null,
+      actorId: input.createdBy ?? null,
+      actorName: input.createdByName ?? null,
+    })
     return data.id as string
   },
 

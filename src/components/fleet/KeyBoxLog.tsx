@@ -17,7 +17,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { useFleetData } from '@/hooks/useFleetData'
 import { supabase } from '@/lib/supabaseClient'
-import { spareKeyService, normKeyReg, keyRegTokens, SlotOccupiedError, type SpareKey } from '@/lib/services/spareKeyService'
+import { spareKeyService, normKeyReg, keyRegTokens, SlotOccupiedError, type SpareKey, type SpareKeyEvent } from '@/lib/services/spareKeyService'
 import { useT } from '@/lib/i18n'
 
 const inputCls =
@@ -162,6 +162,34 @@ export function KeyBoxLog() {
   }, [located])
 
   const boxNames = useMemo(() => boxes.map(([b]) => b), [boxes])
+
+  // Search dead-end → check the permanent log: "removed on <date>: <note>".
+  const [history, setHistory] = useState<SpareKeyEvent[]>([])
+  useEffect(() => {
+    if (!organizationId || q.length < 3 || searchHits.length > 0) {
+      setHistory([])
+      return
+    }
+    const timer = setTimeout(() => {
+      spareKeyService.getHistoryForReg(organizationId, search).then(setHistory).catch(() => setHistory([]))
+    }, 400)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [organizationId, q, searchHits.length])
+
+  const fmtEventWhen = (iso: string) => {
+    const d = new Date(iso)
+    return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-GB') + ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  }
+  const eventLine = (e: SpareKeyEvent) => {
+    const loc = e.box && e.slot != null ? `${e.box} · ${e.slot}` : t('fleet.keyBox.queueBadge')
+    if (e.action === 'removed') return t('fleet.keyBox.histRemoved', { loc })
+    if (e.action === 'moved') {
+      const from = e.fromBox && e.fromSlot != null ? `${e.fromBox} · ${e.fromSlot}` : t('fleet.keyBox.queueBadge')
+      return t('fleet.keyBox.histMoved', { from, to: loc })
+    }
+    return t('fleet.keyBox.histAdded', { loc })
+  }
 
   const missingFiltered = useMemo(() => {
     if (!q) return missing
@@ -322,6 +350,28 @@ export function KeyBoxLog() {
           {searchHits.length === 0 ? (
             <div>
               <p className="text-sm text-[#4a5e54] dark:text-gray-300">{t('fleet.keyBox.noKeyFound')}</p>
+
+              {history.length > 0 && (
+                <div className="mt-2.5 rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-[#f8faf9] dark:bg-gray-800/50 p-3">
+                  <p className="text-[11px] font-extrabold uppercase tracking-widest text-[#8a9e94] mb-2">
+                    {t('fleet.keyBox.historyTitle')}
+                  </p>
+                  <ul className="space-y-1.5">
+                    {history.map((e) => (
+                      <li key={e.id} className="text-xs text-[#4a5e54] dark:text-gray-300">
+                        <span className={`font-bold ${e.action === 'removed' ? 'text-red-600 dark:text-red-400' : 'text-[#025940] dark:text-[#72A68E]'}`}>
+                          {eventLine(e)}
+                        </span>
+                        <span className="text-[#8a9e94]"> · {fmtEventWhen(e.createdAt)}{e.actorName ? ` · ${t('fleet.keyBox.histBy', { name: e.actorName })}` : ''}</span>
+                        {e.note && (
+                          <span className="block text-[11px] italic text-[#72A68E] mt-0.5">“{e.note}”</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               <button
                 onClick={() => openAdd(search.toUpperCase())}
                 className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-[#025940] hover:bg-[#012619] text-white text-xs font-bold px-3.5 py-2 transition-colors"
@@ -520,6 +570,9 @@ function KeyFormModal({
   const [logbook, setLogbook] = useState(existing?.logbook || false)
   const [notes, setNotes] = useState(existing?.notes || '')
   const [saving, setSaving] = useState(false)
+  // Removal step: trash → note + confirm (the note is written to the permanent log).
+  const [removing, setRemoving] = useState(false)
+  const [removeNote, setRemoveNote] = useState('')
   const slotTouched = useRef(isEdit && existing?.slot != null)
 
   const effectiveBox = (newBox.trim() || box).toUpperCase()
@@ -605,6 +658,20 @@ function KeyFormModal({
           notes,
           updatedByName: actorName,
         })
+        // Location changed (incl. assigned from the queue) → permanent 'moved' event.
+        if (existing.box !== targetBox || existing.slot !== targetSlot) {
+          await spareKeyService.logEvent({
+            organizationId,
+            registration,
+            action: 'moved',
+            box: targetBox,
+            slot: targetSlot,
+            fromBox: existing.box,
+            fromSlot: existing.slot,
+            actorId: userId,
+            actorName,
+          })
+        }
       } else {
         await spareKeyService.addKey({
           organizationId,
@@ -632,12 +699,15 @@ function KeyFormModal({
     }
   }
 
-  const remove = async () => {
+  const confirmRemove = async () => {
     if (!existing) return
-    if (!window.confirm(t('fleet.keyBox.deleteConfirm', { reg: existing.registration }))) return
     setSaving(true)
     try {
-      await spareKeyService.deleteKey(existing.id)
+      await spareKeyService.removeKey(existing, {
+        note: removeNote,
+        actorId: userId,
+        actorName: actorName,
+      })
       toast.success(t('fleet.keyBox.deleted', { reg: existing.registration }))
       onSaved()
     } catch {
@@ -768,10 +838,43 @@ function KeyFormModal({
             <input value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls} />
           </div>
 
+          {removing ? (
+            /* Removal step: capture the why-note for the permanent log */
+            <div className="rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50/60 dark:bg-red-950/20 p-3 space-y-2.5">
+              <p className="text-sm font-bold text-red-700 dark:text-red-400">
+                {t('fleet.keyBox.removeTitle', { reg: existing?.registration || '' })}
+              </p>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">{t('fleet.keyBox.removeNoteLabel')}</label>
+                <textarea
+                  value={removeNote}
+                  onChange={(e) => setRemoveNote(e.target.value)}
+                  rows={2}
+                  autoFocus
+                  placeholder={t('fleet.keyBox.removeNotePh')}
+                  className={inputCls}
+                />
+                <p className="mt-1 text-[11px] text-red-600/80 dark:text-red-400/70">{t('fleet.keyBox.removeNoteHint')}</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setRemoving(false)} className="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-bold">
+                  {t('fleet.keyBox.back')}
+                </button>
+                <button
+                  onClick={confirmRemove}
+                  disabled={saving}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-bold disabled:opacity-60 inline-flex items-center justify-center gap-2"
+                >
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  {saving ? t('fleet.keyBox.saving') : t('fleet.keyBox.removeConfirm')}
+                </button>
+              </div>
+            </div>
+          ) : (
           <div className="flex gap-2 pt-1">
             {isEdit && (
               <button
-                onClick={remove}
+                onClick={() => setRemoving(true)}
                 disabled={saving}
                 title={t('fleet.keyBox.deleteKey')}
                 className="inline-flex items-center gap-1.5 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 px-3 py-2.5 text-sm font-semibold hover:bg-red-100 disabled:opacity-50"
@@ -791,6 +894,7 @@ function KeyFormModal({
               {saving ? t('fleet.keyBox.saving') : t('fleet.keyBox.save')}
             </button>
           </div>
+          )}
         </div>
       </div>
     </div>
