@@ -523,9 +523,9 @@ export function KeyBoxLog() {
                   {k.notes && <p className="mt-2.5 text-[11px] italic text-[#a9c6b9]">“{k.notes}”</p>}
                   <button
                     onClick={() => { dismissSpot(); setEditKey(k) }}
-                    className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-bold text-[#b3f243]/80 hover:text-[#b3f243]"
+                    className="mt-3.5 w-full inline-flex items-center justify-center gap-2 rounded-xl border-2 border-[#b3f243]/40 text-[#b3f243] hover:bg-[#b3f243]/10 hover:border-[#b3f243]/70 text-sm font-black py-2.5 transition-colors"
                   >
-                    <Pencil className="w-3 h-3" /> {t('fleet.keyBox.spotOpen')}
+                    <Pencil className="w-4 h-4" /> {t('fleet.keyBox.spotOpen')}
                   </button>
                 </div>
               ))}
