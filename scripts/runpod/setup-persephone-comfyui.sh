@@ -9,6 +9,8 @@
 # Optional:
 #   PERSEPHONE_IS_UNET=1   # set if the file you picked is UNET-only (no baked VAE/CLIP);
 #                          # also downloads the FLUX text encoders + VAE
+#   LORA_VERSION_IDS="12345 67890"  # space-separated Civitai version ids of LoRAs
+#                                   # to download (must be Flux.1 D LoRAs)
 #   COMFY_DIR=/workspace/ComfyUI
 
 set -euo pipefail
@@ -42,7 +44,18 @@ echo ">> Downloading Persephone (version $PERSEPHONE_VERSION_ID) to $DEST"
 wget --content-disposition -P "$DEST" \
   "https://civitai.com/api/download/models/${PERSEPHONE_VERSION_ID}?token=${CIVITAI_TOKEN}"
 
-# --- 3. FLUX text encoders + VAE (only needed for UNET-only files) -------------
+# --- 3. LoRAs from Civitai (optional) ------------------------------------------
+if [[ -n "${LORA_VERSION_IDS:-}" ]]; then
+  LORA_DIR="$COMFY_DIR/models/loras"
+  mkdir -p "$LORA_DIR"
+  for lora_id in $LORA_VERSION_IDS; do
+    echo ">> Downloading LoRA version $lora_id to $LORA_DIR"
+    wget --content-disposition -P "$LORA_DIR" \
+      "https://civitai.com/api/download/models/${lora_id}?token=${CIVITAI_TOKEN}"
+  done
+fi
+
+# --- 4. FLUX text encoders + VAE (only needed for UNET-only files) -------------
 if [[ "${PERSEPHONE_IS_UNET:-0}" == "1" ]]; then
   echo ">> Downloading FLUX text encoders and VAE"
   mkdir -p "$COMFY_DIR/models/clip" "$COMFY_DIR/models/vae"

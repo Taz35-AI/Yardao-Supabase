@@ -109,7 +109,54 @@ KSampler → VAE Decode (checkpoint VAE) → Save Image
 Persephone responds well to natural-language prompts (full sentences), not
 comma-separated tag soup — that's a FLUX trait.
 
-## 5. Costs & housekeeping
+## 5. Add LoRAs (optional, recommended)
+
+LoRAs are small add-on files (usually 100–600 MB) that steer the checkpoint toward a
+look — extra skin detail/texture, stronger photorealism, or specific NSFW styles that
+improve explicit results beyond what the base merge does on its own.
+
+**Compatibility is the #1 gotcha:** a LoRA only works with the model family it was
+trained for. Persephone is **Flux.1 D**, so on Civitai filter LoRAs by base model
+**Flux.1 D**. SD 1.5 / SDXL / Pony LoRAs (that includes "Realistic Vision", which is
+an SD 1.5 family model) will either error out or silently do nothing. Search terms
+that find the right kind of thing: *"skin detail flux"*, *"realism flux"*,
+*"amateur photo flux"*, plus whatever style LoRAs suit your content (enable the
+NSFW filter toggle in your Civitai account settings to see those listings).
+
+**Download** — same pattern as the checkpoint, different folder:
+
+```bash
+cd /workspace/ComfyUI/models/loras
+wget --content-disposition \
+  "https://civitai.com/api/download/models/<LORA_VERSION_ID>?token=${CIVITAI_TOKEN}"
+```
+
+Or pass them to the setup script: `LORA_VERSION_IDS="12345 67890" bash setup-persephone-comfyui.sh`.
+
+**Wiring in ComfyUI:** insert a **Load LoRA** node between the checkpoint and
+everything else — MODEL and CLIP pass *through* it:
+
+```
+Load Checkpoint → Load LoRA (#1) → Load LoRA (#2) → … → CLIP Text Encode / KSampler
+```
+
+Chain one node per LoRA. Practical settings:
+
+- **strength_model:** start at **0.7–0.8** for style/NSFW LoRAs, **0.3–0.5** for
+  skin-detail LoRAs (they get waxy/oversharpened when cranked). `strength_clip`
+  can stay equal to strength_model.
+- **Stacking:** 2–3 LoRAs is usually the ceiling before they fight each other and
+  anatomy degrades. If output gets mushy, lower each strength before removing one.
+- **Trigger words:** many LoRAs need a keyword in the prompt to activate — it's
+  listed on the LoRA's Civitai page (often in the "About this version" box).
+- Some checkpoint merges (Persephone included, in some versions) already bake in
+  realism/detail LoRAs — if a LoRA seems to do nothing, that may be why. Check the
+  model page description.
+
+After downloading, hit **Refresh** in ComfyUI so the files show up in the Load LoRA
+node's dropdown.
+
+## 6. Costs & housekeeping
 
 - **Stop the pod** when you're done — you pay per minute while it runs. A stopped
   pod still bills a small amount for volume storage; **terminate** it if you used a
