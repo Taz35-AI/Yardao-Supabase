@@ -82,6 +82,13 @@ so no HuggingFace license gate.)
 
 After downloading, click **Refresh** in ComfyUI (or restart it) so the model appears.
 
+**Shortcut:** a ready-made workflow with the checkpoint + two LoRA slots already wired
+lives at [`docs/comfyui/persephone-flux-lora-workflow.json`](comfyui/persephone-flux-lora-workflow.json)
+in this repo. Drag the file onto the ComfyUI browser tab, then pick your actual
+files in the Load Checkpoint and both Load LoRA dropdowns (they ship with
+placeholder names, so they'll show as missing until you do). `Ctrl+B` on a LoRA
+node bypasses it if you only want one.
+
 **Full checkpoint:** load the built-in template via *Workflow → Browse Templates →
 Flux*, swap the checkpoint loader to your Persephone file — or wire it manually:
 
