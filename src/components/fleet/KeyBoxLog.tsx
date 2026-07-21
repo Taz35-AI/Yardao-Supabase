@@ -40,7 +40,8 @@ export function KeyBoxLog() {
   const [organizationId, setOrganizationId] = useState<string | null>(null)
   const [actorName, setActorName] = useState('Unknown')
   const [keys, setKeys] = useState<SpareKey[]>([])
-  const [declaredBoxes, setDeclaredBoxes] = useState<string[]>([])
+  const [declaredBoxes, setDeclaredBoxes] = useState<{ name: string; label: string | null }[]>([])
+  const [oneKeyRegs, setOneKeyRegs] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [tab, setTab] = useState<'box' | 'queue' | 'missing'>('box')
@@ -49,6 +50,29 @@ export function KeyBoxLog() {
   const [prefillReg, setPrefillReg] = useState('')
   const [showClear, setShowClear] = useState(false)
   const [showAddBox, setShowAddBox] = useState(false)
+  const [showOneKey, setShowOneKey] = useState(false)
+
+  const markOneKey = async (reg: string) => {
+    if (!organizationId) return
+    try {
+      await spareKeyService.markOneKey(organizationId, reg, actorName)
+      toast.success(t('fleet.keyBox.oneKeyMarked', { reg: normKeyReg(reg) }))
+      load()
+    } catch {
+      toast.error(t('fleet.keyBox.oneKeyFail'))
+    }
+  }
+
+  const unmarkOneKey = async (reg: string) => {
+    if (!organizationId) return
+    try {
+      await spareKeyService.unmarkOneKey(organizationId, reg)
+      toast.success(t('fleet.keyBox.oneKeyRemoved', { reg: normKeyReg(reg) }))
+      load()
+    } catch {
+      toast.error(t('fleet.keyBox.oneKeyFail'))
+    }
+  }
 
   // Resolve org + actor once.
   useEffect(() => {
@@ -61,12 +85,14 @@ export function KeyBoxLog() {
 
   const load = useCallback(async () => {
     if (!organizationId) return
-    const [rows, declared] = await Promise.all([
+    const [rows, declared, oneKey] = await Promise.all([
       spareKeyService.getKeys(organizationId),
       spareKeyService.getBoxes(organizationId),
+      spareKeyService.getOneKeyRegs(organizationId),
     ])
     setKeys(rows)
     setDeclaredBoxes(declared)
+    setOneKeyRegs(oneKey)
     setLoading(false)
   }, [organizationId])
 
@@ -79,6 +105,7 @@ export function KeyBoxLog() {
       .channel(`spare_keys:${organizationId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'spare_keys', filter: `organization_id=eq.${organizationId}` }, () => load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'spare_key_boxes', filter: `organization_id=eq.${organizationId}` }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'spare_key_one_key', filter: `organization_id=eq.${organizationId}` }, () => load())
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [organizationId, load])
@@ -111,18 +138,40 @@ export function KeyBoxLog() {
     return s
   }, [keys])
 
+  // "Came with only 1 key" flags — token set, dual-plate aware like everything else.
+  const oneKeyTokens = useMemo(() => {
+    const s = new Set<string>()
+    for (const r of oneKeyRegs) for (const t of keyRegTokens(r)) s.add(t)
+    return s
+  }, [oneKeyRegs])
+
+  const isOneKey = useCallback(
+    (reg: string) => keyRegTokens(reg).some((t) => oneKeyTokens.has(t)),
+    [oneKeyTokens],
+  )
+
+  // Vehicles flagged one-key (a spare never existed — not "missing").
+  const oneKeyVehicles = useMemo(() => {
+    const out = activeFleet.filter((v: any) => isOneKey(v.registration))
+    out.sort((a: any, b: any) => (a.registration || '').localeCompare(b.registration || ''))
+    return out
+  }, [activeFleet, isOneKey])
+
   // Fleet vehicles WITHOUT a spare key — covered if ANY of the vehicle's reg
   // tokens matches ANY key token (dual plates work in both directions).
+  // One-key vehicles are excluded: no spare will ever exist for them.
   const missing = useMemo(() => {
     const out = activeFleet.filter(
-      (v: any) => !keyRegTokens(v.registration).some((t) => keyRegs.has(t)),
+      (v: any) => !keyRegTokens(v.registration).some((t) => keyRegs.has(t)) && !isOneKey(v.registration),
     )
     out.sort((a: any, b: any) => (a.registration || '').localeCompare(b.registration || ''))
     return out
-  }, [activeFleet, keyRegs])
+  }, [activeFleet, keyRegs, isOneKey])
 
-  const coveragePct = activeFleet.length > 0
-    ? Math.round(((activeFleet.length - missing.length) / activeFleet.length) * 100)
+  // Coverage over the vehicles that CAN have a spare (one-key ones excluded).
+  const coverageBase = activeFleet.length - oneKeyVehicles.length
+  const coveragePct = coverageBase > 0
+    ? Math.round(((coverageBase - missing.length) / coverageBase) * 100)
     : 0
 
   // Duplicate keys: two or more keys sharing any plate token (could be a
@@ -208,7 +257,7 @@ export function KeyBoxLog() {
   // Union of declared boxes (may be empty) and boxes referenced by keys.
   const boxes = useMemo(() => {
     const map = new Map<string, EnrichedKey[]>()
-    for (const b of declaredBoxes) if (!map.has(b)) map.set(b, [])
+    for (const b of declaredBoxes) if (!map.has(b.name)) map.set(b.name, [])
     for (const k of located) {
       const b = k.box as string
       if (!map.has(b)) map.set(b, [])
@@ -216,6 +265,13 @@ export function KeyBoxLog() {
     }
     return Array.from(map.entries()).sort((a, b) => boxSort(a[0], b[0]))
   }, [located, declaredBoxes])
+
+  // Full names for boxes that have one ('MN' → 'MOTORNATION').
+  const boxLabels = useMemo(() => {
+    const m: Record<string, string> = {}
+    for (const b of declaredBoxes) if (b.label) m[b.name] = b.label
+    return m
+  }, [declaredBoxes])
 
   const boxNames = useMemo(() => boxes.map(([b]) => b), [boxes])
 
@@ -274,7 +330,7 @@ export function KeyBoxLog() {
       const c = bi * BLOCK
       const cells = ['No', 'Registration', 'Make', 'Modle', 'Type', 'Logbook', '']
       for (let i = 0; i < BLOCK; i++) {
-        titleRow[c + i] = i === 0 ? `SPARE KEY ${box}` : ''
+        titleRow[c + i] = i === 0 ? `SPARE KEY ${boxLabels[box] || box}` : ''
         headRow[c + i] = cells[i]
       }
       merges.push({ s: { r: 0, c }, e: { r: 0, c: c + 5 } })
@@ -682,8 +738,8 @@ export function KeyBoxLog() {
                     openBoxes[box] ? 'border-b border-[#eef2f0] dark:border-gray-700' : ''
                   }`}
                 >
-                  <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[#012619] text-[#b3f243] font-black text-sm">{box}</span>
-                  <span className="text-sm font-bold text-[#012619] dark:text-white">{t('fleet.keyBox.boxTitle', { box })}</span>
+                  <span className="inline-flex items-center justify-center min-w-8 h-8 px-1.5 rounded-lg bg-[#012619] text-[#b3f243] font-black text-sm flex-shrink-0 max-w-[8rem] truncate">{box}</span>
+                  <span className="text-sm font-bold text-[#012619] dark:text-white truncate">{t('fleet.keyBox.boxTitle', { box: boxLabels[box] || box })}</span>
                   <span className="text-[11px] font-bold text-[#8a9e94]">{t('fleet.keyBox.boxCount', { count: list.length })}</span>
                   <span className="flex-1" />
                   <ChevronDown
@@ -744,38 +800,81 @@ export function KeyBoxLog() {
           </div>
         )
       ) : (
-        // Missing spare keys
-        missingFiltered.length === 0 ? (
-          <div className="rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-green-50 dark:bg-green-950/20 p-8 text-center">
-            <CheckCircle2 className="w-8 h-8 text-green-500 mx-auto mb-2" />
-            <p className="text-sm font-bold text-green-800 dark:text-green-300">{t('fleet.keyBox.missingNone')}</p>
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm divide-y divide-[#eef2f0] dark:divide-gray-800">
-            {missingFiltered.map((v: any) => (
-              <div key={v.id} className="flex items-center gap-3 px-3.5 py-2.5">
-                <span className="font-mono font-bold text-sm text-[#012619] dark:text-white flex-shrink-0">{v.registration}</span>
-                <span className="text-xs text-[#72A68E] flex-1 truncate">{[v.make, v.model].filter(Boolean).join(' ')}</span>
-                <button
-                  onClick={() => openAdd(v.registration || '')}
-                  className="inline-flex items-center gap-1 rounded-lg bg-[#025940] hover:bg-[#012619] text-white text-[11px] font-bold px-2.5 py-1.5 transition-colors flex-shrink-0"
-                >
-                  <Plus className="w-3 h-3" /> {t('fleet.keyBox.addShort')}
-                </button>
-              </div>
-            ))}
-          </div>
-        )
+        // Missing spare keys (one-key vehicles excluded — a spare never existed)
+        <div className="space-y-3">
+          {oneKeyVehicles.length > 0 && (
+            <div className="rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
+              <button
+                onClick={() => setShowOneKey((s) => !s)}
+                aria-expanded={showOneKey}
+                className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left hover:bg-[#f0f4f2] dark:hover:bg-gray-700/50 transition-colors"
+              >
+                <KeyRound className="w-4 h-4 text-[#72A68E]" />
+                <span className="text-sm font-bold text-[#012619] dark:text-white">{t('fleet.keyBox.oneKeyTitle', { count: oneKeyVehicles.length })}</span>
+                <span className="flex-1" />
+                <ChevronDown className={`w-4 h-4 text-[#72A68E] flex-shrink-0 transition-transform duration-200 ${showOneKey ? 'rotate-180' : ''}`} />
+              </button>
+              {showOneKey && (
+                <div className="border-t border-[#eef2f0] dark:border-gray-700">
+                  <p className="px-3.5 pt-2.5 pb-1 text-[11px] text-[#8a9e94]">{t('fleet.keyBox.oneKeyHint')}</p>
+                  <div className="divide-y divide-[#eef2f0] dark:divide-gray-800">
+                    {oneKeyVehicles.map((v: any) => (
+                      <div key={v.id} className="flex items-center gap-3 px-3.5 py-2.5">
+                        <span className="font-mono font-bold text-sm text-[#012619] dark:text-white flex-shrink-0">{v.registration}</span>
+                        <span className="text-xs text-[#72A68E] flex-1 truncate">{[v.make, v.model].filter(Boolean).join(' ')}</span>
+                        <button
+                          onClick={() => unmarkOneKey(v.registration || '')}
+                          className="text-[11px] font-bold text-[#72A68E] hover:text-[#025940] dark:hover:text-white px-2 py-1.5 flex-shrink-0 transition-colors"
+                        >
+                          {t('fleet.keyBox.oneKeyUndo')}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {missingFiltered.length === 0 ? (
+            <div className="rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-green-50 dark:bg-green-950/20 p-8 text-center">
+              <CheckCircle2 className="w-8 h-8 text-green-500 mx-auto mb-2" />
+              <p className="text-sm font-bold text-green-800 dark:text-green-300">{t('fleet.keyBox.missingNone')}</p>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm divide-y divide-[#eef2f0] dark:divide-gray-800">
+              {missingFiltered.map((v: any) => (
+                <div key={v.id} className="flex items-center gap-2 sm:gap-3 px-3.5 py-2.5">
+                  <span className="font-mono font-bold text-sm text-[#012619] dark:text-white flex-shrink-0">{v.registration}</span>
+                  <span className="text-xs text-[#72A68E] flex-1 truncate">{[v.make, v.model].filter(Boolean).join(' ')}</span>
+                  <button
+                    onClick={() => markOneKey(v.registration || '')}
+                    title={t('fleet.keyBox.oneKeyMark')}
+                    className="inline-flex items-center gap-1 rounded-lg border border-[#e2e8e5] dark:border-gray-700 text-[#4a5e54] dark:text-gray-300 hover:border-[#72A68E] hover:text-[#025940] dark:hover:text-white text-[11px] font-bold px-2.5 py-1.5 transition-colors flex-shrink-0"
+                  >
+                    <KeyRound className="w-3 h-3" /> {t('fleet.keyBox.oneKeyBtn')}
+                  </button>
+                  <button
+                    onClick={() => openAdd(v.registration || '')}
+                    className="inline-flex items-center gap-1 rounded-lg bg-[#025940] hover:bg-[#012619] text-white text-[11px] font-bold px-2.5 py-1.5 transition-colors flex-shrink-0"
+                  >
+                    <Plus className="w-3 h-3" /> {t('fleet.keyBox.addShort')}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {showAddBox && organizationId && (
         <AddBoxModal
           existingBoxes={boxNames}
           onClose={() => setShowAddBox(false)}
-          onCreate={async (name) => {
-            await spareKeyService.addBox(organizationId, name, actorName)
+          onCreate={async (name, label) => {
+            await spareKeyService.addBox(organizationId, name, label, actorName)
             setShowAddBox(false)
-            toast.success(t('fleet.keyBox.boxCreated', { box: name.trim().toUpperCase() }))
+            toast.success(t('fleet.keyBox.boxCreated', { box: label || name.trim().toUpperCase() }))
             setOpenBoxes((m) => ({ ...m, [name.trim().toUpperCase()]: true }))
             load()
           }}
@@ -808,6 +907,7 @@ export function KeyBoxLog() {
           prefillReg={prefillReg}
           keys={keys}
           boxNames={boxNames}
+          boxLabels={boxLabels}
           fleetByReg={fleetByReg}
           onClose={() => { setShowAdd(false); setEditKey(null) }}
           onSaved={() => { setShowAdd(false); setEditKey(null); load() }}
@@ -826,7 +926,7 @@ function AddBoxModal({
 }: {
   existingBoxes: string[]
   onClose: () => void
-  onCreate: (name: string) => Promise<void>
+  onCreate: (name: string, label: string | null) => Promise<void>
 }) {
   const t = useT()
   // Suggest the next box number: B1..B7 exist → B8.
@@ -839,6 +939,7 @@ function AddBoxModal({
     return `B${max + 1}`
   }, [existingBoxes])
   const [name, setName] = useState(suggested)
+  const [label, setLabel] = useState('')
   const [busy, setBusy] = useState(false)
   const clean = name.trim().toUpperCase()
   const exists = existingBoxes.some((b) => b.toUpperCase() === clean)
@@ -847,7 +948,7 @@ function AddBoxModal({
     if (!clean || exists || busy) return
     setBusy(true)
     try {
-      await onCreate(clean)
+      await onCreate(clean, label.trim() || null)
     } catch {
       toast.error(t('fleet.keyBox.boxCreateFail'))
       setBusy(false)
@@ -865,20 +966,32 @@ function AddBoxModal({
         </div>
         <div className="p-4 space-y-3">
           <div>
-            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">{t('fleet.keyBox.newBoxNameLabel')}</label>
+            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">{t('fleet.keyBox.newBoxCodeLabel')}</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value.toUpperCase())}
               onKeyDown={(e) => { if (e.key === 'Enter') run() }}
               autoFocus
-              placeholder={suggested}
+              maxLength={6}
+              placeholder={`${suggested} / MN`}
               className={`${inputCls} uppercase font-mono font-bold ${exists ? 'border-red-400 focus:border-red-500' : ''}`}
             />
             <p className="mt-1 text-[11px] text-[#72A68E]">
               {exists
                 ? <span className="text-red-500 font-semibold">{t('fleet.keyBox.boxExists', { box: clean })}</span>
-                : t('fleet.keyBox.newBoxHint')}
+                : t('fleet.keyBox.newBoxCodeHint')}
             </p>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">{t('fleet.keyBox.newBoxFullLabel')}</label>
+            <input
+              value={label}
+              onChange={(e) => setLabel(e.target.value.toUpperCase())}
+              onKeyDown={(e) => { if (e.key === 'Enter') run() }}
+              placeholder="MOTORNATION"
+              className={`${inputCls} uppercase`}
+            />
+            <p className="mt-1 text-[11px] text-[#72A68E]">{t('fleet.keyBox.newBoxHint')}</p>
           </div>
           <div className="flex gap-2 pt-1">
             <button onClick={onClose} className="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-bold">
@@ -980,6 +1093,7 @@ function KeyFormModal({
   prefillReg,
   keys,
   boxNames,
+  boxLabels,
   fleetByReg,
   onClose,
   onSaved,
@@ -991,6 +1105,7 @@ function KeyFormModal({
   prefillReg: string
   keys: SpareKey[]
   boxNames: string[]
+  boxLabels: Record<string, string>
   fleetByReg: Map<string, any>
   onClose: () => void
   onSaved: () => void
@@ -1230,7 +1345,7 @@ function KeyFormModal({
                 if (e.target.value === '__new__') setNewBox('B')
                 else { setNewBox(''); setBox(e.target.value) }
               }} className={inputCls}>
-                {boxNames.map((b) => <option key={b} value={b}>{b}</option>)}
+                {boxNames.map((b) => <option key={b} value={b}>{b}{boxLabels[b] ? ` — ${boxLabels[b]}` : ''}</option>)}
                 {boxNames.length === 0 && <option value="B1">B1</option>}
                 <option value="__new__">{t('fleet.keyBox.newBox')}</option>
               </select>

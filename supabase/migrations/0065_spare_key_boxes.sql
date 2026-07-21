@@ -10,11 +10,15 @@
 create table if not exists public.spare_key_boxes (
   id               uuid primary key default gen_random_uuid(),
   organization_id  uuid not null references public.organizations(id) on delete cascade,
-  name             text not null,           -- 'B8' (stored uppercase)
+  name             text not null,           -- SHORT code on the badge, e.g. 'B8', 'MN'
+  label            text,                    -- optional full name, e.g. 'MOTORNATION'
   created_by_name  text,
   created_at       timestamptz not null default now(),
   unique (organization_id, name)
 );
+
+-- Safety for databases that ran the earlier label-less version.
+alter table public.spare_key_boxes add column if not exists label text;
 
 create index if not exists spare_key_boxes_org_idx on public.spare_key_boxes (organization_id);
 

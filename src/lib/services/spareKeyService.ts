@@ -10,6 +10,7 @@ import { logger } from '@/lib/logger'
 const TABLE = 'spare_keys'
 const LOG = 'spare_key_log'
 const BOXES = 'spare_key_boxes'
+const ONE_KEY = 'spare_key_one_key'
 const nowIso = () => new Date().toISOString()
 
 export const normKeyReg = (s?: string | null) => (s || '').toUpperCase().replace(/\s+/g, '')
@@ -143,32 +144,86 @@ export const spareKeyService = {
   },
 
   /** Declared boxes (migration 0065) — lets an EMPTY box exist before any key
-   *  is assigned to it. The UI unions these with boxes referenced by keys. */
-  async getBoxes(organizationId: string): Promise<string[]> {
+   *  is assigned to it. `name` is the SHORT badge code ('B8', 'MN'), `label`
+   *  the optional full name ('MOTORNATION'). Unioned with key-referenced boxes. */
+  async getBoxes(organizationId: string): Promise<{ name: string; label: string | null }[]> {
     if (!organizationId) return []
     try {
       const { data, error } = await supabase
         .from(BOXES)
-        .select('name')
+        .select('*')
         .eq('organization_id', organizationId)
       if (error) throw error
-      return (data || []).map((r: any) => String(r.name))
+      return (data || []).map((r: any) => ({ name: String(r.name), label: r.label ?? null }))
     } catch (err) {
       logger.error('spareKeyService.getBoxes failed (run migration 0065?):', err)
       return []
     }
   },
 
-  /** Create an empty box. A duplicate name is treated as success. */
-  async addBox(organizationId: string, name: string, createdByName?: string | null): Promise<void> {
+  /** Create an empty box. A duplicate code is treated as success. */
+  async addBox(
+    organizationId: string,
+    name: string,
+    label?: string | null,
+    createdByName?: string | null,
+  ): Promise<void> {
     const clean = name.trim().toUpperCase()
     if (!organizationId || !clean) return
-    const { error } = await supabase.from(BOXES).insert({
+    const row: Record<string, any> = {
       organization_id: organizationId,
       name: clean,
+      label: label?.trim() || null,
+      created_by_name: createdByName ?? null,
+    }
+    let { error } = await supabase.from(BOXES).insert(row)
+    if (error && /label/.test(error.message || '')) {
+      // DB predates the label column — insert without it rather than fail.
+      delete row.label
+      ;({ error } = await supabase.from(BOXES).insert(row))
+    }
+    if (error && (error as any).code !== '23505') throw error
+  },
+
+  /** Registrations flagged "came with only 1 key" (migration 0066) — these are
+   *  excluded from the missing-spare list since a spare will never exist. */
+  async getOneKeyRegs(organizationId: string): Promise<string[]> {
+    if (!organizationId) return []
+    try {
+      const { data, error } = await supabase
+        .from(ONE_KEY)
+        .select('registration')
+        .eq('organization_id', organizationId)
+      if (error) throw error
+      return (data || []).map((r: any) => String(r.registration))
+    } catch (err) {
+      logger.error('spareKeyService.getOneKeyRegs failed (run migration 0066?):', err)
+      return []
+    }
+  },
+
+  /** Flag a registration as one-key. A duplicate is treated as success. */
+  async markOneKey(organizationId: string, registration: string, createdByName?: string | null): Promise<void> {
+    const reg = normKeyReg(registration)
+    if (!organizationId || !reg) return
+    const { error } = await supabase.from(ONE_KEY).insert({
+      organization_id: organizationId,
+      registration: reg,
       created_by_name: createdByName ?? null,
     })
     if (error && (error as any).code !== '23505') throw error
+  },
+
+  /** Remove the one-key flag — the vehicle goes back into the missing list. */
+  async unmarkOneKey(organizationId: string, registration: string): Promise<void> {
+    const reg = normKeyReg(registration)
+    if (!organizationId || !reg) return
+    const { error } = await supabase
+      .from(ONE_KEY)
+      .delete()
+      .eq('organization_id', organizationId)
+      .eq('registration', reg)
+    if (error) throw error
   },
 
   async getKeys(organizationId: string): Promise<SpareKey[]> {
