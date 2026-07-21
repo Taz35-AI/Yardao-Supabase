@@ -9,7 +9,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   KeyRound, Search, Plus, X, Loader2, Download, Pencil, Trash2,
-  BookOpen, MapPin, CheckCircle2, AlertTriangle, RefreshCw, ChevronDown,
+  BookOpen, MapPin, CheckCircle2, AlertTriangle, RefreshCw, ChevronDown, PackagePlus,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { toast } from 'sonner'
@@ -40,6 +40,7 @@ export function KeyBoxLog() {
   const [organizationId, setOrganizationId] = useState<string | null>(null)
   const [actorName, setActorName] = useState('Unknown')
   const [keys, setKeys] = useState<SpareKey[]>([])
+  const [declaredBoxes, setDeclaredBoxes] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [tab, setTab] = useState<'box' | 'queue' | 'missing'>('box')
@@ -47,6 +48,7 @@ export function KeyBoxLog() {
   const [showAdd, setShowAdd] = useState(false)
   const [prefillReg, setPrefillReg] = useState('')
   const [showClear, setShowClear] = useState(false)
+  const [showAddBox, setShowAddBox] = useState(false)
 
   // Resolve org + actor once.
   useEffect(() => {
@@ -59,8 +61,12 @@ export function KeyBoxLog() {
 
   const load = useCallback(async () => {
     if (!organizationId) return
-    const rows = await spareKeyService.getKeys(organizationId)
+    const [rows, declared] = await Promise.all([
+      spareKeyService.getKeys(organizationId),
+      spareKeyService.getBoxes(organizationId),
+    ])
     setKeys(rows)
+    setDeclaredBoxes(declared)
     setLoading(false)
   }, [organizationId])
 
@@ -72,6 +78,7 @@ export function KeyBoxLog() {
     const channel = supabase
       .channel(`spare_keys:${organizationId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'spare_keys', filter: `organization_id=eq.${organizationId}` }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'spare_key_boxes', filter: `organization_id=eq.${organizationId}` }, () => load())
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [organizationId, load])
@@ -198,15 +205,17 @@ export function KeyBoxLog() {
   const queued = useMemo(() => enriched.filter((k) => !k.box || k.slot == null), [enriched])
   const located = useMemo(() => enriched.filter((k) => k.box && k.slot != null), [enriched])
 
+  // Union of declared boxes (may be empty) and boxes referenced by keys.
   const boxes = useMemo(() => {
     const map = new Map<string, EnrichedKey[]>()
+    for (const b of declaredBoxes) if (!map.has(b)) map.set(b, [])
     for (const k of located) {
       const b = k.box as string
       if (!map.has(b)) map.set(b, [])
       map.get(b)!.push(k)
     }
     return Array.from(map.entries()).sort((a, b) => boxSort(a[0], b[0]))
-  }, [located])
+  }, [located, declaredBoxes])
 
   const boxNames = useMemo(() => boxes.map(([b]) => b), [boxes])
 
@@ -636,6 +645,14 @@ export function KeyBoxLog() {
           <Trash2 className="w-4 h-4" />
         </button>
         <button
+          onClick={() => setShowAddBox(true)}
+          title={t('fleet.keyBox.newBoxBtn')}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 text-[#025940] dark:text-[#72A68E] hover:border-[#72A68E] text-sm font-bold px-3.5 py-2.5 shadow-sm transition-colors"
+        >
+          <PackagePlus className="w-4 h-4" />
+          <span className="hidden sm:inline">{t('fleet.keyBox.newBoxBtn')}</span>
+        </button>
+        <button
           onClick={() => openAdd()}
           className="inline-flex items-center gap-1.5 rounded-xl bg-[#b3f243] hover:bg-[#9fd93a] text-[#012619] text-sm font-bold px-3.5 py-2.5 shadow-sm transition-colors"
         >
@@ -674,9 +691,21 @@ export function KeyBoxLog() {
                   />
                 </button>
                 {openBoxes[box] && (
+                  list.length === 0 ? (
+                    <div className="p-4 text-center">
+                      <p className="text-xs text-[#8a9e94]">{t('fleet.keyBox.boxEmptyHint')}</p>
+                      <button
+                        onClick={() => openAdd()}
+                        className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-[#025940] hover:bg-[#012619] text-white text-xs font-bold px-3.5 py-2 transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> {t('fleet.keyBox.addKey')}
+                      </button>
+                    </div>
+                  ) : (
                   <div className="p-2.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-2">
                     {list.map((k) => <KeyChip key={k.id} k={k} />)}
                   </div>
+                  )
                 )}
               </div>
             ))}
@@ -739,6 +768,20 @@ export function KeyBoxLog() {
         )
       )}
 
+      {showAddBox && organizationId && (
+        <AddBoxModal
+          existingBoxes={boxNames}
+          onClose={() => setShowAddBox(false)}
+          onCreate={async (name) => {
+            await spareKeyService.addBox(organizationId, name, actorName)
+            setShowAddBox(false)
+            toast.success(t('fleet.keyBox.boxCreated', { box: name.trim().toUpperCase() }))
+            setOpenBoxes((m) => ({ ...m, [name.trim().toUpperCase()]: true }))
+            load()
+          }}
+        />
+      )}
+
       {showClear && organizationId && (
         <ClearAllModal
           count={keys.length}
@@ -770,6 +813,88 @@ export function KeyBoxLog() {
           onSaved={() => { setShowAdd(false); setEditKey(null); load() }}
         />
       )}
+    </div>
+  )
+}
+
+// ── New-box modal: create an EMPTY box, assign keys to it as normal ───────────
+
+function AddBoxModal({
+  existingBoxes,
+  onClose,
+  onCreate,
+}: {
+  existingBoxes: string[]
+  onClose: () => void
+  onCreate: (name: string) => Promise<void>
+}) {
+  const t = useT()
+  // Suggest the next box number: B1..B7 exist → B8.
+  const suggested = useMemo(() => {
+    let max = 0
+    for (const b of existingBoxes) {
+      const m = /^B(\d+)$/i.exec(b.trim())
+      if (m) max = Math.max(max, parseInt(m[1], 10))
+    }
+    return `B${max + 1}`
+  }, [existingBoxes])
+  const [name, setName] = useState(suggested)
+  const [busy, setBusy] = useState(false)
+  const clean = name.trim().toUpperCase()
+  const exists = existingBoxes.some((b) => b.toUpperCase() === clean)
+
+  const run = async () => {
+    if (!clean || exists || busy) return
+    setBusy(true)
+    try {
+      await onCreate(clean)
+    } catch {
+      toast.error(t('fleet.keyBox.boxCreateFail'))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
+      <div className="relative bg-white dark:bg-gray-900 w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl border border-[#025940]/20 overflow-hidden">
+        <div className="bg-gradient-to-br from-[#012619] to-[#025940] px-4 py-3 flex items-center justify-between">
+          <h2 className="text-base font-bold text-white inline-flex items-center gap-2">
+            <PackagePlus className="w-4 h-4 text-[#b3f243]" /> {t('fleet.keyBox.newBoxTitle')}
+          </h2>
+          <button onClick={onClose} className="p-1.5 hover:bg-white/15 rounded-lg"><X className="w-4 h-4 text-white" /></button>
+        </div>
+        <div className="p-4 space-y-3">
+          <div>
+            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">{t('fleet.keyBox.newBoxNameLabel')}</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value.toUpperCase())}
+              onKeyDown={(e) => { if (e.key === 'Enter') run() }}
+              autoFocus
+              placeholder={suggested}
+              className={`${inputCls} uppercase font-mono font-bold ${exists ? 'border-red-400 focus:border-red-500' : ''}`}
+            />
+            <p className="mt-1 text-[11px] text-[#72A68E]">
+              {exists
+                ? <span className="text-red-500 font-semibold">{t('fleet.keyBox.boxExists', { box: clean })}</span>
+                : t('fleet.keyBox.newBoxHint')}
+            </p>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button onClick={onClose} className="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-bold">
+              {t('fleet.keyBox.cancel')}
+            </button>
+            <button
+              onClick={run}
+              disabled={!clean || exists || busy}
+              className="flex-1 px-4 py-2.5 rounded-lg bg-[#025940] hover:bg-[#012619] text-white text-sm font-bold disabled:opacity-60 inline-flex items-center justify-center gap-2"
+            >
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <PackagePlus className="w-4 h-4" />}
+              {busy ? t('fleet.keyBox.saving') : t('fleet.keyBox.newBoxCreate')}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

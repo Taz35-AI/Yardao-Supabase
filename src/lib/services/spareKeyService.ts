@@ -9,6 +9,7 @@ import { logger } from '@/lib/logger'
 
 const TABLE = 'spare_keys'
 const LOG = 'spare_key_log'
+const BOXES = 'spare_key_boxes'
 const nowIso = () => new Date().toISOString()
 
 export const normKeyReg = (s?: string | null) => (s || '').toUpperCase().replace(/\s+/g, '')
@@ -139,6 +140,35 @@ export const spareKeyService = {
     })
     const { error } = await supabase.from(TABLE).delete().eq('id', key.id)
     if (error) throw error
+  },
+
+  /** Declared boxes (migration 0065) — lets an EMPTY box exist before any key
+   *  is assigned to it. The UI unions these with boxes referenced by keys. */
+  async getBoxes(organizationId: string): Promise<string[]> {
+    if (!organizationId) return []
+    try {
+      const { data, error } = await supabase
+        .from(BOXES)
+        .select('name')
+        .eq('organization_id', organizationId)
+      if (error) throw error
+      return (data || []).map((r: any) => String(r.name))
+    } catch (err) {
+      logger.error('spareKeyService.getBoxes failed (run migration 0065?):', err)
+      return []
+    }
+  },
+
+  /** Create an empty box. A duplicate name is treated as success. */
+  async addBox(organizationId: string, name: string, createdByName?: string | null): Promise<void> {
+    const clean = name.trim().toUpperCase()
+    if (!organizationId || !clean) return
+    const { error } = await supabase.from(BOXES).insert({
+      organization_id: organizationId,
+      name: clean,
+      created_by_name: createdByName ?? null,
+    })
+    if (error && (error as any).code !== '23505') throw error
   },
 
   async getKeys(organizationId: string): Promise<SpareKey[]> {
