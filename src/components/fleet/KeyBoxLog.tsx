@@ -514,6 +514,14 @@ export function KeyBoxLog() {
             >
               <AlertTriangle className="w-3.5 h-3.5" /> {t('fleet.keyBox.statMissing', { count: missing.length })}
             </button>
+            {oneKeyVehicles.length > 0 && (
+              <button
+                onClick={() => { setTab('missing'); setShowOneKey(true) }}
+                className="inline-flex items-center gap-1.5 rounded-full bg-white/10 text-white px-3 py-1.5 hover:bg-white/20 transition-colors"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-[#b3f243]" /> {t('fleet.keyBox.statOneKey', { count: oneKeyVehicles.length })}
+              </button>
+            )}
           </div>
         </div>
       </div>

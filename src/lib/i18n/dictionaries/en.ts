@@ -353,6 +353,7 @@ export const en = {
       boxDeleted: 'Box {box} deleted.',
       boxDeletedMoved: 'Box {box} deleted — {count} keys moved to the queue.',
       boxDeleteFail: 'Failed to delete box.',
+      statOneKey: '{count} with 1 key only',
       oneKeyBtn: '1 key only',
       oneKeyMark: 'This vehicle came with a single key — no spare exists',
       oneKeyMarked: '{reg} marked as one-key — removed from missing.',
