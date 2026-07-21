@@ -46,6 +46,7 @@ export function KeyBoxLog() {
   const [editKey, setEditKey] = useState<SpareKey | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [prefillReg, setPrefillReg] = useState('')
+  const [showClear, setShowClear] = useState(false)
 
   // Resolve org + actor once.
   useEffect(() => {
@@ -628,6 +629,13 @@ export function KeyBoxLog() {
           <Download className="w-4 h-4" />
         </button>
         <button
+          onClick={() => keys.length > 0 ? setShowClear(true) : toast.info(t('fleet.keyBox.clearNothing'))}
+          title={t('fleet.keyBox.clearAll')}
+          className="p-2.5 rounded-xl border border-red-200 dark:border-red-900/50 bg-white dark:bg-gray-800 text-red-500 hover:text-red-700 hover:border-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 shadow-sm transition-colors"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+        <button
           onClick={() => openAdd()}
           className="inline-flex items-center gap-1.5 rounded-xl bg-[#b3f243] hover:bg-[#9fd93a] text-[#012619] text-sm font-bold px-3.5 py-2.5 shadow-sm transition-colors"
         >
@@ -731,6 +739,23 @@ export function KeyBoxLog() {
         )
       )}
 
+      {showClear && organizationId && (
+        <ClearAllModal
+          count={keys.length}
+          onClose={() => setShowClear(false)}
+          onConfirm={async () => {
+            const n = await spareKeyService.clearAll(organizationId, {
+              note: t('fleet.keyBox.clearLogNote'),
+              actorId: user?.uid || null,
+              actorName,
+            })
+            setShowClear(false)
+            toast.success(t('fleet.keyBox.cleared', { count: n }))
+            load()
+          }}
+        />
+      )}
+
       {(showAdd || editKey) && organizationId && (
         <KeyFormModal
           organizationId={organizationId}
@@ -745,6 +770,77 @@ export function KeyBoxLog() {
           onSaved={() => { setShowAdd(false); setEditKey(null); load() }}
         />
       )}
+    </div>
+  )
+}
+
+// ── Delete-everything modal: type DELETE to confirm (fresh data re-import) ────
+
+function ClearAllModal({
+  count,
+  onClose,
+  onConfirm,
+}: {
+  count: number
+  onClose: () => void
+  onConfirm: () => Promise<void>
+}) {
+  const t = useT()
+  const [typed, setTyped] = useState('')
+  const [busy, setBusy] = useState(false)
+  const armed = typed.trim().toUpperCase() === 'DELETE'
+
+  const run = async () => {
+    if (!armed || busy) return
+    setBusy(true)
+    try {
+      await onConfirm()
+    } catch {
+      toast.error(t('fleet.keyBox.clearFail'))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
+      <div className="relative bg-white dark:bg-gray-900 w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl border border-red-300 dark:border-red-900/60 overflow-hidden">
+        <div className="bg-gradient-to-br from-red-700 to-red-900 px-4 py-3 flex items-center justify-between">
+          <h2 className="text-base font-bold text-white inline-flex items-center gap-2">
+            <Trash2 className="w-4 h-4" /> {t('fleet.keyBox.clearTitle')}
+          </h2>
+          <button onClick={onClose} className="p-1.5 hover:bg-white/15 rounded-lg"><X className="w-4 h-4 text-white" /></button>
+        </div>
+        <div className="p-4 space-y-3">
+          <div className="rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50/60 dark:bg-red-950/20 p-3">
+            <p className="text-sm font-bold text-red-700 dark:text-red-400 inline-flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" /> {t('fleet.keyBox.clearBody', { count })}
+            </p>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">{t('fleet.keyBox.clearTypeHint')}</label>
+            <input
+              value={typed}
+              onChange={(e) => setTyped(e.target.value.toUpperCase())}
+              placeholder="DELETE"
+              autoFocus
+              className={`${inputCls} uppercase font-mono font-bold ${armed ? 'border-red-400 focus:border-red-500' : ''}`}
+            />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button onClick={onClose} className="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-bold">
+              {t('fleet.keyBox.cancel')}
+            </button>
+            <button
+              onClick={run}
+              disabled={!armed || busy}
+              className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-bold disabled:opacity-50 inline-flex items-center justify-center gap-2"
+            >
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              {busy ? t('fleet.keyBox.clearing') : t('fleet.keyBox.clearConfirm')}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

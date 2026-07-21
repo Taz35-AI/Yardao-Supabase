@@ -239,4 +239,36 @@ export const spareKeyService = {
     const { error } = await supabase.from(TABLE).delete().eq('id', id)
     if (error) throw error
   },
+
+  /** DANGER: wipe EVERY key for the org (fresh re-import). Each key gets a
+   *  permanent 'removed' event first (one bulk insert), so searching an old
+   *  reg later still explains when and why its key disappeared. */
+  async clearAll(
+    organizationId: string,
+    opts: { note?: string | null; actorId?: string | null; actorName?: string | null },
+  ): Promise<number> {
+    if (!organizationId) return 0
+    const keys = await this.getKeys(organizationId)
+    if (keys.length === 0) return 0
+    try {
+      const { error } = await supabase.from(LOG).insert(
+        keys.map((k) => ({
+          organization_id: organizationId,
+          registration: normKeyReg(k.registration),
+          action: 'removed',
+          box: k.box,
+          slot: k.slot,
+          note: opts.note?.trim() || null,
+          actor_id: opts.actorId ?? null,
+          actor_name: opts.actorName ?? null,
+        })),
+      )
+      if (error) throw error
+    } catch (err) {
+      logger.error('spareKeyService.clearAll log failed (run migration 0064?):', err)
+    }
+    const { error } = await supabase.from(TABLE).delete().eq('organization_id', organizationId)
+    if (error) throw error
+    return keys.length
+  },
 }
