@@ -185,6 +185,52 @@ export const spareKeyService = {
     if (error && (error as any).code !== '23505') throw error
   },
 
+  /** Delete a box. Any keys still inside move to the QUEUE (box/slot null),
+   *  each with a permanent 'moved' event — nothing is lost. */
+  async deleteBox(
+    organizationId: string,
+    name: string,
+    actorName?: string | null,
+  ): Promise<number> {
+    const clean = name.trim().toUpperCase()
+    if (!organizationId || !clean) return 0
+    const keys = await this.getKeys(organizationId)
+    const inBox = keys.filter((k) => (k.box || '').trim().toUpperCase() === clean)
+    if (inBox.length > 0) {
+      try {
+        const { error } = await supabase.from(LOG).insert(
+          inBox.map((k) => ({
+            organization_id: organizationId,
+            registration: normKeyReg(k.registration),
+            action: 'moved',
+            box: null,
+            slot: null,
+            from_box: k.box,
+            from_slot: k.slot,
+            note: `Box ${clean} deleted`,
+            actor_name: actorName ?? null,
+          })),
+        )
+        if (error) throw error
+      } catch (err) {
+        logger.error('spareKeyService.deleteBox log failed:', err)
+      }
+      const { error } = await supabase
+        .from(TABLE)
+        .update({ box: null, slot: null, updated_at: nowIso() })
+        .eq('organization_id', organizationId)
+        .eq('box', clean)
+      if (error) throw error
+    }
+    const { error } = await supabase
+      .from(BOXES)
+      .delete()
+      .eq('organization_id', organizationId)
+      .eq('name', clean)
+    if (error) throw error
+    return inBox.length
+  },
+
   /** Registrations flagged "came with only 1 key" (migration 0066) — these are
    *  excluded from the missing-spare list since a spare will never exist. */
   async getOneKeyRegs(organizationId: string): Promise<string[]> {

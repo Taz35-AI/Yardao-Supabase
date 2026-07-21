@@ -27,6 +27,17 @@ const inputCls =
 const boxSort = (a: string, b: string) =>
   a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
 
+// Badge code for a box: short names ('B1', 'MN') pass through; long names get
+// abbreviated so the badge NEVER overflows — 'OTHER LOCATION' → 'OL',
+// 'MOTORNATION' → 'MOT'. The full name still shows in the box title.
+const boxCode = (b: string) => {
+  const clean = (b || '').trim()
+  if (clean.length <= 4) return clean
+  const words = clean.split(/[^A-Z0-9]+/i).filter(Boolean)
+  if (words.length > 1) return words.map((w) => w[0]).join('').slice(0, 3).toUpperCase()
+  return clean.slice(0, 3).toUpperCase()
+}
+
 interface EnrichedKey extends SpareKey {
   fleetMake?: string | null
   fleetModel?: string | null
@@ -51,6 +62,28 @@ export function KeyBoxLog() {
   const [showClear, setShowClear] = useState(false)
   const [showAddBox, setShowAddBox] = useState(false)
   const [showOneKey, setShowOneKey] = useState(false)
+  const [deleteBoxTarget, setDeleteBoxTarget] = useState<{ name: string; count: number } | null>(null)
+
+  const doDeleteBox = async (name: string) => {
+    if (!organizationId) return
+    try {
+      const moved = await spareKeyService.deleteBox(organizationId, name, actorName)
+      setDeleteBoxTarget(null)
+      toast.success(moved > 0
+        ? t('fleet.keyBox.boxDeletedMoved', { box: name, count: moved })
+        : t('fleet.keyBox.boxDeleted', { box: name }))
+      load()
+    } catch {
+      toast.error(t('fleet.keyBox.boxDeleteFail'))
+    }
+  }
+
+  // Empty box → delete straight away (recreating takes two taps). A box with
+  // keys asks first — its keys move to the queue, nothing is lost.
+  const requestDeleteBox = (name: string, count: number) => {
+    if (count === 0) doDeleteBox(name)
+    else setDeleteBoxTarget({ name, count })
+  }
 
   const markOneKey = async (reg: string) => {
     if (!organizationId) return
@@ -390,8 +423,8 @@ export function KeyBoxLog() {
           {k.registration}
         </span>
         {k.box && k.slot != null ? (
-          <span className="inline-flex items-center gap-1 rounded-lg bg-[#012619] text-[#b3f243] font-extrabold px-2 py-0.5 text-[11px] tracking-wide">
-            {k.box}·{k.slot}
+          <span className="inline-flex items-center gap-1 rounded-lg bg-[#012619] text-[#b3f243] font-extrabold px-2 py-0.5 text-[11px] tracking-wide whitespace-nowrap">
+            {boxCode(k.box)}·{k.slot}
           </span>
         ) : (
           <span className="inline-flex items-center gap-1 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-extrabold px-2 py-0.5 text-[10px] uppercase tracking-wide">
@@ -620,7 +653,7 @@ export function KeyBoxLog() {
                   </p>
                   {k.box && k.slot != null ? (
                     <div className="mt-3 inline-flex items-baseline gap-2 rounded-2xl bg-[#b3f243] px-6 py-3 animate-pulse">
-                      <span className="text-4xl font-black text-[#012619] tracking-tight">{k.box}</span>
+                      <span className="text-4xl font-black text-[#012619] tracking-tight">{boxCode(k.box as string)}</span>
                       <span className="text-2xl font-black text-[#012619]/60">·</span>
                       <span className="text-4xl font-black text-[#012619] tracking-tight">{k.slot}</span>
                     </div>
@@ -731,21 +764,29 @@ export function KeyBoxLog() {
           <div className="space-y-3">
             {boxes.map(([box, list]) => (
               <div key={box} className="rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-[#f8faf9] dark:bg-gray-900 shadow-sm overflow-hidden">
-                <button
+                <div
                   onClick={() => toggleBox(box)}
+                  role="button"
                   aria-expanded={!!openBoxes[box]}
-                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 bg-white dark:bg-gray-800 text-left hover:bg-[#f0f4f2] dark:hover:bg-gray-700/50 transition-colors ${
+                  className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 bg-white dark:bg-gray-800 text-left cursor-pointer hover:bg-[#f0f4f2] dark:hover:bg-gray-700/50 transition-colors ${
                     openBoxes[box] ? 'border-b border-[#eef2f0] dark:border-gray-700' : ''
                   }`}
                 >
-                  <span className="inline-flex items-center justify-center min-w-8 h-8 px-1.5 rounded-lg bg-[#012619] text-[#b3f243] font-black text-sm flex-shrink-0 max-w-[8rem] truncate">{box}</span>
+                  <span className="inline-flex items-center justify-center min-w-8 h-8 px-2 rounded-lg bg-[#012619] text-[#b3f243] font-black text-sm flex-shrink-0 whitespace-nowrap">{boxCode(box)}</span>
                   <span className="text-sm font-bold text-[#012619] dark:text-white truncate">{t('fleet.keyBox.boxTitle', { box: boxLabels[box] || box })}</span>
-                  <span className="text-[11px] font-bold text-[#8a9e94]">{t('fleet.keyBox.boxCount', { count: list.length })}</span>
+                  <span className="text-[11px] font-bold text-[#8a9e94] flex-shrink-0">{t('fleet.keyBox.boxCount', { count: list.length })}</span>
                   <span className="flex-1" />
+                  <button
+                    onClick={(e) => { e.stopPropagation(); requestDeleteBox(box, list.length) }}
+                    title={t('fleet.keyBox.boxDeleteHint')}
+                    className="p-1.5 rounded-lg text-[#9db0a6] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 flex-shrink-0 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                   <ChevronDown
                     className={`w-4 h-4 text-[#72A68E] flex-shrink-0 transition-transform duration-200 ${openBoxes[box] ? 'rotate-180' : ''}`}
                   />
-                </button>
+                </div>
                 {openBoxes[box] && (
                   list.length === 0 ? (
                     <div className="p-4 text-center">
@@ -879,6 +920,35 @@ export function KeyBoxLog() {
             load()
           }}
         />
+      )}
+
+      {deleteBoxTarget && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
+          <div className="relative bg-white dark:bg-gray-900 w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl border border-red-300 dark:border-red-900/60 overflow-hidden">
+            <div className="bg-gradient-to-br from-red-700 to-red-900 px-4 py-3 flex items-center justify-between">
+              <h2 className="text-base font-bold text-white inline-flex items-center gap-2">
+                <Trash2 className="w-4 h-4" /> {t('fleet.keyBox.boxDeleteTitle', { box: boxLabels[deleteBoxTarget.name] || deleteBoxTarget.name })}
+              </h2>
+              <button onClick={() => setDeleteBoxTarget(null)} className="p-1.5 hover:bg-white/15 rounded-lg"><X className="w-4 h-4 text-white" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-sm text-[#4a5e54] dark:text-gray-300">
+                {t('fleet.keyBox.boxDeleteBody', { count: deleteBoxTarget.count })}
+              </p>
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setDeleteBoxTarget(null)} className="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-bold">
+                  {t('fleet.keyBox.cancel')}
+                </button>
+                <button
+                  onClick={() => doDeleteBox(deleteBoxTarget.name)}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-bold inline-flex items-center justify-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" /> {t('fleet.keyBox.boxDeleteConfirm')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {showClear && organizationId && (
