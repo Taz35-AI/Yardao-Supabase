@@ -12,7 +12,7 @@ import { BulkInsuranceService } from '@/services/bulkInsuranceService'
 import { enhancedVehicleService } from '@/lib/services/enhancedVehicleService' // ✅ ADDED: Import defleet service
 import { supabase } from '@/lib/supabaseClient'
 import { InsuranceStatus, FleetVehicle, DefleetReason } from '@/types' // ✅ ADDED: DefleetReason
-import { DamageSyncService } from '@/services/damageSyncService'
+import { DamageSyncService, ensurePinPhotosUploaded } from '@/services/damageSyncService'
 import { logger } from '@/lib/logger'
 
 // Import the SyncNotification type from the component file
@@ -449,6 +449,17 @@ export function useFleetActions(fleetData: FleetDataHook | any) {
         // and — with a stale contractId — made the badge keep the OLD colour.)
       }
       
+      // Damage-pin photos must live in Storage, never as base64 in the row —
+      // convert before the write so neither the fleet row nor the yard sync
+      // ever persists base64.
+      if (Array.isArray(processedUpdates.damagePins) && processedUpdates.damagePins.length > 0) {
+        processedUpdates.damagePins = await ensurePinPhotosUploaded(
+          processedUpdates.damagePins,
+          userProfile.organizationId,
+          currentVehicle.registration,
+        )
+      }
+
       // Update the vehicle in fleet
       await fleetData.updateVehicle(vehicleId, processedUpdates)
 

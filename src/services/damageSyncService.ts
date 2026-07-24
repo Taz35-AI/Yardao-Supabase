@@ -83,6 +83,34 @@ export async function uploadDamagePhoto(
   return data.publicUrl
 }
 
+// ─── Move base64 photos to Storage before any DB write ───────────────────────
+// Base64 photos stored inside the damage_pins jsonb bloat every row: each
+// SELECT drags all photos over the wire, realtime has to decode them on every
+// change, and WAL/checkpoint volume explodes (this OOM-crashed the DB once).
+// This converts any photoBase64 pin to a photoUrl pin by uploading to the
+// damage-photos bucket. On upload failure the base64 is kept so the photo is
+// never lost — it will be retried on the next save.
+export async function ensurePinPhotosUploaded(
+  pins: DamagePin[],
+  orgId: string,
+  folder: string,
+): Promise<DamagePin[]> {
+  if (!pins || pins.length === 0) return pins ?? []
+  return Promise.all(
+    pins.map(async pin => {
+      if (!pin.photoBase64) return pin
+      try {
+        const url = await uploadDamagePhoto(orgId, folder, pin.id, pin.photoBase64)
+        const { photoBase64: _dropped, ...rest } = pin
+        return { ...rest, photoUrl: url }
+      } catch (err) {
+        logger.error(`[DamageSync] Photo upload failed for pin ${pin.id} — keeping base64 for retry`, err)
+        return pin
+      }
+    })
+  )
+}
+
 // ─── Strip undefined from every pin before any write ─────────────────────────
 // Defensive: keeps the stored jsonb clean (no undefined-valued keys) when a user
 // removes a photo (e.g. photoBase64 / photoUrl becomes undefined).
@@ -142,7 +170,7 @@ export class DamageSyncService {
   ): Promise<DamageSyncResult> {
     try {
       logger.log(`[DamageSync] Yard→Fleet by ID: ${vehicleId}`)
-      const cleanedPins = cleanPins(damagePins)
+      const cleanedPins = cleanPins(await ensurePinPhotosUploaded(damagePins, organizationId, vehicleId))
 
       // 1. Update fleet record
       const { error: fleetError } = await supabase
@@ -205,7 +233,7 @@ export class DamageSyncService {
       const cleanReg = registration.toUpperCase().trim()
       logger.log(`[DamageSync] Yard→Fleet by reg: ${cleanReg}`)
 
-      const cleanedPins = cleanPins(damagePins)
+      const cleanedPins = cleanPins(await ensurePinPhotosUploaded(damagePins, organizationId, cleanReg))
       let updatedFleetRecord = false
       let updatedYardRecords = 0
 
@@ -273,7 +301,7 @@ export class DamageSyncService {
     userDisplayName: string
   ): Promise<DamageSyncResult> {
     try {
-      const cleanedPins = cleanPins(damagePins)
+      const cleanedPins = cleanPins(await ensurePinPhotosUploaded(damagePins, organizationId, vehicleId))
       const { data: yardRows } = await supabase
         .from(CHECKED_IN)
         .select('id')
@@ -314,7 +342,7 @@ export class DamageSyncService {
   ): Promise<DamageSyncResult> {
     try {
       const cleanReg = registration.toUpperCase().trim()
-      const cleanedPins = cleanPins(damagePins)
+      const cleanedPins = cleanPins(await ensurePinPhotosUploaded(damagePins, organizationId, cleanReg))
       const { data: yardRows } = await supabase
         .from(CHECKED_IN)
         .select('id')

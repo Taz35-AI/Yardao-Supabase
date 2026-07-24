@@ -51,6 +51,7 @@ import {
   createAuditLog 
 } from '@/lib/auditUtils'
 import { ContractSyncService } from '@/services/contractSyncService'
+import { ensurePinPhotosUploaded } from '@/services/damageSyncService'
 import { InsuranceSyncService } from '@/services/insuranceSyncService'
 import { ConditionSyncService } from '@/services/conditionSyncService'
 import { logger } from '@/lib/logger'
@@ -954,6 +955,18 @@ export function useYardDataInternal(props?: UseYardDataProps) {
       const normalizedReg = vehicleData.registration.toUpperCase().replace(/\s+/g, '')
       logger.log(`Checking in ${normalizedReg} to branch: ${branchId}`)
 
+      // Damage-pin photos must live in Storage, never as base64 inside the
+      // damage_pins jsonb (base64 rows bloat every SELECT + realtime message).
+      // Converted once here; both the transfer-update and new-insert branches
+      // below read vehicleData.damagePins.
+      if (Array.isArray((vehicleData as any).damagePins) && (vehicleData as any).damagePins.length > 0) {
+        ;(vehicleData as any).damagePins = await ensurePinPhotosUploaded(
+          (vehicleData as any).damagePins,
+          userOrganizationId,
+          normalizedReg,
+        )
+      }
+
       // ── Service-due assessment (migration 0043) ──────────────────────────
       // Stamp the checked-in row with whether the vehicle is overdue for a
       // service, so the dashboard + Service Banner can flag it. Stays silent
@@ -1350,6 +1363,16 @@ export function useYardDataInternal(props?: UseYardDataProps) {
         currentCondition: vehicleData.condition,
         newCondition: updates.condition
       })
+
+      // Damage-pin photos → Storage before the row write (never base64 in jsonb).
+      // Mutating updates.damagePins also covers the fleet sync further down.
+      if (Array.isArray(updates.damagePins) && updates.damagePins.length > 0) {
+        updates.damagePins = await ensurePinPhotosUploaded(
+          updates.damagePins,
+          userOrganizationId,
+          registration,
+        )
+      }
 
       const updateData: any = {
   updatedAt: new Date().toISOString(),
