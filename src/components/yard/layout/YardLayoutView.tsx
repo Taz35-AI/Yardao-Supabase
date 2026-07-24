@@ -170,22 +170,36 @@ export function YardLayoutView({
   )
 
   // ── Search matching ────────────────────────────────────────────────────
+  // Smart multi-token search: the query is split into words and EVERY word
+  // must match somewhere on the vehicle (AND semantics). This makes
+  // combinations work: "blue ford" (colour + make), "greythorn ready"
+  // (contract + status), "swb auto" (size + transmission in make/model).
+  // Hyphens/underscores are folded to spaces on both sides so "17 seater"
+  // finds a size stored as "17-seater" (and vice versa); a space-stripped
+  // copy of each field also lets "ab12cde" find reg "AB12 CDE".
   const matchedSpaceIds = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    if (term.length < 1) return new Set<string>()
+    const norm = (s: string) =>
+      s.toLowerCase().replace(/[-_/]+/g, ' ').replace(/\s+/g, ' ').trim()
+    const tokens = norm(search).split(' ').filter(Boolean)
+    if (tokens.length === 0) return new Set<string>()
     const set = new Set<string>()
     vehicles.forEach(v => {
       if (!v.parkingSpaceId) return
-      const reg = (v.registration || '').toLowerCase()
-      const make = (v.make || '').toLowerCase()
-      const model = (v.model || '').toLowerCase()
-      const contract = (v.contract || '').toLowerCase()
-      if (
-        reg.includes(term) ||
-        make.includes(term) ||
-        model.includes(term) ||
-        contract.includes(term)
-      ) {
+      const fields = [
+        v.registration,
+        v.make,
+        v.model,
+        v.colour,
+        v.size,
+        v.contract,
+        v.status,
+        v.condition,
+        v.bay,
+        v.location,
+      ].filter(Boolean) as string[]
+      const haystack = norm(fields.join(' '))
+      const compact = fields.map(f => norm(f).replace(/ /g, '')).join(' ')
+      if (tokens.every(t => haystack.includes(t) || compact.includes(t))) {
         set.add(v.parkingSpaceId)
       }
     })
@@ -492,7 +506,7 @@ export function YardLayoutView({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Find reg, make, contract…"
+            placeholder="e.g. blue ford, greythorn ready, swb auto…"
             className="w-full pl-8 pr-8 py-1.5 rounded-md border text-sm"
             style={{ background: BRAND.bg, borderColor: BRAND.border, color: BRAND.darkest }}
           />
