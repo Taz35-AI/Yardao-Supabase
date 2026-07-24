@@ -892,11 +892,12 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
                       </span>
                     )}
                   </div>
-                  <div className="pointer-events-none rounded-xl overflow-hidden border border-[#e2e8e5] dark:border-gray-700">
+                  <div className="rounded-xl overflow-hidden border border-[#e2e8e5] dark:border-gray-700">
                     <DamageMapper
                       diagramType={vehicleDiagramType}
                       pins={damagePins}
                       onChange={() => {}}
+                      readOnly
                     />
                   </div>
                 </div>

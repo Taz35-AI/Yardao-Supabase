@@ -16,7 +16,7 @@
 'use client'
 
 import { useState, useRef, useCallback, useId, useEffect } from 'react'
-import { X, Plus, Camera, Trash2, ImageIcon } from 'lucide-react'
+import { X, Plus, Camera, Trash2, ImageIcon, Download } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -499,6 +499,8 @@ export function DamageMapper({
   const fileInputId = useId()
 
   const [isPlacingPin, setIsPlacingPin] = useState(false)
+  // Read-only mode: pin tapped → quick-look popup with the damage details + photo
+  const [previewPin, setPreviewPin] = useState<DamagePin | null>(null)
 
   const isControlled = externalEditingPinId !== undefined
   const [internalEditingPinId, setInternalEditingPinId] = useState<string | null>(null)
@@ -717,7 +719,7 @@ export function DamageMapper({
             readOnly={readOnly}
             onClick={e => {
               e.stopPropagation()
-              if (readOnly) return
+              if (readOnly) { setPreviewPin(pin); return }
               setEditingPin(editingPinId === pin.id ? null : pin.id)
             }}
           />
@@ -769,25 +771,8 @@ export function DamageMapper({
                     src={pin.photoBase64 || pin.photoUrl}
                     alt="Damage"
                     className="w-12 h-12 rounded-lg object-cover flex-shrink-0 border border-gray-200 dark:border-gray-600 cursor-pointer active:scale-95 transition-transform"
-                    onClick={async () => {
-                      const url = pin.photoUrl || pin.photoBase64
-                      if (!url) return
-                      try {
-                        const res = await fetch(url)
-                        const blob = await res.blob()
-                        const blobUrl = URL.createObjectURL(blob)
-                        const a = document.createElement('a')
-                        a.href = blobUrl
-                        a.download = `damage_${pin.label}_${pin.id}.jpg`
-                        document.body.appendChild(a)
-                        a.click()
-                        document.body.removeChild(a)
-                        URL.revokeObjectURL(blobUrl)
-                      } catch {
-                        window.open(url, '_blank')
-                      }
-                    }}
-                    title="Tap to download"
+                    onClick={() => setPreviewPin(pin)}
+                    title="Tap to preview"
                   />
                 )}
               </div>
@@ -799,6 +784,100 @@ export function DamageMapper({
       {readOnly && pins.length === 0 && (
         <p className="text-xs text-gray-400 italic text-center py-2">No damage recorded</p>
       )}
+
+      {/* ── Pin quick-look popup (read-only mode) ────────────────────── */}
+      {previewPin && (() => {
+        const cfg = SEVERITY_CONFIG[previewPin.severity]
+        const photo = previewPin.photoUrl || previewPin.photoBase64
+        return (
+          <div
+            className="fixed inset-0 z-[99999] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={e => { e.stopPropagation(); setPreviewPin(null) }}
+          >
+            <div
+              className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div
+                className="flex items-center justify-between px-4 py-3"
+                style={{ backgroundColor: cfg.bg, borderBottom: `1px solid ${cfg.border}` }}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cfg.dot }} />
+                  <span className="text-sm font-bold truncate" style={{ color: cfg.textColor }}>{previewPin.label}</span>
+                  <span
+                    className="text-[10px] px-2 py-0.5 rounded-full font-bold flex-shrink-0"
+                    style={{ background: `${cfg.dot}20`, color: cfg.textColor }}
+                  >
+                    {cfg.label}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPreviewPin(null)}
+                  className="p-1.5 rounded-full hover:bg-black/10 transition-colors flex-shrink-0"
+                  aria-label="Close preview"
+                >
+                  <X className="w-4 h-4" style={{ color: cfg.textColor }} />
+                </button>
+              </div>
+
+              {/* Photo */}
+              {photo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={photo}
+                  alt={`${previewPin.label} damage photo`}
+                  className="w-full max-h-[55vh] object-contain bg-black"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-2 py-10 text-gray-400">
+                  <ImageIcon className="w-8 h-8" />
+                  <span className="text-xs font-medium">No photo for this damage</span>
+                </div>
+              )}
+
+              {/* Notes + actions */}
+              <div className="px-4 py-3 space-y-3">
+                {previewPin.notes && (
+                  <p className="text-sm text-gray-600 dark:text-gray-300">{previewPin.notes}</p>
+                )}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] text-gray-400">
+                    {new Date(previewPin.createdAt).toLocaleDateString()}
+                  </span>
+                  {photo && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(photo)
+                          const blob = await res.blob()
+                          const blobUrl = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = blobUrl
+                          a.download = `damage_${previewPin.label}_${previewPin.id}.jpg`
+                          document.body.appendChild(a)
+                          a.click()
+                          document.body.removeChild(a)
+                          URL.revokeObjectURL(blobUrl)
+                        } catch {
+                          window.open(photo, '_blank')
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-[#012619] text-white hover:bg-[#025940] transition-colors"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Download
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── In-page camera modal (inline/uncontrolled mode, all platforms) ── */}
       {!isControlled && showCamera && (
