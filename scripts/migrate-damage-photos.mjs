@@ -30,6 +30,17 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSessio
 const BUCKET = 'damage-photos'
 const TABLES = ['vehicles', 'checked_in_vehicles']
 
+// Ensure the bucket exists (service role can create it via the storage API —
+// no SQL editor needed). Public bucket: pins reference photos by public URL.
+{
+  const { error } = await supabase.storage.createBucket(BUCKET, { public: true })
+  if (error && !/already exists/i.test(error.message)) {
+    console.error(`Could not create/verify bucket "${BUCKET}": ${error.message}`)
+    process.exit(1)
+  }
+  console.log(error ? `Bucket "${BUCKET}" already exists` : `Bucket "${BUCKET}" created`)
+}
+
 function dataUrlToBuffer(dataUrl) {
   const m = /^data:(image\/[\w.+-]+);base64,(.+)$/s.exec(dataUrl)
   if (!m) return null
