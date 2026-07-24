@@ -322,16 +322,28 @@ export function ServiceBookingsProvider({ children }: { children: ReactNode }) {
 
       const fetchBookings = async () => {
         try {
-          const { data, error: fetchError } = await supabase
-            .from(SERVICE_BOOKINGS_TABLE)
-            .select('*')
-            .eq('organization_id', orgId)
-            .gte('date', cutoff)
-            .order('date', { ascending: true })
-            .order('time_slot', { ascending: true })
-          if (fetchError) throw fetchError
+          // Page through in 1000-row chunks: PostgREST caps a single request at
+          // 1000 rows, and the 90-day window already holds ~960 bookings. With
+          // one capped request the list is sorted ascending, so it's the NEWEST
+          // and future bookings that silently fall off once the cap is hit.
+          const PAGE = 1000
+          const data: any[] = []
+          for (let from = 0; ; from += PAGE) {
+            const { data: page, error: fetchError } = await supabase
+              .from(SERVICE_BOOKINGS_TABLE)
+              .select('*')
+              .eq('organization_id', orgId)
+              .gte('date', cutoff)
+              .order('date', { ascending: true })
+              .order('time_slot', { ascending: true })
+              .order('id', { ascending: true })
+              .range(from, from + PAGE - 1)
+            if (fetchError) throw fetchError
+            data.push(...(page ?? []))
+            if (!page || page.length < PAGE) break
+          }
 
-          logger.log(`📦 Service bookings snapshot: ${(data ?? []).length} documents`)
+          logger.log(`📦 Service bookings snapshot: ${data.length} documents`)
           const mapped = (data ?? []).map(mapBookingRow)
           logger.log(`🔄 Service bookings updated: ${mapped.length} bookings`)
           setBookings(mapped)
