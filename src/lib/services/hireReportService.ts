@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { downloadExcelFile } from '@/utils/excelDownload'
 import { hireAgreementService } from '@/lib/services/hireAgreementService'
 import { hireCreditService } from '@/lib/services/hireCreditService'
+import { hireCustomerService } from '@/lib/services/hireCustomerService'
 import type { ContractSchedule } from '@/lib/services/hireScheduleService'
 import type { HireAgreement, HireCredit } from '@/types/hire'
 
@@ -31,6 +32,36 @@ export interface RentPlanRow {
   taxExpiry: string
 }
 
+/** One vehicle line, flattened with its agreement + customer, for the org-wide export. */
+export interface HireExportRow {
+  status: string
+  customer: string
+  accountNo: string
+  agreementRef: string
+  registration: string
+  make: string
+  model: string
+  size: string
+  colour: string
+  motExpiry: string
+  taxExpiry: string
+  scheduledStart: string
+  scheduledEnd: string
+  outDate: string
+  returnDate: string
+  daysOnHire: number | ''
+  rate: string
+  rateType: string
+  rateAmount: number
+  branch: string
+  notes: string
+}
+
+export interface HireExport {
+  rows: HireExportRow[]
+  generatedAt: string
+}
+
 export interface RentPlan {
   customerName: string
   rows: RentPlanRow[]
@@ -49,6 +80,15 @@ const euDate = (iso?: string | null) => {
 }
 const round2 = (n: number) => Math.round(n * 100) / 100
 const rateLabel = (type: 'weekly' | 'monthly', amount: number) => `£${amount}/${type === 'monthly' ? '4wk' : 'wk'}`
+
+/** Line status → the wording the yard uses, so the export reads like the UI. */
+const HIRE_STATUS_LABEL: Record<string, string> = {
+  active: 'On hire',
+  scheduled: 'Reserved',
+  returned: 'Returned',
+  swapped: 'Swapped',
+  cancelled: 'Cancelled',
+}
 
 export const hireReportService = {
   /** Batch-fetch size / colour / MOT / tax for a set of vehicle ids. */
@@ -72,6 +112,127 @@ export const hireReportService = {
       /* missing/locked table → no detail, rows just show blanks */
     }
     return map
+  },
+
+  /**
+   * Org-wide export: every vehicle line (on hire, returned, reserved, swapped,
+   * cancelled) flattened with its agreement, customer and vehicle detail.
+   */
+  async buildHireExport(organizationId: string): Promise<HireExport> {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    if (!organizationId) return { rows: [], generatedAt: ymd(today) }
+
+    const [lines, agreements, customers] = await Promise.all([
+      hireAgreementService.getAllLines(organizationId),
+      hireAgreementService.getAgreements(organizationId),
+      hireCustomerService.getCustomers(organizationId),
+    ])
+
+    const agById = new Map(agreements.map((a) => [a.id, a]))
+    const custById = new Map(customers.map((c) => [c.id, c]))
+    const detail = await this.fetchVehicleDetail(
+      organizationId,
+      Array.from(new Set(lines.map((l) => l.vehicleId).filter(Boolean) as string[])),
+    )
+
+    const rows: HireExportRow[] = lines.map((l) => {
+      const ag = l.agreementId ? agById.get(l.agreementId) : undefined
+      const cust = ag?.customerId ? custById.get(ag.customerId) : undefined
+      const d = l.vehicleId ? detail[l.vehicleId] : undefined
+      const rateType = (l.lineRateType || ag?.rateType || 'weekly') as 'weekly' | 'monthly'
+      const rateAmount = l.lineRateAmount ?? ag?.rateAmount ?? 0
+
+      // Days on hire: out → return, or out → today while still running.
+      const outIso = l.actualOutAt ? l.actualOutAt.slice(0, 10) : ''
+      const backIso = l.actualReturnAt ? l.actualReturnAt.slice(0, 10) : ''
+      let daysOnHire: number | '' = ''
+      if (outIso) {
+        const end = backIso ? new Date(backIso + 'T00:00:00') : today
+        const days = Math.round((end.getTime() - new Date(outIso + 'T00:00:00').getTime()) / 86_400_000)
+        if (Number.isFinite(days) && days >= 0) daysOnHire = days
+      }
+
+      return {
+        status: l.status,
+        customer: cust?.companyName || cust?.name || ag?.customerName || '—',
+        accountNo: cust?.accountNo || '',
+        agreementRef: ag?.reference || (ag ? ag.id.slice(0, 8) : ''),
+        registration: l.registration || '—',
+        make: l.make || '',
+        model: l.model || '',
+        size: d?.size || '',
+        colour: d?.colour || '',
+        motExpiry: euDate(d?.motExpiry),
+        taxExpiry: euDate(d?.taxExpiry),
+        scheduledStart: euDate(l.scheduledStart),
+        scheduledEnd: euDate(l.scheduledEnd),
+        outDate: euDate(outIso),
+        returnDate: euDate(backIso),
+        daysOnHire,
+        rate: rateLabel(rateType, rateAmount),
+        rateType,
+        rateAmount,
+        branch: ag?.branchName || '',
+        notes: l.notes || '',
+      }
+    })
+
+    // On hire first, then reserved, returned, and the closed states.
+    const ORDER: Record<string, number> = { active: 0, scheduled: 1, returned: 2, swapped: 3, cancelled: 4 }
+    rows.sort((a, b) =>
+      (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9) ||
+      a.customer.localeCompare(b.customer) ||
+      a.registration.localeCompare(b.registration))
+
+    return { rows, generatedAt: ymd(today) }
+  },
+
+  /**
+   * Excel workbook for the org-wide export: a tab per status plus "All vehicles".
+   * Empty statuses are skipped so the book only holds tabs that mean something.
+   */
+  exportHireExcel(data: HireExport): Promise<void> {
+    const sheetRow = (r: HireExportRow) => ({
+      Status: HIRE_STATUS_LABEL[r.status] || r.status,
+      Customer: r.customer,
+      'Account no': r.accountNo,
+      Agreement: r.agreementRef,
+      Registration: r.registration,
+      Make: r.make,
+      Model: r.model,
+      Size: r.size,
+      Colour: r.colour,
+      MOT: r.motExpiry,
+      Tax: r.taxExpiry,
+      'Scheduled start': r.scheduledStart,
+      'Scheduled end': r.scheduledEnd,
+      'Out on hire': r.outDate,
+      Returned: r.returnDate,
+      'Days on hire': r.daysOnHire,
+      Rate: r.rate,
+      Branch: r.branch,
+      Notes: r.notes,
+    })
+
+    const wb = XLSX.utils.book_new()
+    const addSheet = (name: string, rows: HireExportRow[]) => {
+      if (rows.length === 0) return
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.map(sheetRow)), name)
+    }
+
+    addSheet('On hire', data.rows.filter((r) => r.status === 'active'))
+    addSheet('Reserved', data.rows.filter((r) => r.status === 'scheduled'))
+    addSheet('Returned', data.rows.filter((r) => r.status === 'returned'))
+    addSheet('Swapped', data.rows.filter((r) => r.status === 'swapped'))
+    addSheet('Cancelled', data.rows.filter((r) => r.status === 'cancelled'))
+    addSheet('All vehicles', data.rows)
+    // A book with no sheets can't be written — guarantee at least the summary.
+    if (wb.SheetNames.length === 0) {
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([]), 'All vehicles')
+    }
+
+    return downloadExcelFile(wb, `Hire_Vehicles_${data.generatedAt}.xlsx`)
   },
 
   /** Active-rentals plan for one customer at the contractual rate (not prorated). */

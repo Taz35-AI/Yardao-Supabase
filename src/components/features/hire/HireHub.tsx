@@ -3,10 +3,12 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Users, CalendarRange, Coins, Settings, LayoutDashboard } from 'lucide-react'
+import { Users, CalendarRange, Coins, Settings, LayoutDashboard, Download, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { ContractIcon } from './ContractIcon'
 import { useHire } from '@/contexts/HireContext'
 import { useT } from '@/lib/i18n'
+import { hireReportService } from '@/lib/services/hireReportService'
 import { HireOverview } from './HireOverview'
 import { HireCustomers } from './HireCustomers'
 import { HireAgreements } from './HireAgreements'
@@ -18,9 +20,29 @@ type Tab = 'overview' | 'customers' | 'agreements' | 'schedule' | 'credits'
 
 export function HireHub() {
   const t = useT()
-  const { settings } = useHire()
+  const { settings, organizationId } = useHire()
   const [tab, setTab] = useState<Tab>('overview')
   const [showSettings, setShowSettings] = useState(false)
+  const [exporting, setExporting] = useState(false)
+
+  const handleExport = async () => {
+    if (!organizationId || exporting) return
+    setExporting(true)
+    try {
+      const data = await hireReportService.buildHireExport(organizationId)
+      if (data.rows.length === 0) {
+        toast.info('Nothing to export yet — no vehicles on any agreement.')
+        return
+      }
+      await hireReportService.exportHireExcel(data)
+      const onHire = data.rows.filter((r) => r.status === 'active').length
+      toast.success(`Exported ${data.rows.length} vehicle lines (${onHire} on hire)`)
+    } catch (err) {
+      toast.error('Export failed — please try again.')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const tabs: { key: Tab; icon: React.ReactNode; label: string }[] = [
     { key: 'overview', icon: <LayoutDashboard className="w-4 h-4" />, label: t('hire.tabOverview') },
@@ -51,6 +73,17 @@ export function HireHub() {
           ))}
         </div>
         <div className="flex-1" />
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          title="Download all hire vehicles (on hire, reserved, returned) to Excel"
+          className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 text-[#4a5e54] dark:text-gray-300 text-xs font-semibold hover:text-[#025940] hover:border-[#72A68E] dark:hover:text-[#b3f243] shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+        >
+          {exporting
+            ? <Loader2 className="w-4 h-4 animate-spin" />
+            : <Download className="w-4 h-4" />}
+          <span className="hidden sm:inline">{exporting ? 'Exporting…' : 'Export'}</span>
+        </button>
         <button
           onClick={() => setShowSettings(true)}
           title={t('hire.settings')}

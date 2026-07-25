@@ -706,6 +706,34 @@ export const hireAgreementService = {
     }
   },
 
+  /**
+   * Every line for the org, any status — used by the hire export.
+   * Paged past PostgREST's 1000-row cap so long-running orgs export in full.
+   */
+  async getAllLines(organizationId: string): Promise<HireAgreementVehicle[]> {
+    if (!organizationId) return []
+    try {
+      const PAGE = 1000
+      const rows: any[] = []
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from(LINES)
+          .select('*')
+          .eq('organization_id', organizationId)
+          .order('created_at', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, from + PAGE - 1)
+        if (error) throw error
+        rows.push(...(data ?? []))
+        if (!data || data.length < PAGE) break
+      }
+      return toCamelList<HireAgreementVehicle>(rows)
+    } catch (err) {
+      logger.error('hireAgreementService.getAllLines failed:', err)
+      return []
+    }
+  },
+
   async getActiveLines(organizationId: string): Promise<HireAgreementVehicle[]> {
     if (!organizationId) return []
     try {
