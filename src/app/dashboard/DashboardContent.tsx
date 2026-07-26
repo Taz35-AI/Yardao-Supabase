@@ -267,6 +267,20 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
     }
   }, [dataLayer.dashboardLogic.selectedVehicle, handleQuickCheckIn])
 
+  // The yard map wants every pixel it can get: it hides the topbar search (the
+  // map has its own), folds the In Yard tab up into the filter row, and drops
+  // the On Hire tab entirely — the map only ever draws parked vehicles.
+  const isMapView = viewMode === 'layout'
+  // Pipeline and map both run the tightened chrome spacing.
+  const compactChrome = viewMode === 'pipeline' || isMapView
+
+  // Never leave the user stranded on On Hire when they switch to the map,
+  // since that tab isn't rendered there. Must stay above the loading-state
+  // early return below — a hook after it would be called conditionally.
+  React.useEffect(() => {
+    if (isMapView) setYardTab('in_yard')
+  }, [isMapView])
+
   // =====================================================
   // LOADING STATE
   // =====================================================
@@ -340,7 +354,7 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
           STICKY TOP BAR — Search + Actions
       ═══════════════════════════════════════════════════ */}
       <div className="sticky top-0 md:top-0 z-30 bg-[#edf1ee]/85 dark:bg-gray-900/85 backdrop-blur-xl border-b border-[#e2e8e5] dark:border-gray-700/50">
-        <div className={`w-full max-w-[100vw] px-3 sm:px-4 lg:px-8 ${viewMode === 'pipeline' ? 'py-1.5' : 'py-3'}`}>
+        <div className={`w-full max-w-[100vw] px-3 sm:px-4 lg:px-8 ${compactChrome ? 'py-1.5' : 'py-3'}`}>
           <div className="flex items-center justify-between gap-3">
 
             {/* Left: Branch name as the page title — desktop only */}
@@ -353,10 +367,11 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
             </div>
 
             {/* Center: Search bar.
-                Hidden on the desktop search-first dashboard (it has its own
-                smart search), so we don't show two search bars. A flex-1 spacer
-                keeps the topbar layout balanced. */}
-            {(viewMode === 'pipeline') ? (
+                Hidden on the desktop search-first dashboard and on the yard
+                map — both carry their own search, and two search boxes on
+                screen at once just invites typing into the wrong one. A flex-1
+                spacer keeps the topbar layout balanced. */}
+            {compactChrome ? (
               <div className="flex-1" />
             ) : (
             <div className="flex-1 relative" data-tour="search">
@@ -490,18 +505,18 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
       <div
         ref={dashboardContainerRef}
         className={`w-full max-w-[100vw] overflow-x-hidden px-3 sm:px-4 lg:px-8 pb-1 ${
-          viewMode === 'pipeline' ? 'pt-2' : 'pt-4'
+          compactChrome ? 'pt-2' : 'pt-4'
         }`}
       >
-        {/* Service Banner — tighter spacing in pipeline view */}
-        <div className={viewMode === 'pipeline' ? 'mb-1.5' : 'mb-3'}>
+        {/* Service Banner — tighter spacing in pipeline + map views */}
+        <div className={compactChrome ? 'mb-1.5' : 'mb-3'}>
           <ServiceBanner />
         </div>
 
         {/* ═══════════════════════════════════════════
             METRIC STRIP — always visible, full width
         ═══════════════════════════════════════════ */}
-        <div className={viewMode === 'pipeline' ? 'mb-2' : 'mb-4'}>
+        <div className={compactChrome ? 'mb-2' : 'mb-4'}>
           <DashboardSummaryCards
             analytics={dataLayer.analytics}
             onlyTotal={viewMode === 'pipeline'}
@@ -587,7 +602,7 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
         {/* ═══════════════════════════════════════════
             FILTER BAR (desktop)
         ═══════════════════════════════════════════ */}
-        <div className={`flex items-center gap-2 ${viewMode === 'pipeline' ? 'mb-1.5' : 'mb-3'}`}>
+        <div className={`flex items-center gap-2 ${compactChrome ? 'mb-1.5' : 'mb-3'}`}>
           <button
             onClick={modalController.toggleFilters}
             className={`${viewMode === 'pipeline' ? 'hidden' : 'hidden lg:inline-flex'} items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border shadow-sm transition-all ${
@@ -604,6 +619,22 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
               }`}
             />
           </button>
+
+          {/* Map view: the In Yard tab rides up here beside Filters instead of
+              owning a row of its own, and On Hire is dropped — the map only
+              draws parked vehicles. Buys the canvas a full row of height. */}
+          {isMapView && (
+            <div className="hidden sm:flex items-center bg-[#f0f4f2] dark:bg-gray-800 rounded-lg p-0.5">
+              <button
+                onClick={() => setYardTab('in_yard')}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold bg-white dark:bg-gray-700 text-[#012619] dark:text-white shadow-sm"
+              >
+                <span className="w-2 h-2 rounded-full bg-[#b3f243]" />
+                {t('dashboard.yardTab.inYard')}
+                <span className="text-xs font-bold opacity-70">{inYardMatchCount}</span>
+              </button>
+            </div>
+          )}
 
           <div className="flex-1" />
 
@@ -715,8 +746,9 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
         <div className="w-full">
 
           {/* Tab Toggle — desktop only; mobile version lives in yardTabSlot above.
-              Hidden in pipeline view because both tabs are shown as columns. */}
-          <div className={`${viewMode === 'pipeline' ? 'hidden' : 'hidden sm:flex'} items-center gap-1 mb-4 bg-[#f0f4f2] dark:bg-gray-800 rounded-xl p-1 w-fit`}>
+              Hidden in pipeline view because both tabs are shown as columns,
+              and in map view where it has moved up into the filter row. */}
+          <div className={`${compactChrome ? 'hidden' : 'hidden sm:flex'} items-center gap-1 mb-4 bg-[#f0f4f2] dark:bg-gray-800 rounded-xl p-1 w-fit`}>
             <button
               onClick={() => setYardTab('in_yard')}
               title={inYardHasOtherTabMatch ? t('dashboard.search.otherTabMatchInYard', { count: inYardMatchCount }) : undefined}

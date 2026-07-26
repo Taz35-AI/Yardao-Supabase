@@ -4,7 +4,7 @@
 // coloured chips on their assigned parking spaces.
 //
 // VIEWPORT (Figma-style):
-//   • Right-click + drag to pan (desktop)
+//   • Drag to pan: left-click on empty canvas, or right-click anywhere
 //   • Pointer-event drag with edge-auto-scroll on touch
 //   • Ctrl + scroll wheel to zoom (anchored on cursor)
 //
@@ -65,6 +65,7 @@ import {
   Info,
   Lock,
 } from 'lucide-react'
+import { VehicleFlags } from '@/components/common/DamageFlag'
 
 // ─── Sizing — must match the editor for layout consistency ─────────────────
 const CELL_PX = 56
@@ -721,13 +722,19 @@ function YardCanvas({
     })
   }, [registerApi, spaces, zoom])
 
-  // ── Right-click + drag = pan ──────────────────────────────────────────
+  // ── Drag to pan ───────────────────────────────────────────────────────
+  // Right-click anywhere, or left-click on empty canvas (anywhere that isn't a
+  // parking spot — spots keep click-to-park and drag-to-move). Left-drag is
+  // what people reach for first, so grabbing the gaps between spaces is the
+  // natural way to move around a big yard.
   useEffect(() => {
     const vp = viewportRef.current
     if (!vp) return
 
     const onMouseDown = (e: MouseEvent) => {
-      if (e.button !== 2) return
+      const onSpace = !!(e.target as HTMLElement | null)?.closest?.('[data-space]')
+      const panning = e.button === 2 || (e.button === 0 && !onSpace)
+      if (!panning) return
       e.preventDefault()
       setIsPanning(true)
       panStateRef.current = {
@@ -1171,8 +1178,10 @@ function YardCanvas({
       style={{
         background: BRAND.bg,
         borderColor: BRAND.border,
-        cursor: isPanning ? 'grabbing' : 'default',
-        height: 'min(70vh, 720px)',
+        // 'grab' on the background advertises drag-to-pan; parking spots set
+        // their own pointer/grab cursors and win by being deeper in the tree.
+        cursor: isPanning ? 'grabbing' : 'grab',
+        height: 'min(78vh, 900px)',
         backgroundImage: `radial-gradient(circle, rgba(1,38,25,0.08) 1px, transparent 1px)`,
         backgroundSize: '14px 14px',
         touchAction: 'auto',
@@ -1269,6 +1278,10 @@ function YardCanvas({
                           data-col={col}
                           data-row={row}
                           data-match={isMatch ? '1' : undefined}
+                          /* Marks a real parking spot: the canvas pan handler
+                             leaves these alone so click-to-park and
+                             drag-to-move keep working. */
+                          data-space={sp ? '1' : undefined}
                           onClick={() => onCellClick(col, row)}
                           onDragOver={(e) => onCellDragOver(e, col, row)}
                           onDragLeave={() => onCellDragLeave(col, row)}
@@ -1463,6 +1476,14 @@ function SpaceTile({
         }}
       >
         {vehicle.isReserved && <ReservedOverlay note={vehicle.reservedNote} />}
+        {/* Tile clips overflow, so the flags tuck into the corner rather than
+            floating outside it. */}
+        <VehicleFlags
+          vehicle={vehicle}
+          size={12}
+          gap={1}
+          style={{ position: 'absolute', top: 1, right: 1, zIndex: 3 }}
+        />
         <span
           className="font-mono font-bold"
           style={{
@@ -1616,6 +1637,7 @@ function MergedSpaceTile({
 
     return (
       <div
+        data-space="1"
         onPointerDown={(e) => onParkedPointerDown(e, vehicle.id)}
         onClick={onClick}
         onDragOver={onDragOver}
@@ -1638,6 +1660,11 @@ function MergedSpaceTile({
         title={vehicle.isReserved ? `Reserved${vehicle.reservedNote ? `: ${vehicle.reservedNote}` : ''}` : title}
       >
         {vehicle.isReserved && <ReservedOverlay note={vehicle.reservedNote} />}
+        <VehicleFlags
+          vehicle={vehicle}
+          size={16}
+          style={{ position: 'absolute', top: 3, right: 3, zIndex: 3 }}
+        />
         <span
           className="font-mono font-bold"
           style={{
@@ -1690,6 +1717,7 @@ function MergedSpaceTile({
   // ── Empty merged space ─────────────────────────────────────────────────
   return (
     <div
+      data-space="1"
       onClick={onClick}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
