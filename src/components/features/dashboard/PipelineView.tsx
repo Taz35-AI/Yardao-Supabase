@@ -10,6 +10,7 @@ import React, { useMemo } from 'react'
 import { CheckCircle, Clock, Wrench, XCircle, AlertTriangle, Plus, Truck } from 'lucide-react'
 import { CheckedInVehicle, VehicleStatus, normalizeVehicleStatus } from '@/types'
 import { useT } from '@/lib/i18n'
+import { VehicleFlags } from '@/components/common/DamageFlag'
 
 // Display-only label key per column (keyed by the logic `key`, which stays English)
 const COL_LABEL_KEY: Record<string, string> = {
@@ -162,7 +163,16 @@ const VehicleCard = ({
     >
       {/* Top row: plate + days */}
       <div className="flex items-center justify-between mb-2">
-        <RegPlate registration={vehicle.registration} />
+        <span className="relative inline-flex">
+          <RegPlate registration={vehicle.registration} />
+          {/* Sits above the plate's top edge: with two or three flags the row
+              grows leftward, and any lower would bury the registration. */}
+          <VehicleFlags
+            vehicle={vehicle}
+            size={15}
+            style={{ position: 'absolute', top: -11, right: -6 }}
+          />
+        </span>
         <span
           className="inline-flex items-center gap-0.5 text-[11px] tabular-nums leading-none"
           style={{ color: daysColor, fontWeight: daysWeight, fontFamily: "'DM Mono', monospace" }}
