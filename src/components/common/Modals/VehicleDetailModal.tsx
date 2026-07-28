@@ -72,6 +72,8 @@ interface VehicleDetailModalProps {
   onSetOutOnHire?: (vehicle: CheckedInVehicle) => void
   onQuickCheckIn?: (vehicle: CheckedInVehicle) => void
   onUpdateVehicle?: (vehicleId: string, updates: any) => Promise<void>
+  // Targeted save for walk-around photos only (no status/pin side-effects).
+  onUpdateWalkaround?: (vehicleId: string, photos: WalkaroundPhoto[]) => Promise<void>
   fleetVehicles?: FleetVehicleLike[]
 }
 
@@ -433,6 +435,7 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
   onSetOutOnHire,
   onQuickCheckIn,
   onUpdateVehicle,
+  onUpdateWalkaround,
   fleetVehicles
 }) => {
   const t = useT()
@@ -447,6 +450,23 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
       .then(p => setOrgId(p?.organizationId || null))
       .catch(() => setOrgId(null))
   }, [user?.uid])
+
+  // ── Walk-around photos — editable directly from the detail modal ───────────
+  // Saved immediately (no need to open Edit) via the targeted handler that only
+  // touches the walkaround_photos column.
+  const [localWalkaround, setLocalWalkaround] = useState<WalkaroundPhoto[]>((vehicle as any).walkaroundPhotos || [])
+  useEffect(() => { setLocalWalkaround((vehicle as any).walkaroundPhotos || []) }, [vehicle])
+  const handleWalkaroundChange = async (photos: WalkaroundPhoto[]) => {
+    setLocalWalkaround(photos) // optimistic
+    if (!onUpdateWalkaround) return
+    try {
+      await onUpdateWalkaround(vehicle.id, photos)
+    } catch {
+      setLocalWalkaround((vehicle as any).walkaroundPhotos || [])
+      alert('Could not save walk-around photos — please try again.')
+    }
+  }
+  const canEditWalkaround = !!onUpdateWalkaround && !!orgId
 
   // ── State (unchanged) ────────────────────────────────────────────────────
   const initialInsuranceStatus = getInsuranceStatus(vehicle)
@@ -520,7 +540,6 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
 
   const damagePins: DamagePin[]                            = (vehicle as any).damagePins || []
   const vehicleDiagramType: VehicleDiagramType | undefined = (vehicle as any).vehicleDiagramType
-  const walkaroundPhotos: WalkaroundPhoto[]                = (vehicle as any).walkaroundPhotos || []
 
   // ── Handlers (unchanged) ─────────────────────────────────────────────────
   const handleInsuranceToggle = async (status: InsuranceStatus, policy?: any) => {
@@ -905,16 +924,19 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
                 </div>
               )}
 
-              {/* Walk-around photos — read-only, shown whenever any exist
-                  (independent of whether a diagram is assigned). */}
-              {walkaroundPhotos.length > 0 && (
+              {/* Walk-around photos — editable directly here (add from camera or
+                  gallery without opening Edit). Falls back to read-only if no
+                  save handler / org id is available. Shown when photos exist or
+                  when the user can add them. */}
+              {(canEditWalkaround || localWalkaround.length > 0) && (
                 <div className="mt-4">
                   <WalkaroundPhotos
-                    photos={walkaroundPhotos}
-                    onChange={() => {}}
-                    orgId=""
-                    registration=""
-                    readOnly
+                    photos={localWalkaround}
+                    onChange={handleWalkaroundChange}
+                    orgId={orgId || ''}
+                    registration={vehicleRegistration}
+                    readOnly={!canEditWalkaround}
+                    defaultExpanded={localWalkaround.length > 0}
                   />
                 </div>
               )}

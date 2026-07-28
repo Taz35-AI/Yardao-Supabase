@@ -6,6 +6,7 @@ import { Toaster } from 'sonner'
 import './globals.css'
 import { SpeechEnabledGroqAssistant } from '@/components/common/SpeechEnabledGroqAssistant'
 import { ZaoGuard } from '@/components/common/ZaoGuard'
+import { ZaoUIProvider } from '@/contexts/ZaoUIContext'
 // PasswordResetGuard is kept as a fallback (forced-reset flow), no longer auto-mounted.
 import { TempPasswordNotice } from '@/components/common/TempPasswordNotice'
 import CapacitorRouterBridge from '@/components/common/CapacitorRouterBridge'
@@ -233,9 +234,12 @@ export default function RootLayout({
               client-side router so the WebView never does a full reload that
               the static file server would mis-resolve to the homepage. */}
           <CapacitorRouterBridge />
-          {children}
-          {/* ✅ Zao AI assistant — only shown when user is signed in */}
-          <ZaoGuard />
+          <ZaoUIProvider>
+            {children}
+            {/* ✅ Zao AI assistant — only shown when user is signed in, and
+                hidden while a full-screen modal is open (see ZaoUIContext). */}
+            <ZaoGuard />
+          </ZaoUIProvider>
           {/* 👋 One-time, non-blocking welcome notice for admin-created / migrated
               users on a temporary password. They can change it later from their
               Profile page if they want. The forced-reset flow (PasswordResetGuard

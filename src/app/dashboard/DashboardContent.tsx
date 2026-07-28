@@ -12,6 +12,7 @@
 import React, { useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useAuth } from '@/contexts/AuthContext'
+import { useZaoUI } from '@/contexts/ZaoUIContext'
 import { useBranches } from '@/hooks/useBranches'
 
 import { UserNotesButton } from '@/components/features/dashboard/UserNotesButton'
@@ -280,6 +281,21 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
   React.useEffect(() => {
     if (isMapView) setYardTab('in_yard')
   }, [isMapView])
+
+  // Hide the floating Zao assistant while any full-screen modal is open, so it
+  // never sits on top of modal content.
+  const { setSuppressed: setZaoSuppressed } = useZaoUI()
+  const anyModalOpen =
+    !!modalController.uiModalStates.showCheckInForm ||
+    !!dataLayer.dashboardLogic.showEditModal ||
+    !!dataLayer.dashboardLogic.showDetailModal ||
+    !!modalController.modalStates.showCheckoutDestinationModal ||
+    !!modalController.modalStates.showGarageCheckoutModal ||
+    showReserveModal
+  React.useEffect(() => {
+    setZaoSuppressed(anyModalOpen)
+    return () => setZaoSuppressed(false)
+  }, [anyModalOpen, setZaoSuppressed])
 
   // =====================================================
   // LOADING STATE
@@ -1124,6 +1140,7 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
           onSetOutOnHire={handleDetailModalSetOutOnHire}
           onQuickCheckIn={handleDetailModalQuickCheckIn}
           onUpdateVehicle={businessLogic.handleVehicleUpdate}
+          onUpdateWalkaround={dataLayer.yardData?.updateWalkaroundPhotos}
           fleetVehicles={dataLayer.fleetVehicles}
         />
       )}

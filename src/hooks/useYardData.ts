@@ -1318,6 +1318,39 @@ export function useYardDataInternal(props?: UseYardDataProps) {
     }
   }, [user, userOrganizationId, branchId, userDisplayName, checkedInVehicles])
 
+  // Lightweight, targeted save for walk-around photos only — used by the detail
+  // modal so photos can be added without opening the edit modal. Deliberately
+  // does NOT go through updateVehicleConditionAndStatus / handleVehicleUpdate,
+  // which default status→'Pending checks' and damagePins→[] on a partial update.
+  // Photos are already URLs (uploaded on capture). Also mirrors to the fleet row.
+  const updateWalkaroundPhotos = useCallback(async (vehicleId: string, photos: any[]) => {
+    if (!user || !userOrganizationId) throw new Error('User not authenticated')
+    // Yard record (the one being viewed).
+    const { data: row, error: yErr } = await supabase
+      .from('checked_in_vehicles')
+      .update({ walkaround_photos: photos, updated_at: new Date().toISOString() })
+      .eq('id', vehicleId)
+      .select('vehicle_id, registration')
+      .maybeSingle()
+    if (yErr) throw yErr
+
+    // Mirror to the fleet master record (by vehicleId, else by registration).
+    try {
+      if (row?.vehicle_id) {
+        await supabase.from('vehicles')
+          .update({ walkaround_photos: photos })
+          .eq('id', row.vehicle_id)
+      } else if (row?.registration) {
+        await supabase.from('vehicles')
+          .update({ walkaround_photos: photos })
+          .eq('organization_id', userOrganizationId)
+          .eq('registration', row.registration)
+      }
+    } catch (fleetErr) {
+      logger.error('Walk-around fleet mirror failed (non-fatal):', fleetErr)
+    }
+  }, [user, userOrganizationId])
+
   // UPDATE vehicle with improved sync support - INCLUDING CONDITION SYNC
   const updateVehicleConditionAndStatus = useCallback(async (vehicleId: string, updates: {
     condition?: string
@@ -2051,6 +2084,7 @@ if (updates.damagePins !== undefined && vehicleIdForSync) {
     checkInVehicle,
     checkOutVehicle,
     updateVehicleConditionAndStatus,
+    updateWalkaroundPhotos,
     bulkCheckout,
     
     // Hire Actions
