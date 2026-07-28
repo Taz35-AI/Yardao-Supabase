@@ -212,7 +212,8 @@ export function useDashboardBusinessLogic({
         insurancePolicyId:     updates.insurancePolicyId     ?? null,  // ✅ NEW
         insurancePolicyName:   updates.insurancePolicyName   ?? null,  // ✅ NEW
         insurancePolicyExpiry: updates.insurancePolicyExpiry ?? null,  // ✅ NEW
-        damagePins: updates.damagePins ?? []
+        damagePins: updates.damagePins ?? [],
+        walkaroundPhotos: updates.walkaroundPhotos ?? []
       }
 
       if (updates.motExpiry !== undefined) updateData.motExpiry = updates.motExpiry
@@ -276,6 +277,9 @@ export function useDashboardBusinessLogic({
       }
       if (formData.damagePins !== undefined) {
         checkInData.damagePins = formData.damagePins
+      }
+      if ((formData as any).walkaroundPhotos !== undefined) {
+        checkInData.walkaroundPhotos = (formData as any).walkaroundPhotos
       }
       // ADD THIS:
 if ((formData as any).vehicleDiagramType !== undefined) {

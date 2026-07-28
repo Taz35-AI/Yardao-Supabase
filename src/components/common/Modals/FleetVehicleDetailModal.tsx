@@ -502,7 +502,7 @@ export function FleetVehicleDetailModal({
               </div>
 
               {/* Damage map — read-only (all logic unchanged) */}
-              {(vehicle.vehicleDiagramType || (vehicle.damagePins && vehicle.damagePins.length > 0)) && (
+              {(vehicle.vehicleDiagramType || (vehicle.damagePins && vehicle.damagePins.length > 0) || ((vehicle as any).walkaroundPhotos?.length ?? 0) > 0) && (
                 <div className="mt-4">
                   <div className="flex items-center justify-between mb-2">
                     <SectionTitle>{t('fleet.detailModal.sectionDamageMap')}</SectionTitle>
@@ -516,6 +516,7 @@ export function FleetVehicleDetailModal({
                     <DamageMapView
                       diagramType={vehicle.vehicleDiagramType}
                       pins={vehicle.damagePins || []}
+                      walkaroundPhotos={(vehicle as any).walkaroundPhotos || []}
                       readOnly
                     />
                   </div>

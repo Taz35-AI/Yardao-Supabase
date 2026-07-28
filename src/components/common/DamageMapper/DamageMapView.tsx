@@ -22,6 +22,7 @@
 import { useState } from 'react'
 import { AlertTriangle, ChevronDown, ChevronUp, MapPin } from 'lucide-react'
 import { DamageMapper, DamagePin, VehicleDiagramType } from './DamageMapper'
+import { WalkaroundPhotos, WalkaroundPhoto } from './WalkaroundPhotos'
 
 const VALID_DIAGRAMS: VehicleDiagramType[] = [
   'minibus', 'small_van', 'saloon', 'pickup', 'luton_van', 'tipper', 'swb_van',
@@ -34,6 +35,12 @@ interface DamageMapViewProps {
   readOnly?: boolean
   onChange?: (pins: DamagePin[]) => void
   onPhotoSelected?: (pinId: string, file: File) => Promise<string | void>
+  // Walk-around photos — optional. Read-only detail views pass the array;
+  // edit views also pass onWalkaroundChange + orgId + registration.
+  walkaroundPhotos?: WalkaroundPhoto[]
+  onWalkaroundChange?: (photos: WalkaroundPhoto[]) => void
+  orgId?: string
+  registration?: string
 }
 
 export function DamageMapView({
@@ -42,6 +49,10 @@ export function DamageMapView({
   readOnly = false,
   onChange,
   onPhotoSelected,
+  walkaroundPhotos,
+  onWalkaroundChange,
+  orgId,
+  registration,
 }: DamageMapViewProps) {
   const [expanded, setExpanded] = useState(true)
 
@@ -80,7 +91,7 @@ export function DamageMapView({
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4">
+        <div className="px-4 pb-4 space-y-3">
           {resolvedType ? (
             <DamageMapper
               diagramType={resolvedType}
@@ -97,6 +108,18 @@ export function DamageMapView({
                 {!readOnly && 'Set one in the Vehicle Diagram field above.'}
               </p>
             </div>
+          )}
+
+          {/* Walk-around photos — independent of the diagram. Editable when a
+              change handler is wired; read-only views only show filled slots. */}
+          {(onWalkaroundChange || (readOnly && (walkaroundPhotos?.length ?? 0) > 0)) && (
+            <WalkaroundPhotos
+              photos={walkaroundPhotos || []}
+              onChange={onWalkaroundChange || (() => {})}
+              orgId={orgId || ''}
+              registration={registration || ''}
+              readOnly={readOnly || !onWalkaroundChange}
+            />
           )}
         </div>
       )}

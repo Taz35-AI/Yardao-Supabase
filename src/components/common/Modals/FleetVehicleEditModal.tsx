@@ -45,6 +45,7 @@ import { logger } from '@/lib/logger'
 import { VehicleDiagramSelector } from '@/components/common/DamageMapper/VehicleDiagramSelector'
 import { DamageMapView } from '@/components/common/DamageMapper/DamageMapView'
 import { VehicleDiagramType, DamagePin } from '@/components/common/DamageMapper/DamageMapper'
+import { WalkaroundPhoto } from '@/components/common/DamageMapper/WalkaroundPhotos'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -242,7 +243,11 @@ export function FleetVehicleEditModal({
     insuranceStatus:    null as InsuranceStatus | null,
     vehicleDiagramType: '' as VehicleDiagramType | '',
     damagePins:         [] as DamagePin[],
+    walkaroundPhotos:   [] as WalkaroundPhoto[],
   })
+
+  // Needed as the upload context for walk-around photos.
+  const [orgId, setOrgId] = useState('')
 
   const existingSizes = getUniqueSizes(vehicles)
 
@@ -260,6 +265,7 @@ export function FleetVehicleEditModal({
         setContractsLoading(true)
         const profile = await userProfileService.getProfile(user.uid)
         if (profile?.organizationId) {
+          setOrgId(profile.organizationId)
           const contractsList = await contractService.getContracts(profile.organizationId)
           setContracts(contractsList)
         }
@@ -295,6 +301,7 @@ export function FleetVehicleEditModal({
         insuranceStatus:    vehicle.insuranceStatus || null,
         vehicleDiagramType: (vehicle.vehicleDiagramType || '') as VehicleDiagramType | '',
         damagePins:         vehicle.damagePins || [],
+        walkaroundPhotos:   (vehicle as any).walkaroundPhotos || [],
       })
       // Start on the mode that matches the stored data.
       setTermMode((vehicle as any).defleetDueDate ? 'date' : 'weeks')
@@ -347,6 +354,7 @@ export function FleetVehicleEditModal({
         insuranceStatus:    formData.insuranceStatus,
         vehicleDiagramType: formData.vehicleDiagramType || null,
         damagePins:         formData.damagePins || [],
+        walkaroundPhotos:   formData.walkaroundPhotos || [],
       }
       await onSave(vehicle.id, updateData)
     } catch (error) {
@@ -786,6 +794,10 @@ export function FleetVehicleEditModal({
                   diagramType={formData.vehicleDiagramType}
                   pins={formData.damagePins}
                   onChange={pins => handleInputChange('damagePins', pins)}
+                  walkaroundPhotos={formData.walkaroundPhotos}
+                  onWalkaroundChange={photos => handleInputChange('walkaroundPhotos', photos)}
+                  orgId={orgId}
+                  registration={safeString(vehicle.registration)}
                 />
               </div>
             )}

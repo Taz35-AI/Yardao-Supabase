@@ -1,6 +1,7 @@
 // 📁 src/types/index.ts - UPDATED WITH VEHICLE ID RELATIONSHIPS + DATE ACQUIRED + DEFLEET SUPPORT
 import { logger } from '@/lib/logger'
 import { DamagePin, VehicleDiagramType } from '@/components/common/DamageMapper/DamageMapper'
+import { WalkaroundPhoto } from '@/components/common/DamageMapper/WalkaroundPhotos'
 // Vehicle Status Types - 4-Status System
 export type VehicleStatus = 'Ready' | 'Pending checks' | 'Repairs needed' | 'Non-Starter'
 
@@ -118,6 +119,7 @@ export interface CheckedInVehicle {
   branchId?: string
   vehicleDiagramType?: VehicleDiagramType | null   // which PNG to show
   damagePins?: DamagePin[]                          // array of placed pins
+  walkaroundPhotos?: WalkaroundPhoto[]              // standard-angle photos
   
   // 🔧 FIXED: Contract fields with proper null handling
   contract?: string | null
@@ -328,6 +330,7 @@ export interface FleetVehicle {
   lastKnownLocation?: string
   vehicleDiagramType?: VehicleDiagramType | null   // which PNG to show
   damagePins?: DamagePin[]                          // array of placed pins
+  walkaroundPhotos?: WalkaroundPhoto[]              // standard-angle photos
   
   // ✨ NEW: Date Acquired field
   dateAcquired?: string | null // When vehicle was acquired by the business (ISO format YYYY-MM-DD)
@@ -518,6 +521,7 @@ export interface VehicleFormData {
   comments?: string
   vehicleDiagramType?: VehicleDiagramType | string | null
   damagePins?: DamagePin[]
+  walkaroundPhotos?: WalkaroundPhoto[]
   
   // 🔧 FIXED: Contract fields with proper optional handling
   contract?: string
@@ -960,6 +964,7 @@ export interface FleetImportData {
   dateAcquired?: string | null // ✨ NEW: Date Acquired field
   vehicleDiagramType?: VehicleDiagramType | null   // which PNG to show
   damagePins?: DamagePin[]                          // array of placed pins
+  walkaroundPhotos?: WalkaroundPhoto[]              // standard-angle photos
 }
 
 // Enhanced vehicle interfaces with fleet integration - COMPLETE

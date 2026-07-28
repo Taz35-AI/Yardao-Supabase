@@ -597,7 +597,27 @@ export function useFleetActions(fleetData: FleetDataHook | any) {
           // Don't throw — fleet update already succeeded
         }
       }
-      
+
+      // ── Sync walk-around photos to yard if changed ───────────────────
+      // Photos are already URLs (uploaded on capture), so this is a plain
+      // array copy to every yard record of this vehicle — mirrors damage pins.
+      if ('walkaroundPhotos' in updates) {
+        try {
+          const { data: updated, error: waError } = await supabase
+            .from('checked_in_vehicles')
+            .update({ walkaround_photos: (processedUpdates as any).walkaroundPhotos || [] })
+            .eq('organization_id', userProfile.organizationId)
+            .eq('registration', currentVehicle.registration.trim().toUpperCase())
+            .select('id')
+          if (waError) throw waError
+          if (updated && updated.length > 0) {
+            logger.log(`✅ Walk-around photos synced to ${updated.length} yard record(s)`)
+          }
+        } catch (syncError) {
+          logger.error('Walk-around photo yard sync failed:', syncError)
+        }
+      }
+
       // ── Sync MOT / road-tax expiry to yard if changed ────────────────
       if (motChanged || taxChanged) {
         try {

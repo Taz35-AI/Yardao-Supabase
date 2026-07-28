@@ -45,6 +45,7 @@ import { userProfileService } from '@/lib/firestore'
 import { InsuranceToggle } from '@/components/common/ui/InsuranceToggle'
 import { DamageSection } from '@/components/common/DamageMapper/DamageSection'
 import { DamagePin, VehicleDiagramType } from '@/components/common/DamageMapper/DamageMapper'
+import { WalkaroundPhoto } from '@/components/common/DamageMapper/WalkaroundPhotos'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -63,6 +64,7 @@ interface FleetVehicle {
   comments?: string | null
   vehicleDiagramType?: VehicleDiagramType | null
   damagePins?: DamagePin[]
+  walkaroundPhotos?: WalkaroundPhoto[]
   // defleet fields — used to filter the vehicle out of the list
   isDefleeted?: boolean
   currentStatus?: string
@@ -192,6 +194,7 @@ export function VehicleCheckInForm({
     taxExpiry: '',
     comments: '',
     damagePins: [],
+    walkaroundPhotos: [],
     vehicleDiagramType: null,
   })
 
@@ -467,6 +470,7 @@ export function VehicleCheckInForm({
       taxExpiry:          safeString(vehicle.taxExpiry),
       comments:           safeString(vehicle.comments),
       damagePins:         vehicle.damagePins || [],
+      walkaroundPhotos:   vehicle.walkaroundPhotos || [],
       vehicleDiagramType: vehicle.vehicleDiagramType || null,
     })
   }
@@ -483,7 +487,7 @@ export function VehicleCheckInForm({
       condition: conditions[0]?.name || '', status: 'Pending checks',
       mileage: '', notes: '', contract: '', contractColor: '',
       insuranceStatus: 'Not Insured', motExpiry: '', taxExpiry: '', comments: '',
-      damagePins: [], vehicleDiagramType: null,
+      damagePins: [], walkaroundPhotos: [], vehicleDiagramType: null,
     })
   }
 
@@ -1090,6 +1094,10 @@ export function VehicleCheckInForm({
                         diagramType={formData.vehicleDiagramType}
                         pins={formData.damagePins || []}
                         onChange={pins => handleChange('damagePins', pins)}
+                        walkaroundPhotos={formData.walkaroundPhotos || []}
+                        onWalkaroundChange={photos => handleChange('walkaroundPhotos', photos)}
+                        orgId={organizationId || ''}
+                        registration={formData.registration}
                       />
                     ) : (
                       <div className="flex items-start gap-3 bg-[#f8faf9] dark:bg-gray-800 rounded-xl p-4 border border-[#e2e8e5] dark:border-gray-700">

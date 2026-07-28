@@ -41,6 +41,7 @@ interface LocalFleetVehicle {
   insuranceStatus?: string | null
   vehicleDiagramType?: string | null
   damagePins?: any[]
+  walkaroundPhotos?: any[]
 }
 
 interface LocalConditionCategory {
@@ -294,6 +295,7 @@ export function useDashboardDataLayer({ userId, branchId = 'main' }: DashboardDa
         insuranceStatus: (vehicle as any).insuranceStatus || null,
         vehicleDiagramType: (vehicle as any).vehicleDiagramType || null,
         damagePins: (vehicle as any).damagePins || [],
+        walkaroundPhotos: (vehicle as any).walkaroundPhotos || [],
       }))
   }, [fleetData?.vehicles])
 

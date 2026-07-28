@@ -32,6 +32,7 @@ import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
 import { DamageMapper } from '@/components/common/DamageMapper/DamageMapper'
 import type { DamagePin, VehicleDiagramType } from '@/components/common/DamageMapper/DamageMapper'
+import { WalkaroundPhotos, WalkaroundPhoto } from '@/components/common/DamageMapper/WalkaroundPhotos'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -186,6 +187,7 @@ export function VehicleEditModal({
 
   // ── Damage mapper state (unchanged) ──────────────────────────────────────
   const [damagePins, setDamagePins] = useState<DamagePin[]>((vehicle as any).damagePins || [])
+  const [walkaroundPhotos, setWalkaroundPhotos] = useState<WalkaroundPhoto[]>((vehicle as any).walkaroundPhotos || [])
   const vehicleDiagramType          = (vehicle as any).vehicleDiagramType as VehicleDiagramType | null | undefined
 
   // ── Editable check-in date (unchanged) ───────────────────────────────────
@@ -250,6 +252,7 @@ export function VehicleEditModal({
     setContract(safeString(vehicle.contract))
     setContractColor(safeString(vehicle.contractColor))
     setDamagePins((vehicle as any).damagePins || [])
+    setWalkaroundPhotos((vehicle as any).walkaroundPhotos || [])
   }, [vehicle])
 
   // ── Handlers (all unchanged) ──────────────────────────────────────────────
@@ -342,7 +345,8 @@ export function VehicleEditModal({
         comments:      comments.trim(),
         createdAt:     checkinDate ? new Date(checkinDate) : vehicle.createdAt,
         updatedAt:     new Date(),
-        damagePins
+        damagePins,
+        walkaroundPhotos
       } as any
 
       await onSave(vehicle.id, updates)
@@ -543,6 +547,16 @@ export function VehicleEditModal({
                 />
               </div>
             )}
+
+            {/* Walk-around photos — shown regardless of diagram. */}
+            <div className="mx-4 sm:mx-5 mb-5">
+              <WalkaroundPhotos
+                photos={walkaroundPhotos}
+                onChange={setWalkaroundPhotos}
+                orgId={(vehicle as any).organizationId || ''}
+                registration={safeString(vehicle.registration)}
+              />
+            </div>
           </form>
         </div>
 

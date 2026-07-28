@@ -344,6 +344,7 @@ export function useYardDataInternal(props?: UseYardDataProps) {
         checkedOutToGarageByName: data.checkedOutToGarageByName,
         vehicleDiagramType: data.vehicleDiagramType || null,
         damagePins: data.damagePins || [],
+        walkaroundPhotos: data.walkaroundPhotos || [],
 
         // ✨ PHASE 2: Yard layout — which parking space (if any) this vehicle is parked on
         parkingSpaceId: data.parkingSpaceId || null,
@@ -1090,6 +1091,7 @@ export function useYardDataInternal(props?: UseYardDataProps) {
               last_edit_log: auditLog,
               vehicle_diagram_type: (vehicleData as any).vehicleDiagramType || null,
               damage_pins: (vehicleData as any).damagePins || [],
+              walkaround_photos: (vehicleData as any).walkaroundPhotos || [],
             })
             .eq('id', existingVehicle.id)
           if (transferError) throw transferError
@@ -1174,6 +1176,7 @@ export function useYardDataInternal(props?: UseYardDataProps) {
           last_edit_log: auditLog,
           vehicle_diagram_type: (vehicleData as any).vehicleDiagramType || null,
           damage_pins: (vehicleData as any).damagePins || [],
+          walkaround_photos: (vehicleData as any).walkaroundPhotos || [],
         }
 
         const { error: insertError } = await supabase
@@ -1333,8 +1336,9 @@ export function useYardDataInternal(props?: UseYardDataProps) {
     createdAt?: Date
     checkInTime?: Date
       damagePins?: any[]   // ← ADD THIS
+      walkaroundPhotos?: any[]
 
-    
+
   }) => {
     if (!user || !userOrganizationId) throw new Error('User not authenticated')
     if (!vehicleId || typeof vehicleId !== 'string') throw new Error('Invalid vehicle ID')
@@ -1377,7 +1381,10 @@ export function useYardDataInternal(props?: UseYardDataProps) {
       const updateData: any = {
   updatedAt: new Date().toISOString(),
   branchId: branchId,
-  ...(updates.damagePins !== undefined && { damagePins: updates.damagePins })
+  ...(updates.damagePins !== undefined && { damagePins: updates.damagePins }),
+  // Walk-around photos are already URLs (uploaded on capture), so no base64
+  // conversion is needed here — just pass the array straight through.
+  ...(updates.walkaroundPhotos !== undefined && { walkaroundPhotos: updates.walkaroundPhotos })
 }
 
       // Track what's being changed for audit log

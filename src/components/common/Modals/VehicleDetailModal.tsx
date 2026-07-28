@@ -43,6 +43,7 @@ import { useT, useLang, formatDateLocale } from '@/lib/i18n'
 import { computeDefleetDue } from '@/lib/utils/defleetDue'
 import { DamageMapper } from '@/components/common/DamageMapper/DamageMapper'
 import type { DamagePin, VehicleDiagramType } from '@/components/common/DamageMapper/DamageMapper'
+import { WalkaroundPhotos, WalkaroundPhoto } from '@/components/common/DamageMapper/WalkaroundPhotos'
 import { userProfileService } from '@/lib/firestore'
 import { stockService } from '@/lib/services/stockService'
 import { mileageService, type MileageReading } from '@/lib/services/mileageService'
@@ -519,6 +520,7 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
 
   const damagePins: DamagePin[]                            = (vehicle as any).damagePins || []
   const vehicleDiagramType: VehicleDiagramType | undefined = (vehicle as any).vehicleDiagramType
+  const walkaroundPhotos: WalkaroundPhoto[]                = (vehicle as any).walkaroundPhotos || []
 
   // ── Handlers (unchanged) ─────────────────────────────────────────────────
   const handleInsuranceToggle = async (status: InsuranceStatus, policy?: any) => {
@@ -900,6 +902,20 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
                       readOnly
                     />
                   </div>
+                </div>
+              )}
+
+              {/* Walk-around photos — read-only, shown whenever any exist
+                  (independent of whether a diagram is assigned). */}
+              {walkaroundPhotos.length > 0 && (
+                <div className="mt-4">
+                  <WalkaroundPhotos
+                    photos={walkaroundPhotos}
+                    onChange={() => {}}
+                    orgId=""
+                    registration=""
+                    readOnly
+                  />
                 </div>
               )}
             </div>

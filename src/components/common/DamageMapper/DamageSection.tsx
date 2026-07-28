@@ -11,12 +11,19 @@ import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { AlertTriangle, ChevronDown, ChevronUp, Maximize2, X } from 'lucide-react'
 import { DamageMapper, DamageEditPanel, DamagePin, VehicleDiagramType } from './DamageMapper'
+import { WalkaroundPhotos, WalkaroundPhoto } from './WalkaroundPhotos'
 
 interface DamageSectionProps {
   diagramType?: VehicleDiagramType | string | null
   pins: DamagePin[]
   onChange: (pins: DamagePin[]) => void
   onPhotoSelected?: (pinId: string, file: File) => Promise<string | void>
+  // Walk-around photos — optional; only rendered when a host wires them up
+  // (it needs the org + registration to upload into the damage-photos bucket).
+  walkaroundPhotos?: WalkaroundPhoto[]
+  onWalkaroundChange?: (photos: WalkaroundPhoto[]) => void
+  orgId?: string
+  registration?: string
 }
 
 const VALID_DIAGRAMS: VehicleDiagramType[] = [
@@ -37,10 +44,14 @@ interface DiagramModalProps {
   initialPins: DamagePin[]                              // snapshot when modal opens
   onPinsChange: (pins: DamagePin[]) => void             // called on every change
   onPhotoSelected?: (pinId: string, file: File) => Promise<string | void>
+  walkaroundPhotos?: WalkaroundPhoto[]
+  onWalkaroundChange?: (photos: WalkaroundPhoto[]) => void
+  orgId?: string
+  registration?: string
   onClose: () => void
 }
 
-function DiagramModal({ diagramType, initialPins, onPinsChange, onPhotoSelected, onClose }: DiagramModalProps) {
+function DiagramModal({ diagramType, initialPins, onPinsChange, onPhotoSelected, walkaroundPhotos, onWalkaroundChange, orgId, registration, onClose }: DiagramModalProps) {
   // ── LOCAL pin state — fixes the stale closure bug ────────────────────────────
   // Previously pins came in as a prop and updatePin closed over the prop value,
   // meaning any update (especially after returning from the native camera) was
@@ -135,6 +146,19 @@ function DiagramModal({ diagramType, initialPins, onPinsChange, onPhotoSelected,
               externalEditingPinId={editingPinId}
               onEditingPinChange={setEditingPinId}
             />
+
+            {/* Walk-around photos — collapsed by default so the diagram stays
+                the focus. Only shown when the host wired up the handlers. */}
+            {onWalkaroundChange && (
+              <div className="mt-4">
+                <WalkaroundPhotos
+                  photos={walkaroundPhotos || []}
+                  onChange={onWalkaroundChange}
+                  orgId={orgId || ''}
+                  registration={registration || ''}
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -256,7 +280,7 @@ function DiagramModal({ diagramType, initialPins, onPinsChange, onPhotoSelected,
 
 // ─── Main exported component ──────────────────────────────────────────────────
 
-export function DamageSection({ diagramType, pins, onChange, onPhotoSelected }: DamageSectionProps) {
+export function DamageSection({ diagramType, pins, onChange, onPhotoSelected, walkaroundPhotos, onWalkaroundChange, orgId, registration }: DamageSectionProps) {
   const [expanded, setExpanded] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -349,6 +373,10 @@ export function DamageSection({ diagramType, pins, onChange, onPhotoSelected }: 
           initialPins={pins}          // snapshot passed once on open
           onPinsChange={onChange}     // every local change flows back up immediately
           onPhotoSelected={onPhotoSelected}
+          walkaroundPhotos={walkaroundPhotos}
+          onWalkaroundChange={onWalkaroundChange}
+          orgId={orgId}
+          registration={registration}
           onClose={() => setModalOpen(false)}
         />
       )}
