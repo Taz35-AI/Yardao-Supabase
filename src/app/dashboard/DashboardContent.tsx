@@ -905,8 +905,11 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
         />
       )}
 
-      {/* 🤖 AI Fleet Assistant (bottom-LEFT on desktop, bottom-right on mobile) */}
-      <SpeechEnabledGroqAssistant />
+      {/* 🤖 AI Fleet Assistant (bottom-LEFT on desktop, bottom-right on mobile).
+          Hidden while any full-screen modal is open so it never sits on top of
+          modal content — this is the dashboard's own Zao instance, separate
+          from the global ZaoGuard (which the ZaoUIContext suppression covers). */}
+      {!anyModalOpen && <SpeechEnabledGroqAssistant />}
 
       {/* 🚗 Check-in floating button — DESKTOP pipeline only, bottom-RIGHT (mirrors
           Zao). Portaled to <body> with inline styles so it anchors to the viewport
@@ -1141,6 +1144,7 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
           onQuickCheckIn={handleDetailModalQuickCheckIn}
           onUpdateVehicle={businessLogic.handleVehicleUpdate}
           onUpdateWalkaround={dataLayer.yardData?.updateWalkaroundPhotos}
+          onUpdateDamage={dataLayer.yardData?.updateDamagePins}
           fleetVehicles={dataLayer.fleetVehicles}
         />
       )}

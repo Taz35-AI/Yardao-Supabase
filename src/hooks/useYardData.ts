@@ -1351,6 +1351,45 @@ export function useYardDataInternal(props?: UseYardDataProps) {
     }
   }, [user, userOrganizationId])
 
+  // Lightweight, targeted save for damage pins only — used by the detail modal
+  // so pins/photos can be marked without opening the edit modal. Uploads any
+  // base64 pin photos to Storage first (never base64 in the row), only touches
+  // damage_pins, and mirrors to the fleet record. Returns the cleaned pins
+  // (base64 → URL) so the caller can sync local state without re-uploading.
+  const updateDamagePins = useCallback(async (vehicleId: string, pins: any[]): Promise<any[]> => {
+    if (!user || !userOrganizationId) throw new Error('User not authenticated')
+    const { data: row, error: rErr } = await supabase
+      .from('checked_in_vehicles')
+      .select('vehicle_id, registration')
+      .eq('id', vehicleId)
+      .maybeSingle()
+    if (rErr) throw rErr
+    const reg = row?.registration || ''
+
+    const cleaned = await ensurePinPhotosUploaded(pins as any, userOrganizationId, reg)
+
+    const { error: yErr } = await supabase
+      .from('checked_in_vehicles')
+      .update({ damage_pins: cleaned, updated_at: new Date().toISOString() })
+      .eq('id', vehicleId)
+    if (yErr) throw yErr
+
+    // Mirror to the fleet master record (by vehicleId, else by registration).
+    try {
+      if (row?.vehicle_id) {
+        await supabase.from('vehicles').update({ damage_pins: cleaned }).eq('id', row.vehicle_id)
+      } else if (reg) {
+        await supabase.from('vehicles')
+          .update({ damage_pins: cleaned })
+          .eq('organization_id', userOrganizationId)
+          .eq('registration', reg)
+      }
+    } catch (fleetErr) {
+      logger.error('Damage-pin fleet mirror failed (non-fatal):', fleetErr)
+    }
+    return cleaned as any[]
+  }, [user, userOrganizationId])
+
   // UPDATE vehicle with improved sync support - INCLUDING CONDITION SYNC
   const updateVehicleConditionAndStatus = useCallback(async (vehicleId: string, updates: {
     condition?: string
@@ -2085,6 +2124,7 @@ if (updates.damagePins !== undefined && vehicleIdForSync) {
     checkOutVehicle,
     updateVehicleConditionAndStatus,
     updateWalkaroundPhotos,
+    updateDamagePins,
     bulkCheckout,
     
     // Hire Actions

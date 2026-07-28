@@ -7,7 +7,7 @@
 // ✅ NEW: Linked one-off parts section — shows parts allocated to this vehicle
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/Button'
 import {
   X,
@@ -74,6 +74,8 @@ interface VehicleDetailModalProps {
   onUpdateVehicle?: (vehicleId: string, updates: any) => Promise<void>
   // Targeted save for walk-around photos only (no status/pin side-effects).
   onUpdateWalkaround?: (vehicleId: string, photos: WalkaroundPhoto[]) => Promise<void>
+  // Targeted save for damage pins only; returns cleaned pins (base64 → URL).
+  onUpdateDamage?: (vehicleId: string, pins: DamagePin[]) => Promise<DamagePin[]>
   fleetVehicles?: FleetVehicleLike[]
 }
 
@@ -436,6 +438,7 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
   onQuickCheckIn,
   onUpdateVehicle,
   onUpdateWalkaround,
+  onUpdateDamage,
   fleetVehicles
 }) => {
   const t = useT()
@@ -467,6 +470,39 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
     }
   }
   const canEditWalkaround = !!onUpdateWalkaround && !!orgId
+
+  // ── Damage pins — editable directly from the detail modal (same workflow as
+  // the edit modal). Saves are debounced (pins can change rapidly while
+  // marking) and go through the targeted handler that only touches damage_pins.
+  const [localPins, setLocalPins] = useState<DamagePin[]>((vehicle as any).damagePins || [])
+  useEffect(() => { setLocalPins((vehicle as any).damagePins || []) }, [vehicle])
+  const pinSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingPinsRef = useRef<DamagePin[] | null>(null)
+  const flushPinSave = useCallback(async () => {
+    if (!onUpdateDamage || pendingPinsRef.current == null) return
+    const toSave = pendingPinsRef.current
+    pendingPinsRef.current = null
+    try {
+      const cleaned = await onUpdateDamage(vehicle.id, toSave)
+      // Only sync (base64 → URL) if nothing newer is queued, to avoid dropping
+      // a pin the user added while this save was in flight.
+      if (pendingPinsRef.current == null) setLocalPins(cleaned)
+    } catch {
+      alert('Could not save damage marks — please try again.')
+    }
+  }, [onUpdateDamage, vehicle.id])
+  const handlePinsChange = (next: DamagePin[]) => {
+    setLocalPins(next) // optimistic
+    if (!onUpdateDamage) return
+    pendingPinsRef.current = next
+    if (pinSaveTimer.current) clearTimeout(pinSaveTimer.current)
+    pinSaveTimer.current = setTimeout(() => { pinSaveTimer.current = null; void flushPinSave() }, 700)
+  }
+  // Flush any pending save when the modal unmounts (e.g. closed right after a change).
+  useEffect(() => () => {
+    if (pinSaveTimer.current) { clearTimeout(pinSaveTimer.current); void flushPinSave() }
+  }, [flushPinSave])
+  const canEditDamage = !!onUpdateDamage && !!orgId
 
   // ── State (unchanged) ────────────────────────────────────────────────────
   const initialInsuranceStatus = getInsuranceStatus(vehicle)
@@ -538,7 +574,6 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
   const motColour = getExpiryColour(effectiveMotExpiry)
   const taxColour = getExpiryColour(effectiveTaxExpiry)
 
-  const damagePins: DamagePin[]                            = (vehicle as any).damagePins || []
   const vehicleDiagramType: VehicleDiagramType | undefined = (vehicle as any).vehicleDiagramType
 
   // ── Handlers (unchanged) ─────────────────────────────────────────────────
@@ -907,18 +942,21 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
                 <div className="mt-4">
                   <div className="flex items-center justify-between mb-2">
                     <SectionTitle>{t('vehDetail.damageMap')}</SectionTitle>
-                    {damagePins.length > 0 && (
+                    {localPins.length > 0 && (
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200 -mt-1">
-                        {t(damagePins.length === 1 ? 'vehDetail.pinsCountOne' : 'vehDetail.pinsCountMany', { count: damagePins.length })}
+                        {t(localPins.length === 1 ? 'vehDetail.pinsCountOne' : 'vehDetail.pinsCountMany', { count: localPins.length })}
                       </span>
                     )}
                   </div>
+                  {/* Editable directly here (same workflow as the edit modal):
+                      tap "Add damage pin" then the diagram; photos + notes save
+                      automatically. Falls back to read-only without a handler. */}
                   <div className="rounded-xl overflow-hidden border border-[#e2e8e5] dark:border-gray-700">
                     <DamageMapper
                       diagramType={vehicleDiagramType}
-                      pins={damagePins}
-                      onChange={() => {}}
-                      readOnly
+                      pins={localPins}
+                      onChange={handlePinsChange}
+                      readOnly={!canEditDamage}
                     />
                   </div>
                 </div>
