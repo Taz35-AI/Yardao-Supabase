@@ -1,8 +1,13 @@
 // src/components/common/DamageMapper/WalkaroundPhotos.tsx
 // Collapsible "walk-around" photo section shown alongside the damage diagram.
 // A fixed set of standard vehicle angles (front, sides, 3/4 angles, rear); each
-// slot holds ONE optional photo that can be added / replaced / removed from the
-// camera or the gallery.
+// slot holds ONE optional photo that can be added / replaced / removed.
+//
+// CAMERA: uses an in-app getUserMedia camera (identical to the damage-pin
+// camera), NOT a native <input capture>. The native camera backgrounds the
+// whole web app; on an Android WebView that can tear down and recreate the
+// page when it returns — wiping the in-progress check-in form. getUserMedia
+// keeps the page alive the whole time, so nothing is lost.
 //
 // Storage: photos upload to the `damage-photos` bucket on capture and only the
 // URL is kept in state — never base64 — so the walkaround_photos jsonb column
@@ -10,7 +15,7 @@
 
 'use client'
 
-import { useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Camera, ImageIcon, Trash2, X, ChevronDown, ChevronUp, Loader2, Check } from 'lucide-react'
 import { uploadDamagePhoto, compressImage } from '@/services/damageSyncService'
 
@@ -58,6 +63,13 @@ export function WalkaroundPhotos({
   const [uploadingAngle, setUploadingAngle] = useState<string | null>(null)
   const [preview, setPreview] = useState<WalkaroundPhoto | null>(null)
 
+  // ── In-app camera state (one capture at a time) ─────────────────────────────
+  const [cameraAngle, setCameraAngle] = useState<string | null>(null)
+  const [cameraReady, setCameraReady] = useState(false)
+  const [cameraError, setCameraError] = useState<string | null>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+
   const byAngle = new Map(photos.map(p => [p.angle, p]))
   const takenCount = WALKAROUND_ANGLES.filter(a => byAngle.has(a.key)).length
 
@@ -68,15 +80,18 @@ export function WalkaroundPhotos({
   }
   const removePhoto = (angle: string) => onChange(photos.filter(p => p.angle !== angle))
 
-  const handleFile = async (angle: string, file: File | undefined | null) => {
-    if (!file) return
+  const requireContext = () => {
     if (!orgId || !registration) {
       alert('Enter the registration first, then add walk-around photos.')
-      return
+      return false
     }
+    return true
+  }
+
+  // Shared upload path: compress → damage-photos bucket → store URL only.
+  const uploadAndSet = async (angle: string, base64: string) => {
     setUploadingAngle(angle)
     try {
-      const base64 = await fileToDataUrl(file)
       const compressed = await compressImage(base64)
       const url = await uploadDamagePhoto(orgId, registration, `walk_${angle}`, compressed)
       setPhoto(angle, url)
@@ -86,6 +101,83 @@ export function WalkaroundPhotos({
       setUploadingAngle(null)
     }
   }
+
+  const handleGalleryFile = async (angle: string, file: File | undefined | null) => {
+    if (!file) return
+    if (!requireContext()) return
+    const base64 = await fileToDataUrl(file)
+    await uploadAndSet(angle, base64)
+  }
+
+  const openCamera = (angle: string) => {
+    if (!requireContext()) return
+    setCameraError(null)
+    setCameraReady(false)
+    setCameraAngle(angle)
+  }
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop())
+      streamRef.current = null
+    }
+    setCameraAngle(null)
+    setCameraReady(false)
+    setCameraError(null)
+  }
+
+  const snapPhoto = () => {
+    if (!videoRef.current || !cameraAngle) return
+    const video = videoRef.current
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    canvas.getContext('2d')!.drawImage(video, 0, 0)
+    const base64 = canvas.toDataURL('image/jpeg', 0.85)
+    const angle = cameraAngle
+    stopCamera()
+    void uploadAndSet(angle, base64)
+  }
+
+  // getUserMedia lifecycle — mirrors the damage-pin camera. Runs on all
+  // platforms (the native Android WebView supports getUserMedia too), so the
+  // page never backgrounds and the form is never torn down.
+  useEffect(() => {
+    if (!cameraAngle) return
+    let cancelled = false
+    setCameraReady(false)
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('Camera not available in this browser. Check site permissions or try HTTPS.')
+      return
+    }
+
+    const timeout = setTimeout(() => {
+      if (!cancelled && !cameraReady) {
+        setCameraError("Camera failed to start. Allow camera access in your browser, then try again.")
+      }
+    }, 8000)
+
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 960 } },
+      audio: false,
+    })
+      .then(stream => {
+        clearTimeout(timeout)
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return }
+        streamRef.current = stream
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          videoRef.current.onplaying = () => { if (!cancelled) setCameraReady(true) }
+        }
+      })
+      .catch(() => {
+        clearTimeout(timeout)
+        if (!cancelled) setCameraError('Camera access denied. Allow camera access in your browser, then try again.')
+      })
+
+    return () => { cancelled = true; clearTimeout(timeout) }
+  }, [cameraAngle]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
@@ -123,18 +215,76 @@ export function WalkaroundPhotos({
                 return (
                   <WalkaroundSlot
                     key={angle.key}
-                    angleKey={angle.key}
                     label={angle.label}
                     photo={photo}
                     busy={busy}
                     readOnly={readOnly}
                     onPreview={() => photo && setPreview(photo)}
-                    onFile={file => handleFile(angle.key, file)}
+                    onCamera={() => openCamera(angle.key)}
+                    onGalleryFile={file => handleGalleryFile(angle.key, file)}
                     onRemove={() => removePhoto(angle.key)}
                   />
                 )
               })}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* In-app camera modal */}
+      {cameraAngle && (
+        <div
+          className="fixed inset-0 z-[100000] bg-black flex flex-col"
+          onClick={e => { if (e.target === e.currentTarget) stopCamera() }}
+        >
+          <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 pt-4 pb-2">
+            <span className="text-white/90 text-sm font-semibold">{angleLabel(cameraAngle)}</span>
+            <button
+              type="button"
+              onClick={stopCamera}
+              className="w-10 h-10 bg-black/40 backdrop-blur-sm rounded-full flex items-center justify-center text-white hover:bg-black/60 transition-colors"
+              aria-label="Close camera"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {cameraError ? (
+            <div className="flex-1 flex items-center justify-center text-center text-white p-8">
+              <div>
+                <p className="text-lg font-semibold mb-2">Camera unavailable</p>
+                <p className="text-sm text-gray-300 mb-6">{cameraError}</p>
+                <button type="button" onClick={stopCamera} className="px-6 py-2 bg-white text-black rounded-xl font-bold">Close</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {!cameraReady && (
+                <div className="flex-1 flex items-center justify-center">
+                  <Loader2 className="w-10 h-10 text-white/70 animate-spin" />
+                </div>
+              )}
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className={`w-full h-full object-cover ${cameraReady ? '' : 'hidden'}`}
+              />
+              {cameraReady && (
+                <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center pb-10 pt-4 bg-gradient-to-t from-black/60 to-transparent">
+                  <button
+                    type="button"
+                    onClick={snapPhoto}
+                    className="rounded-full bg-white border-[5px] border-white/40 shadow-2xl hover:scale-105 active:scale-90 transition-transform"
+                    style={{ width: 72, height: 72 }}
+                    aria-label="Take photo"
+                  >
+                    <span className="block w-full h-full rounded-full bg-white" />
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -164,28 +314,25 @@ export function WalkaroundPhotos({
 // ─── One angle slot ──────────────────────────────────────────────────────────
 
 function WalkaroundSlot({
-  angleKey,
   label,
   photo,
   busy,
   readOnly,
   onPreview,
-  onFile,
+  onCamera,
+  onGalleryFile,
   onRemove,
 }: {
-  angleKey: string
   label: string
   photo: WalkaroundPhoto | undefined
   busy: boolean
   readOnly: boolean
   onPreview: () => void
-  onFile: (file: File | null) => void
+  onCamera: () => void
+  onGalleryFile: (file: File | null) => void
   onRemove: () => void
 }) {
-  const camId = useId()
   const galId = useId()
-  const camRef = useRef<HTMLInputElement>(null)
-  const galRef = useRef<HTMLInputElement>(null)
 
   return (
     <div className="relative">
@@ -223,13 +370,14 @@ function WalkaroundSlot({
               <Loader2 className="w-5 h-5 text-[#025940] animate-spin" />
             ) : (
               <div className="flex items-center gap-1.5">
-                <label
-                  htmlFor={camId}
+                <button
+                  type="button"
+                  onClick={onCamera}
                   title="Take photo"
-                  className="p-1.5 rounded-lg bg-[#012619] hover:bg-[#025940] text-white cursor-pointer transition-colors"
+                  className="p-1.5 rounded-lg bg-[#012619] hover:bg-[#025940] text-white transition-colors"
                 >
                   <Camera className="w-3.5 h-3.5" />
-                </label>
+                </button>
                 <label
                   htmlFor={galId}
                   title="Choose from gallery"
@@ -248,29 +396,20 @@ function WalkaroundSlot({
       {/* Replace controls for a filled slot */}
       {photo && !readOnly && !busy && (
         <div className="mt-1 flex items-center justify-center gap-1.5">
-          <label htmlFor={camId} title="Retake" className="text-[10px] font-semibold text-[#025940] dark:text-[#b3f243] hover:underline cursor-pointer">Retake</label>
+          <button type="button" onClick={onCamera} title="Retake" className="text-[10px] font-semibold text-[#025940] dark:text-[#b3f243] hover:underline">Retake</button>
           <span className="text-gray-300">·</span>
           <label htmlFor={galId} title="Replace from gallery" className="text-[10px] font-semibold text-[#025940] dark:text-[#b3f243] hover:underline cursor-pointer">Gallery</label>
         </div>
       )}
 
-      {/* Hidden inputs. `capture` opens the camera directly on mobile. */}
-      <input
-        id={camId}
-        ref={camRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="sr-only"
-        onChange={e => { onFile(e.target.files?.[0] ?? null); e.target.value = '' }}
-      />
+      {/* Gallery picker (no `capture`, so it opens the gallery — same as the
+          damage-pin gallery, which is safe). */}
       <input
         id={galId}
-        ref={galRef}
         type="file"
         accept="image/*"
         className="sr-only"
-        onChange={e => { onFile(e.target.files?.[0] ?? null); e.target.value = '' }}
+        onChange={e => { onGalleryFile(e.target.files?.[0] ?? null); e.target.value = '' }}
       />
     </div>
   )
