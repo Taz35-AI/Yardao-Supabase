@@ -76,6 +76,10 @@ interface DamageMapperProps {
   className?: string
   externalEditingPinId?: string | null
   onEditingPinChange?: (pinId: string | null) => void
+  // When editable, tapping an EXISTING pin asks "View or Edit?" instead of
+  // jumping straight into editing — used in the detail modal so the photo
+  // preview is still one tap away.
+  chooseOnPinClick?: boolean
 }
 
 // ─── Photo buttons ────────────────────────────────────────────────────────────
@@ -494,6 +498,7 @@ export function DamageMapper({
   className = '',
   externalEditingPinId,
   onEditingPinChange,
+  chooseOnPinClick = false,
 }: DamageMapperProps) {
   const imgRef = useRef<HTMLDivElement>(null)
   const fileInputId = useId()
@@ -501,6 +506,8 @@ export function DamageMapper({
   const [isPlacingPin, setIsPlacingPin] = useState(false)
   // Read-only mode: pin tapped → quick-look popup with the damage details + photo
   const [previewPin, setPreviewPin] = useState<DamagePin | null>(null)
+  // chooseOnPinClick: pin tapped → "View or Edit?" chooser
+  const [choosingPin, setChoosingPin] = useState<DamagePin | null>(null)
 
   const isControlled = externalEditingPinId !== undefined
   const [internalEditingPinId, setInternalEditingPinId] = useState<string | null>(null)
@@ -720,6 +727,7 @@ export function DamageMapper({
             onClick={e => {
               e.stopPropagation()
               if (readOnly) { setPreviewPin(pin); return }
+              if (chooseOnPinClick) { setChoosingPin(pin); return }
               setEditingPin(editingPinId === pin.id ? null : pin.id)
             }}
           />
@@ -784,6 +792,54 @@ export function DamageMapper({
       {readOnly && pins.length === 0 && (
         <p className="text-xs text-gray-400 italic text-center py-2">No damage recorded</p>
       )}
+
+      {/* ── Pin tap chooser: View photo or Edit (chooseOnPinClick mode) ── */}
+      {choosingPin && (() => {
+        const cfg = SEVERITY_CONFIG[choosingPin.severity]
+        const pin = choosingPin
+        return (
+          <div
+            className="fixed inset-0 z-[100000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setChoosingPin(null)}
+          >
+            <div
+              className="w-full max-w-xs bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-2 px-4 py-3" style={{ backgroundColor: cfg.bg, borderBottom: `1px solid ${cfg.border}` }}>
+                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cfg.dot }} />
+                <span className="text-sm font-bold truncate" style={{ color: cfg.textColor }}>{pin.label}</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold ml-auto" style={{ background: `${cfg.dot}20`, color: cfg.textColor }}>
+                  {cfg.label}
+                </span>
+              </div>
+              <div className="p-3 flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setPreviewPin(pin); setChoosingPin(null) }}
+                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[#f0f4f2] dark:bg-gray-800 hover:bg-[#e2e8e5] dark:hover:bg-gray-700 text-[#012619] dark:text-white text-sm font-bold transition-colors"
+                >
+                  <ImageIcon className="w-4 h-4" /> View photo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setEditingPin(pin.id); setChoosingPin(null) }}
+                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[#012619] hover:bg-[#025940] text-white text-sm font-bold transition-colors"
+                >
+                  <Camera className="w-4 h-4" /> Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChoosingPin(null)}
+                  className="px-4 py-2 rounded-xl text-[#72A68E] hover:text-[#025940] text-xs font-semibold transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── Pin quick-look popup (read-only mode) ────────────────────── */}
       {previewPin && (() => {

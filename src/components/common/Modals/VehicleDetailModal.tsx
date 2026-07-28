@@ -966,6 +966,7 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
                       pins={localPins}
                       onChange={handlePinsChange}
                       readOnly={!canEditDamage}
+                      chooseOnPinClick={canEditDamage}
                     />
                   </div>
 
