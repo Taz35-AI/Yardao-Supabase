@@ -25,7 +25,9 @@ import {
   Shield,
   ArrowLeft,
   Package,
-  Link
+  Link,
+  Save,
+  Loader2
 } from 'lucide-react'
 import {
   CheckedInVehicle,
@@ -472,36 +474,43 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
   const canEditWalkaround = !!onUpdateWalkaround && !!orgId
 
   // ── Damage pins — editable directly from the detail modal (same workflow as
-  // the edit modal). Saves are debounced (pins can change rapidly while
-  // marking) and go through the targeted handler that only touches damage_pins.
+  // the edit modal). Changes are held locally and persisted on an explicit
+  // "Save" button (clearer than silent auto-save); unsaved edits are also
+  // flushed on close as a safety net so nothing is lost.
   const [localPins, setLocalPins] = useState<DamagePin[]>((vehicle as any).damagePins || [])
-  useEffect(() => { setLocalPins((vehicle as any).damagePins || []) }, [vehicle])
-  const pinSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pendingPinsRef = useRef<DamagePin[] | null>(null)
-  const flushPinSave = useCallback(async () => {
-    if (!onUpdateDamage || pendingPinsRef.current == null) return
-    const toSave = pendingPinsRef.current
-    pendingPinsRef.current = null
+  const [pinsDirty, setPinsDirty] = useState(false)
+  const [savingPins, setSavingPins] = useState(false)
+  const localPinsRef = useRef(localPins)
+  const dirtyRef = useRef(false)
+  useEffect(() => { localPinsRef.current = localPins }, [localPins])
+  useEffect(() => { dirtyRef.current = pinsDirty }, [pinsDirty])
+  // Reset to the freshly-opened vehicle's pins.
+  useEffect(() => {
+    setLocalPins((vehicle as any).damagePins || [])
+    setPinsDirty(false)
+  }, [vehicle])
+
+  const handlePinsChange = (next: DamagePin[]) => {
+    setLocalPins(next)
+    if (onUpdateDamage) setPinsDirty(true)
+  }
+  const savePins = useCallback(async () => {
+    if (!onUpdateDamage) return
+    setSavingPins(true)
     try {
-      const cleaned = await onUpdateDamage(vehicle.id, toSave)
-      // Only sync (base64 → URL) if nothing newer is queued, to avoid dropping
-      // a pin the user added while this save was in flight.
-      if (pendingPinsRef.current == null) setLocalPins(cleaned)
+      const cleaned = await onUpdateDamage(vehicle.id, localPinsRef.current)
+      setLocalPins(cleaned) // base64 → URL
+      setPinsDirty(false)
     } catch {
       alert('Could not save damage marks — please try again.')
+    } finally {
+      setSavingPins(false)
     }
   }, [onUpdateDamage, vehicle.id])
-  const handlePinsChange = (next: DamagePin[]) => {
-    setLocalPins(next) // optimistic
-    if (!onUpdateDamage) return
-    pendingPinsRef.current = next
-    if (pinSaveTimer.current) clearTimeout(pinSaveTimer.current)
-    pinSaveTimer.current = setTimeout(() => { pinSaveTimer.current = null; void flushPinSave() }, 700)
-  }
-  // Flush any pending save when the modal unmounts (e.g. closed right after a change).
+  // Safety net: persist unsaved edits if the modal is closed without saving.
   useEffect(() => () => {
-    if (pinSaveTimer.current) { clearTimeout(pinSaveTimer.current); void flushPinSave() }
-  }, [flushPinSave])
+    if (dirtyRef.current && onUpdateDamage) void onUpdateDamage(vehicle.id, localPinsRef.current)
+  }, [onUpdateDamage, vehicle.id])
   const canEditDamage = !!onUpdateDamage && !!orgId
 
   // ── State (unchanged) ────────────────────────────────────────────────────
@@ -959,6 +968,23 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
                       readOnly={!canEditDamage}
                     />
                   </div>
+
+                  {/* Explicit Save — appears once there are unsaved damage edits. */}
+                  {canEditDamage && pinsDirty && (
+                    <div className="mt-2 flex items-center justify-end gap-2">
+                      <span className="text-[11px] font-semibold text-amber-600">Unsaved changes</span>
+                      <button
+                        type="button"
+                        onClick={savePins}
+                        disabled={savingPins}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#012619] hover:bg-[#025940] disabled:opacity-60 text-white text-sm font-bold transition-colors"
+                      >
+                        {savingPins
+                          ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
+                          : <><Save className="w-4 h-4" /> Save damage marks</>}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -974,7 +1000,6 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
                     orgId={orgId || ''}
                     registration={vehicleRegistration}
                     readOnly={!canEditWalkaround}
-                    defaultExpanded={localWalkaround.length > 0}
                   />
                 </div>
               )}
