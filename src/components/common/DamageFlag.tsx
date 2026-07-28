@@ -33,8 +33,8 @@ const BAD_CONDITIONS = new Set([
   'non-starter',
 ])
 
-/** More than one recorded pin — a single scratch isn't worth flagging. */
-const MIN_PINS = 2
+/** Any recorded damage pin flags the vehicle. */
+const MIN_PINS = 1
 
 /**
  * Which flags this vehicle earns, in display order. Returning the list (rather
@@ -56,7 +56,7 @@ export function getVehicleFlags(vehicle: VehicleFlagSource | null | undefined): 
 
   const pins = Array.isArray(vehicle.damagePins) ? vehicle.damagePins.length : 0
   if (pins >= MIN_PINS) {
-    flags.push({ kind: 'damage', src: '/damage-icon.svg', label: `${pins} damage pins` })
+    flags.push({ kind: 'damage', src: '/damage-icon.svg', label: `${pins} damage pin${pins === 1 ? '' : 's'}` })
   }
 
   const condition = (vehicle.condition || '').trim().toLowerCase()
