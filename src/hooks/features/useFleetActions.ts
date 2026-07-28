@@ -598,21 +598,39 @@ export function useFleetActions(fleetData: FleetDataHook | any) {
         }
       }
 
+      // ── Fleet→yard column sync helper ────────────────────────────────
+      // Matches yard rows RELIABLY by vehicle_id (the link stamped at check-in),
+      // then by a fully space-stripped registration for any rows not linked by
+      // id. Necessary because check-in strips ALL whitespace from the reg, so a
+      // fleet reg like "NHZ8 (WR70EHB)" is stored in the yard as "NHZ8(WR70EHB)"
+      // — a plain trim().toUpperCase() match misses it (this left NHZ8 without
+      // its diagram in the yard).
+      const normalizedReg = (currentVehicle.registration || '').replace(/\s+/g, '').toUpperCase()
+      const syncPatchToYard = async (patch: Record<string, any>): Promise<number> => {
+        let total = 0
+        const byId = await supabase.from('checked_in_vehicles').update(patch)
+          .eq('organization_id', userProfile.organizationId).eq('vehicle_id', vehicleId).select('id')
+        if (byId.error) throw byId.error
+        total += byId.data?.length ?? 0
+        if (normalizedReg) {
+          const byReg = await supabase.from('checked_in_vehicles').update(patch)
+            .eq('organization_id', userProfile.organizationId)
+            .eq('registration', normalizedReg)
+            .is('vehicle_id', null)
+            .select('id')
+          if (byReg.error) throw byReg.error
+          total += byReg.data?.length ?? 0
+        }
+        return total
+      }
+
       // ── Sync walk-around photos to yard if changed ───────────────────
       // Photos are already URLs (uploaded on capture), so this is a plain
       // array copy to every yard record of this vehicle — mirrors damage pins.
       if ('walkaroundPhotos' in updates) {
         try {
-          const { data: updated, error: waError } = await supabase
-            .from('checked_in_vehicles')
-            .update({ walkaround_photos: (processedUpdates as any).walkaroundPhotos || [] })
-            .eq('organization_id', userProfile.organizationId)
-            .eq('registration', currentVehicle.registration.trim().toUpperCase())
-            .select('id')
-          if (waError) throw waError
-          if (updated && updated.length > 0) {
-            logger.log(`✅ Walk-around photos synced to ${updated.length} yard record(s)`)
-          }
+          const n = await syncPatchToYard({ walkaround_photos: (processedUpdates as any).walkaroundPhotos || [] })
+          if (n > 0) logger.log(`✅ Walk-around photos synced to ${n} yard record(s)`)
         } catch (syncError) {
           logger.error('Walk-around photo yard sync failed:', syncError)
         }
@@ -660,16 +678,8 @@ if ('vehicleDiagramType' in updates &&
     (processedUpdates.vehicleDiagramType ?? null) !== (currentVehicle.vehicleDiagramType ?? null)) {
   const newDiagramType = processedUpdates.vehicleDiagramType ?? null
   try {
-    const { data: updated, error: syncError } = await supabase
-      .from('checked_in_vehicles')
-      .update({ vehicle_diagram_type: newDiagramType })
-      .eq('organization_id', userProfile.organizationId)
-      .eq('registration', currentVehicle.registration.trim().toUpperCase())
-      .select('id')
-    if (syncError) throw syncError
-    if (updated && updated.length > 0) {
-      logger.log(`✅ vehicleDiagramType (${newDiagramType ?? 'cleared'}) synced to ${updated.length} yard record(s)`)
-    }
+    const n = await syncPatchToYard({ vehicle_diagram_type: newDiagramType })
+    if (n > 0) logger.log(`✅ vehicleDiagramType (${newDiagramType ?? 'cleared'}) synced to ${n} yard record(s)`)
   } catch (syncError) {
     logger.error('vehicleDiagramType yard sync failed:', syncError)
   }
@@ -686,16 +696,8 @@ if ('vehicleDiagramType' in updates &&
   if ('size' in updates   && (processedUpdates.size   ?? null) !== (currentVehicle.size   ?? null)) detailPatch.size   = processedUpdates.size   ?? null
   if (Object.keys(detailPatch).length > 0) {
     try {
-      const { data: updated, error: detailErr } = await supabase
-        .from('checked_in_vehicles')
-        .update(detailPatch)
-        .eq('organization_id', userProfile.organizationId)
-        .eq('registration', currentVehicle.registration.trim().toUpperCase())
-        .select('id')
-      if (detailErr) throw detailErr
-      if (updated && updated.length > 0) {
-        logger.log(`✅ Vehicle details (${Object.keys(detailPatch).join(', ')}) synced to ${updated.length} yard record(s)`)
-      }
+      const n = await syncPatchToYard(detailPatch)
+      if (n > 0) logger.log(`✅ Vehicle details (${Object.keys(detailPatch).join(', ')}) synced to ${n} yard record(s)`)
     } catch (detailErr) {
       logger.error('Vehicle details yard sync failed:', detailErr)
     }
