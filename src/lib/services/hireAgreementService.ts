@@ -872,8 +872,21 @@ export const hireAgreementService = {
     actorId?: string | null
     actorName?: string | null
   }): Promise<void> {
-    const outAt = params.actualOutAt || nowIso()
-    await this.updateLine(params.lineId, { status: 'active', actual_out_at: outAt })
+    // The out date is the hire's START. On the FIRST activation it's stamped
+    // to now. But when a vehicle resumes after a TEMPORARY return the same line
+    // is re-activated — we must PRESERVE the original out date, otherwise the
+    // hire looks like it only started on the resume day (the temp return is
+    // just downtime/credit, not a new hire). So: an explicit actualOutAt wins;
+    // otherwise keep any existing out date and only stamp now if it's unset.
+    const patch: Record<string, any> = { status: 'active' }
+    if (params.actualOutAt) {
+      patch.actual_out_at = params.actualOutAt
+    } else {
+      const { data: existing } = await supabase
+        .from(LINES).select('actual_out_at').eq('id', params.lineId).maybeSingle()
+      if (!existing?.actual_out_at) patch.actual_out_at = nowIso()
+    }
+    await this.updateLine(params.lineId, patch)
     if (params.checkedInVehicleId) {
       try {
         await supabase
