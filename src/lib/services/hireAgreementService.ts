@@ -969,9 +969,20 @@ export const hireAgreementService = {
   }): Promise<void> {
     if (params.checkedInVehicleId) {
       try {
+        const nowIso = new Date().toISOString()
         await supabase
           .from('checked_in_vehicles')
-          .update({ current_agreement_line_id: params.lineId })
+          .update({
+            current_agreement_line_id: params.lineId,
+            // Stamp the physical return date so the downtime/credit scan prices
+            // from when the vehicle actually came back — not its original
+            // check-in. The quick check-in step usually resets these too, but
+            // making temp-return self-contained prevents stale-date credits
+            // (e.g. HK72XPA, whose legacy 2025 check-in date made the credit
+            // scan suggest a year of credit instead of a couple of days).
+            check_in_time: nowIso,
+            created_at: nowIso,
+          })
           .eq('id', params.checkedInVehicleId)
       } catch (err) {
         logger.error('markTempReturn relink failed (non-fatal):', err)
