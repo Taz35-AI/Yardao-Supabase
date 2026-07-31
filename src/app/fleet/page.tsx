@@ -39,7 +39,6 @@ import { useFleetData } from '@/hooks/useFleetData'
 import { useFleetActions } from '@/hooks/features/useFleetActions'
 import { usePagination } from '@/hooks/common/usePagination'
 import { useAuth } from '@/contexts/AuthContext'
-import { useRouter } from 'next/navigation'
 
 // Types
 import { InsuranceStatus, FleetVehicle, DefleetReason } from '@/types'
@@ -54,7 +53,7 @@ import { computeDefleetDue, computeDefleetItems } from '@/lib/utils/defleetDue'
 
 // Icons
 import Link from 'next/link'
-import { Plus, X, Download, Share2, Upload, FileSpreadsheet, Loader2, RefreshCw, Car, Search, KeyRound, Shield, ChevronRight } from 'lucide-react'
+import { Plus, X, Download, Share2, Upload, FileSpreadsheet, Loader2, RefreshCw, Car, Search, KeyRound, Shield } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 // ─── FleetHeaderExcelItems ────────────────────────────────────────────────────
@@ -289,7 +288,6 @@ const getUniqueConditionNames = (conditions: any[]): string[] => {
 
 export default function FleetInventoryPage() {
   const { user } = useAuth()
-  const router = useRouter()
   const t = useT()
   const fleetData = useFleetData()
   const {
@@ -1078,6 +1076,10 @@ export default function FleetInventoryPage() {
                     className="inline-flex items-center gap-1.5 text-[12px] font-extrabold rounded-full px-3.5 py-2 bg-white/12 hover:bg-white/20 text-white transition-colors">
                     <KeyRound className="w-4 h-4 text-[#b3f243]" /> Key Box
                   </Link>
+                  <Link href="/fleet/insurance"
+                    className="inline-flex items-center gap-1.5 text-[12px] font-extrabold rounded-full px-3.5 py-2 bg-white/12 hover:bg-white/20 text-white transition-colors">
+                    <Shield className="w-4 h-4 text-[#b3f243]" /> Insurance Status
+                  </Link>
                   {filters.search.trim() && (
                     <span className="inline-flex items-center gap-1.5 text-[12px] font-extrabold rounded-full px-3 py-2 bg-white/10 text-[#cce0d8]">
                       {filteredAndSortedVehicles.length} match{filteredAndSortedVehicles.length === 1 ? '' : 'es'}
@@ -1170,27 +1172,6 @@ export default function FleetInventoryPage() {
               </div>
 
             </div>
-
-            {/* Insurance Status — opens the full page */}
-            <button
-              type="button"
-              onClick={() => router.push('/fleet/insurance')}
-              className="w-full mb-3 flex items-center gap-3 px-4 py-3 rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-gradient-to-br from-white to-[#025940]/[0.04] dark:from-gray-800 dark:to-[#025940]/10 hover:shadow-md hover:-translate-y-[1px] transition-all text-left"
-            >
-              <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#025940] to-[#012619] text-white flex items-center justify-center flex-shrink-0">
-                <Shield className="w-4 h-4" />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-sm font-bold text-[#012619] dark:text-white">Insurance Status</span>
-                <span className="block text-xs text-[#72A68E]">Policies at a glance, uninsured, and change history</span>
-              </span>
-              {notInsuredNotInBranchCount > 0 && (
-                <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 flex-shrink-0">
-                  {notInsuredNotInBranchCount} not insured & not in branch
-                </span>
-              )}
-              <ChevronRight className="w-4 h-4 text-[#72A68E] flex-shrink-0" />
-            </button>
 
             {filteredAndSortedVehicles.length > 0 && (
               <div className="mt-3 mb-2 flex items-center justify-between gap-2 px-1">
