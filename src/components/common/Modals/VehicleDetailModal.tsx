@@ -516,6 +516,11 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
   // ── State (unchanged) ────────────────────────────────────────────────────
   const initialInsuranceStatus = getInsuranceStatus(vehicle)
   const [localInsuranceStatus, setLocalInsuranceStatus] = useState<InsuranceStatus | null>(initialInsuranceStatus)
+  // Optimistic local copy of the assigned policy, so the dropdown reflects a
+  // change immediately (the vehicle prop only updates on the next data refresh).
+  const [localPolicyId, setLocalPolicyId]         = useState<string | null>((vehicle as any).insurancePolicyId ?? null)
+  const [localPolicyName, setLocalPolicyName]     = useState<string | null>((vehicle as any).insurancePolicyName ?? null)
+  const [localPolicyExpiry, setLocalPolicyExpiry] = useState<string | null>((vehicle as any).insurancePolicyExpiry ?? null)
   const [showInsuranceWarning, setShowInsuranceWarning] = useState(false)
   const [blockedAction, setBlockedAction]               = useState<'checkout' | 'hire'>('checkout')
   const [updatingInsurance, setUpdatingInsurance]       = useState(false)
@@ -534,7 +539,11 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
     const newStatus = getInsuranceStatus(vehicle)
     logger.log('Syncing insurance status:', { old: localInsuranceStatus, new: newStatus })
     setLocalInsuranceStatus(newStatus)
-  }, [vehicle.insuranceStatus, vehicle.id])
+    setLocalPolicyId((vehicle as any).insurancePolicyId ?? null)
+    setLocalPolicyName((vehicle as any).insurancePolicyName ?? null)
+    setLocalPolicyExpiry((vehicle as any).insurancePolicyExpiry ?? null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicle.insuranceStatus, vehicle.id, (vehicle as any).insurancePolicyName])
 
   // ── Live MOT / tax from fleet (unchanged) ────────────────────────────────
   const fleetRecord = useMemo(
@@ -591,6 +600,10 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
     try {
       setUpdatingInsurance(true)
       setLocalInsuranceStatus(status)
+      // Optimistic policy update so the dropdown shows it right away.
+      setLocalPolicyId(status === 'Insured' ? (policy?.id ?? null) : null)
+      setLocalPolicyName(status === 'Insured' ? (policy?.name ?? null) : null)
+      setLocalPolicyExpiry(status === 'Insured' ? (policy?.expiryDate ?? null) : null)
       await onUpdateVehicle(vehicle.id, {
         insuranceStatus:       status,
         insurancePolicyId:     policy?.id         ?? null,
@@ -601,6 +614,9 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
     } catch (error) {
       logger.error('Error updating insurance status:', error)
       setLocalInsuranceStatus(vehicle.insuranceStatus as InsuranceStatus || null)
+      setLocalPolicyId((vehicle as any).insurancePolicyId ?? null)
+      setLocalPolicyName((vehicle as any).insurancePolicyName ?? null)
+      setLocalPolicyExpiry((vehicle as any).insurancePolicyExpiry ?? null)
       alert(t('vehDetail.insUpdateFail'))
     } finally {
       setUpdatingInsurance(false)
@@ -713,9 +729,9 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
                 showLabel={false}
                 className="text-white items-end"
                 vehicleRegistration={vehicleRegistration}
-                currentPolicyId={(vehicle as any).insurancePolicyId}
-                currentPolicyName={(vehicle as any).insurancePolicyName}
-                currentPolicyExpiry={(vehicle as any).insurancePolicyExpiry}
+                currentPolicyId={localPolicyId}
+                currentPolicyName={localPolicyName}
+                currentPolicyExpiry={localPolicyExpiry}
               />
             </div>
           )}
