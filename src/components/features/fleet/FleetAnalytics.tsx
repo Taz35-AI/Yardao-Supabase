@@ -7,7 +7,7 @@
 'use client'
 
 import { useMemo, useState, useRef, useEffect, type ReactNode } from 'react'
-import { MoreVertical, Shield, Plus, CalendarClock } from 'lucide-react'
+import { MoreVertical, Shield, Plus, CalendarClock, ShieldAlert } from 'lucide-react'
 import { FleetVehicle } from '@/types'
 import { useT } from '@/lib/i18n'
 
@@ -26,6 +26,10 @@ interface FleetAnalyticsProps {
   defleetOverdue?: number
   defleetActive?: boolean
   onDefleetClick?: () => void
+  // ── "Not insured & not in branch" chip ─────────────────────────
+  notInBranchCount?: number
+  notInBranchActive?: boolean
+  onNotInBranchClick?: () => void
   // ── new action props ─────────────────────────────────────────
   onAddVehicle?: () => void
   onBulkInsurance?: (insuranceStatus: any, vehicleIds?: string[]) => Promise<void>
@@ -51,6 +55,9 @@ export function FleetAnalytics({
   defleetOverdue = 0,
   defleetActive = false,
   onDefleetClick,
+  notInBranchCount = 0,
+  notInBranchActive = false,
+  onNotInBranchClick,
   onAddVehicle,
   onBulkInsurance,
   filteredVehicles,
@@ -174,6 +181,27 @@ export function FleetAnalytics({
           {analytics.notInsured}
         </span>
       </button>
+
+      {/* ── Not insured & not in branch — the ones to chase up ──── */}
+      {notInBranchCount > 0 && (
+        <button
+          onClick={onNotInBranchClick}
+          title="Not insured and not in a branch (out on hire or not checked in)"
+          className={`${pillBase} flex-shrink-0 ${
+            notInBranchActive
+              ? 'bg-amber-100 border-amber-400 text-amber-800'
+              : 'bg-white border-[#c8d5ce] text-amber-700 hover:bg-amber-50 hover:border-amber-300'
+          }`}
+        >
+          <ShieldAlert className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+          <span className="hidden sm:inline">Not insured &amp; not in branch</span>
+          <span className={`min-w-[1.2rem] h-5 sm:h-6 flex items-center justify-center rounded-full text-[10px] sm:text-xs font-bold px-1.5 sm:px-2 ${
+            notInBranchActive ? 'bg-amber-200 text-amber-800' : 'bg-amber-50 text-amber-700'
+          }`}>
+            {notInBranchCount}
+          </span>
+        </button>
+      )}
 
       {/* ── Defleet due — toggles the inline upcoming-defleets panel ── */}
       {defleetCount > 0 && (

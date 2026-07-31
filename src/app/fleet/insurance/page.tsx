@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { Navigation } from '@/components/Navigation'
-import { Shield, ShieldOff, ShieldAlert, ArrowLeft, RefreshCw, Search, History, Car } from 'lucide-react'
+import { Shield, ShieldOff, ShieldAlert, ArrowLeft, RefreshCw, Search, History, Car, ChevronRight } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
@@ -42,6 +42,8 @@ export default function InsuranceStatusPage() {
   const [sel, setSel] = useState<Sel>('all')
   const [q, setQ] = useState('')
   const [refreshing, setRefreshing] = useState(false)
+  const [histOpen, setHistOpen] = useState(false)
+  const [histQ, setHistQ] = useState('')
 
   const load = async () => {
     if (!user?.uid) return
@@ -93,6 +95,14 @@ export default function InsuranceStatusPage() {
     return [...list].sort((a, b) => a.registration.localeCompare(b.registration))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vehicles, sel, q, inBranch])
+
+  // Change history is search-driven: type a registration to see just that
+  // vehicle's insurance movements (no giant full list).
+  const histFiltered = useMemo(() => {
+    const term = normReg(histQ)
+    if (!term) return []
+    return log.filter(c => normReg(c.registration).includes(term))
+  }, [log, histQ])
 
   const StatCard = ({ icon, label, value, tone, value2 }: { icon: React.ReactNode; label: string; value: number; tone: string; value2?: string }) => (
     <div className="rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
@@ -195,32 +205,56 @@ export default function InsuranceStatusPage() {
                 </div>
               </div>
 
-              {/* Change history */}
+              {/* Change history — collapsed; search a registration to see just
+                  that vehicle's insurance movements. */}
               <div className="rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
-                <div className="flex items-center gap-2 px-4 py-3 border-b border-[#eef2f0] dark:border-gray-700">
+                <button
+                  type="button"
+                  onClick={() => setHistOpen(o => !o)}
+                  className="w-full flex items-center gap-2 px-4 py-3 hover:bg-[#f7faf8] dark:hover:bg-gray-700/40 transition-colors"
+                >
                   <History className="w-4 h-4 text-[#025940]" />
                   <span className="text-sm font-bold text-[#012619] dark:text-white">Change history</span>
-                  <span className="text-xs text-[#72A68E]">{log.length}</span>
-                </div>
-                {log.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-8">No insurance changes recorded yet. Changes will appear here as you reassign policies.</p>
-                ) : (
-                  <div className="max-h-[420px] overflow-y-auto divide-y divide-[#eef2f0] dark:divide-gray-700/60">
-                    {log.map(c => (
-                      <div key={c.id} className="px-4 py-2.5 text-xs">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-mono font-bold text-[#012619] dark:text-white">{c.registration || '—'}</span>
-                          <span className="text-[10px] text-gray-400">{euDateTime(c.createdAt)}</span>
-                        </div>
-                        <div className="text-[11px] text-[#4a5e54] dark:text-gray-300">{[c.make, c.model].filter(Boolean).join(' ')}</div>
-                        <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
-                          <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">{policyBadge(c.fromStatus, c.fromPolicyName) || '—'}</span>
-                          <span className="text-gray-400">→</span>
-                          <span className={`px-1.5 py-0.5 rounded font-semibold ${c.toStatus === 'Insured' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>{policyBadge(c.toStatus, c.toPolicyName)}</span>
-                          {c.changedByName && <span className="text-gray-400">· {c.changedByName}</span>}
-                        </div>
+                  <span className="text-xs text-[#72A68E]">search a registration</span>
+                  <ChevronRight className={`ml-auto w-4 h-4 text-gray-400 transition-transform ${histOpen ? 'rotate-90' : ''}`} />
+                </button>
+
+                {histOpen && (
+                  <div className="px-4 pb-4">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#72A68E]" />
+                      <input
+                        value={histQ}
+                        onChange={e => setHistQ(e.target.value)}
+                        autoFocus
+                        placeholder="Registration… e.g. HK72XPA"
+                        className="w-full pl-8 pr-3 py-2 rounded-lg border border-[#e2e8e5] dark:border-gray-700 bg-[#f7faf8] dark:bg-gray-900 text-sm text-[#012619] dark:text-white"
+                      />
+                    </div>
+
+                    {!histQ.trim() ? (
+                      <p className="text-xs text-gray-400 text-center py-6">Type a registration above to see its insurance history.</p>
+                    ) : histFiltered.length === 0 ? (
+                      <p className="text-xs text-gray-400 text-center py-6">No insurance changes recorded for “{histQ.trim().toUpperCase()}”.</p>
+                    ) : (
+                      <div className="mt-3 rounded-xl border border-[#e2e8e5] dark:border-gray-700 max-h-[420px] overflow-y-auto divide-y divide-[#eef2f0] dark:divide-gray-700/60">
+                        {histFiltered.map(c => (
+                          <div key={c.id} className="px-3 py-2.5 text-xs">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-mono font-bold text-[#012619] dark:text-white">{c.registration || '—'}</span>
+                              <span className="text-[10px] text-gray-400">{euDateTime(c.createdAt)}</span>
+                            </div>
+                            <div className="text-[11px] text-[#4a5e54] dark:text-gray-300">{[c.make, c.model].filter(Boolean).join(' ')}</div>
+                            <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
+                              <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">{policyBadge(c.fromStatus, c.fromPolicyName) || '—'}</span>
+                              <span className="text-gray-400">→</span>
+                              <span className={`px-1.5 py-0.5 rounded font-semibold ${c.toStatus === 'Insured' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>{policyBadge(c.toStatus, c.toPolicyName)}</span>
+                              {c.changedByName && <span className="text-gray-400">· {c.changedByName}</span>}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
                 )}
               </div>

@@ -1104,6 +1104,12 @@ export default function FleetInventoryPage() {
                   onToggleMotFilter={() => setFilters(prev => ({ ...prev, motExpiring: !prev.motExpiring }))}
                   onSizeFilter={(size) => setFilters(prev => ({ ...prev, size: size || 'all' }))}
                   onInsuranceFilter={(status) => setFilters(prev => ({ ...prev, insurance: status || 'all' }))}
+                  notInBranchCount={notInsuredNotInBranchCount}
+                  notInBranchActive={filters.insurance === 'not-insured-not-branch'}
+                  onNotInBranchClick={() => setFilters(prev => ({
+                    ...prev,
+                    insurance: prev.insurance === 'not-insured-not-branch' ? 'all' : 'not-insured-not-branch',
+                  }))}
                   defleetCount={defleetItems.length}
                   defleetOverdue={defleetOverdueCount}
                   defleetActive={!!filters.defleetDue}
