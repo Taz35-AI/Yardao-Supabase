@@ -13,6 +13,7 @@ import { enhancedVehicleService } from '@/lib/services/enhancedVehicleService' /
 import { supabase } from '@/lib/supabaseClient'
 import { InsuranceStatus, FleetVehicle, DefleetReason } from '@/types' // ✅ ADDED: DefleetReason
 import { DamageSyncService, ensurePinPhotosUploaded } from '@/services/damageSyncService'
+import { insuranceLogService } from '@/lib/services/insuranceLogService'
 import { logger } from '@/lib/logger'
 
 // Import the SyncNotification type from the component file
@@ -469,6 +470,25 @@ export function useFleetActions(fleetData: FleetDataHook | any) {
         if (conditionChanged) activityLogService.log({ ...actor, actionType: 'condition_changed', summary: `Condition: ${currentVehicle.condition || '—'} → ${processedUpdates.condition}`, details: { from: currentVehicle.condition, to: processedUpdates.condition } })
         if (contractChanged) activityLogService.log({ ...actor, actionType: 'contract_changed', summary: processedUpdates.contract ? `Contract set to ${processedUpdates.contract}` : 'Contract removed', details: { from: currentVehicle.contract, to: processedUpdates.contract } })
         if (insuranceChanged) activityLogService.log({ ...actor, actionType: 'insurance_changed', summary: `Insurance: ${processedUpdates.insuranceStatus}`, details: { from: currentVehicle.insuranceStatus, to: processedUpdates.insuranceStatus } })
+        // Per-vehicle insurance history (status AND/OR policy change).
+        {
+          const toStatus = ('insuranceStatus' in updates ? processedUpdates.insuranceStatus : currentVehicle.insuranceStatus) ?? null
+          const toPolicy = ('insurancePolicyName' in updates ? (processedUpdates as any).insurancePolicyName : (currentVehicle as any).insurancePolicyName) ?? null
+          void insuranceLogService.log({
+            organizationId: userProfile.organizationId,
+            vehicleId,
+            registration: currentVehicle.registration,
+            make: currentVehicle.make ?? null,
+            model: currentVehicle.model ?? null,
+            fromStatus: currentVehicle.insuranceStatus ?? null,
+            fromPolicyName: (currentVehicle as any).insurancePolicyName ?? null,
+            toStatus,
+            toPolicyName: toPolicy,
+            changedBy: user.uid,
+            changedByName: userDisplayName,
+            source: 'fleet_edit',
+          })
+        }
         if (motChanged) activityLogService.log({ ...actor, actionType: 'status_changed', summary: `MOT expiry set to ${processedUpdates.motExpiry || '—'}`, details: { motExpiry: processedUpdates.motExpiry } })
         if (taxChanged) activityLogService.log({ ...actor, actionType: 'status_changed', summary: `Road tax expiry set to ${processedUpdates.taxExpiry || '—'}`, details: { taxExpiry: processedUpdates.taxExpiry } })
       }

@@ -52,6 +52,7 @@ import {
 } from '@/lib/auditUtils'
 import { ContractSyncService } from '@/services/contractSyncService'
 import { ensurePinPhotosUploaded } from '@/services/damageSyncService'
+import { insuranceLogService } from '@/lib/services/insuranceLogService'
 import { InsuranceSyncService } from '@/services/insuranceSyncService'
 import { ConditionSyncService } from '@/services/conditionSyncService'
 import { logger } from '@/lib/logger'
@@ -1542,6 +1543,39 @@ export function useYardDataInternal(props?: UseYardDataProps) {
       if (updates.insurancePolicyId !== undefined)     updateData.insurancePolicyId     = updates.insurancePolicyId     ?? null
       if (updates.insurancePolicyName !== undefined)   updateData.insurancePolicyName   = updates.insurancePolicyName   ?? null
       if (updates.insurancePolicyExpiry !== undefined) updateData.insurancePolicyExpiry = updates.insurancePolicyExpiry ?? null
+
+      // Per-vehicle insurance history (yard / detail-modal change). No-op writes
+      // are skipped inside the service, so this is safe to always call.
+      {
+        const toStatus = updates.insuranceStatus !== undefined ? updates.insuranceStatus : vehicleData.insuranceStatus
+        const toPolicy = updates.insurancePolicyName !== undefined ? updates.insurancePolicyName : vehicleData.insurancePolicyName
+        void insuranceLogService.log({
+          organizationId: userOrganizationId,
+          vehicleId: vehicleData.vehicleId ?? null,
+          registration: vehicleData.registration ?? registration,
+          make: vehicleData.make ?? null,
+          model: vehicleData.model ?? null,
+          fromStatus: vehicleData.insuranceStatus ?? null,
+          fromPolicyName: vehicleData.insurancePolicyName ?? null,
+          toStatus: toStatus ?? null,
+          toPolicyName: toPolicy ?? null,
+          changedBy: user.uid,
+          changedByName: userDisplayName,
+          source: 'detail_modal',
+        })
+        // Bidirectional sync: a yard-side insurance change follows the vehicle
+        // back to the fleet master record (fleet↔yard both ways).
+        if (vehicleData.vehicleId && (updates.insuranceStatus !== undefined || updates.insurancePolicyName !== undefined)) {
+          supabase.from('vehicles').update({
+            ...(updates.insuranceStatus !== undefined && { insurance_status: updates.insuranceStatus }),
+            ...(updates.insurancePolicyId !== undefined && { insurance_policy_id: updates.insurancePolicyId ?? null }),
+            ...(updates.insurancePolicyName !== undefined && { insurance_policy_name: updates.insurancePolicyName ?? null }),
+            ...(updates.insurancePolicyExpiry !== undefined && { insurance_policy_expiry: updates.insurancePolicyExpiry ?? null }),
+          }).eq('id', vehicleData.vehicleId).then(({ error }) => {
+            if (error) logger.error('Yard→fleet insurance mirror failed (non-fatal):', error)
+          })
+        }
+      }
       
       if (updates.createdAt !== undefined) {
         updateData.createdAt = updates.createdAt
