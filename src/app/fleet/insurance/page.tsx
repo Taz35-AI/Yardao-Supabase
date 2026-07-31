@@ -15,11 +15,11 @@ import { userProfileService } from '@/lib/firestore'
 import { insuranceLogService, type InsuranceChange } from '@/lib/services/insuranceLogService'
 
 const normReg = (r?: string | null) => (r || '').toUpperCase().replace(/\s+/g, '')
-const euDateTime = (iso?: string | null) => {
+const euDate = (iso?: string | null) => {
   if (!iso) return ''
   const d = new Date(iso); if (isNaN(d.getTime())) return ''
   const p = (n: number) => String(n).padStart(2, '0')
-  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`
 }
 const policyBadge = (status?: string | null, policy?: string | null) =>
   status === 'Insured' ? (policy || 'Insured') : 'Not Insured'
@@ -38,6 +38,7 @@ export default function InsuranceStatusPage() {
   const [loading, setLoading] = useState(true)
   const [vehicles, setVehicles] = useState<Veh[]>([])
   const [inBranch, setInBranch] = useState<Set<string>>(new Set())
+  const [settingsPolicies, setSettingsPolicies] = useState<string[]>([])
   const [log, setLog] = useState<InsuranceChange[]>([])
   const [sel, setSel] = useState<Sel>('all')
   const [q, setQ] = useState('')
@@ -50,15 +51,19 @@ export default function InsuranceStatusPage() {
     const profile = await userProfileService.getProfile(user.uid)
     const org = profile?.organizationId
     if (!org) { setLoading(false); return }
-    const [{ data: vs }, { data: yard }, changes] = await Promise.all([
+    const [{ data: vs }, { data: yard }, { data: settings }, changes] = await Promise.all([
       supabase.from('vehicles')
         .select('id, registration, make, model, size, insurance_status, insurance_policy_name, insurance_policy_expiry')
         .eq('organization_id', org).eq('is_defleeted', false),
       supabase.from('checked_in_vehicles')
         .select('vehicle_id, registration, hire_status')
         .eq('organization_id', org).eq('hire_status', 'In Yard'),
+      supabase.from('organization_settings').select('insurance_policies').eq('organization_id', org).maybeSingle(),
       insuranceLogService.getRecent(org, 500),
     ])
+    // Policy list comes from settings — so any policy you add (e.g. "Own
+    // Insurance Policy") is picked up automatically, nothing hardcoded.
+    setSettingsPolicies(((settings?.insurance_policies as any[]) || []).map((p: any) => (p?.name || '').trim()).filter(Boolean))
     const keys = new Set<string>()
     for (const y of yard ?? []) { if (y.vehicle_id) keys.add('id:' + y.vehicle_id); keys.add('reg:' + normReg(y.registration)) }
     setInBranch(keys)
@@ -74,21 +79,30 @@ export default function InsuranceStatusPage() {
 
   const isInBranch = (v: Veh) => inBranch.has('id:' + v.id) || inBranch.has('reg:' + normReg(v.registration))
 
-  const { policyCounts, insuredTotal, uninsured, notBranch } = useMemo(() => {
+  const { policyCounts, noPolicyCount, insuredTotal, uninsured, notBranch } = useMemo(() => {
     const counts: Record<string, number> = {}
-    let insuredTotal = 0, uninsured = 0, notBranch = 0
+    let insuredTotal = 0, uninsured = 0, notBranch = 0, noPolicyCount = 0
     for (const v of vehicles) {
-      if (v.insuranceStatus === 'Insured') { insuredTotal++; const n = (v.insurancePolicyName || '(no policy name)').trim(); counts[n] = (counts[n] || 0) + 1 }
-      else { uninsured++; if (!isInBranch(v)) notBranch++ }
+      if (v.insuranceStatus === 'Insured') {
+        insuredTotal++
+        const n = (v.insurancePolicyName || '').trim()
+        if (!n) noPolicyCount++
+        else counts[n] = (counts[n] || 0) + 1
+      } else { uninsured++; if (!isInBranch(v)) notBranch++ }
     }
-    return { policyCounts: Object.entries(counts).sort((a, b) => b[1] - a[1]), insuredTotal, uninsured, notBranch }
+    // Every policy from settings shows as a chip (count 0 if unused yet), plus
+    // any policy name found on a vehicle that isn't in settings.
+    const allNames = new Set<string>([...settingsPolicies, ...Object.keys(counts)])
+    const policyCounts = [...allNames].map(n => [n, counts[n] || 0] as [string, number]).sort((a, b) => b[1] - a[1])
+    return { policyCounts, noPolicyCount, insuredTotal, uninsured, notBranch }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vehicles, inBranch])
+  }, [vehicles, inBranch, settingsPolicies])
 
   const filtered = useMemo(() => {
     let list = vehicles
     if (sel === 'not-insured') list = list.filter(v => v.insuranceStatus !== 'Insured')
     else if (sel === 'not-branch') list = list.filter(v => v.insuranceStatus !== 'Insured' && !isInBranch(v))
+    else if (sel === 'no-policy') list = list.filter(v => v.insuranceStatus === 'Insured' && !(v.insurancePolicyName || '').trim())
     else if (sel.startsWith('policy:')) { const w = sel.slice(7); list = list.filter(v => v.insuranceStatus === 'Insured' && (v.insurancePolicyName || '') === w) }
     const term = normReg(q)
     if (term) list = list.filter(v => (normReg(v.registration) + normReg(v.make) + normReg(v.model)).includes(term))
@@ -96,12 +110,30 @@ export default function InsuranceStatusPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vehicles, sel, q, inBranch])
 
-  // Change history is search-driven: type a registration to see just that
-  // vehicle's insurance movements (no giant full list).
-  const histFiltered = useMemo(() => {
+  // Change history is search-driven: type a registration to get a TIMELINE of
+  // that vehicle's insurance periods. Each logged change starts a new period
+  // that runs until the next change (or "Present"). Grouped by registration.
+  const histGroups = useMemo(() => {
     const term = normReg(histQ)
     if (!term) return []
-    return log.filter(c => normReg(c.registration).includes(term))
+    const byReg: Record<string, InsuranceChange[]> = {}
+    for (const c of log) {
+      if (!normReg(c.registration).includes(term)) continue
+      const k = normReg(c.registration);(byReg[k] ||= []).push(c)
+    }
+    return Object.values(byReg).map(evs => {
+      const asc = [...evs].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      const periods = asc.map((e, i) => ({
+        id: e.id,
+        label: policyBadge(e.toStatus, e.toPolicyName),
+        insured: e.toStatus === 'Insured',
+        start: e.createdAt,
+        end: i < asc.length - 1 ? asc[i + 1].createdAt : null, // null = Present
+        by: e.changedByName,
+      })).reverse() // newest period first (current "Present" on top)
+      const head = asc[asc.length - 1]
+      return { reg: head.registration || '—', makeModel: [head.make, head.model].filter(Boolean).join(' '), periods }
+    })
   }, [log, histQ])
 
   const StatCard = ({ icon, label, value, tone, value2 }: { icon: React.ReactNode; label: string; value: number; tone: string; value2?: string }) => (
@@ -164,6 +196,7 @@ export default function InsuranceStatusPage() {
                 <p className="text-[10px] font-bold uppercase tracking-widest text-[#72A68E] mb-2">Filter by policy</p>
                 <div className="flex flex-wrap gap-2">
                   {policyCounts.map(([name, count]) => chip(name, count, `policy:${name}`, 'policy'))}
+                  {noPolicyCount > 0 && chip('Insured — no policy set', noPolicyCount, 'no-policy', 'amber')}
                   {chip('Not Insured', uninsured, 'not-insured', 'red')}
                   {chip('Not insured & not in branch', notBranch, 'not-branch', 'amber')}
                 </div>
@@ -234,22 +267,26 @@ export default function InsuranceStatusPage() {
 
                     {!histQ.trim() ? (
                       <p className="text-xs text-gray-400 text-center py-6">Type a registration above to see its insurance history.</p>
-                    ) : histFiltered.length === 0 ? (
+                    ) : histGroups.length === 0 ? (
                       <p className="text-xs text-gray-400 text-center py-6">No insurance changes recorded for “{histQ.trim().toUpperCase()}”.</p>
                     ) : (
-                      <div className="mt-3 rounded-xl border border-[#e2e8e5] dark:border-gray-700 max-h-[420px] overflow-y-auto divide-y divide-[#eef2f0] dark:divide-gray-700/60">
-                        {histFiltered.map(c => (
-                          <div key={c.id} className="px-3 py-2.5 text-xs">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-mono font-bold text-[#012619] dark:text-white">{c.registration || '—'}</span>
-                              <span className="text-[10px] text-gray-400">{euDateTime(c.createdAt)}</span>
+                      <div className="mt-3 space-y-3">
+                        {histGroups.map(g => (
+                          <div key={g.reg} className="rounded-xl border border-[#e2e8e5] dark:border-gray-700 overflow-hidden">
+                            <div className="px-3 py-2 bg-[#f7faf8] dark:bg-gray-900/40 border-b border-[#eef2f0] dark:border-gray-700">
+                              <span className="font-mono font-bold text-sm text-[#012619] dark:text-white">{g.reg}</span>
+                              {g.makeModel && <span className="text-[11px] text-[#72A68E] ml-2">{g.makeModel}</span>}
                             </div>
-                            <div className="text-[11px] text-[#4a5e54] dark:text-gray-300">{[c.make, c.model].filter(Boolean).join(' ')}</div>
-                            <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
-                              <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">{policyBadge(c.fromStatus, c.fromPolicyName) || '—'}</span>
-                              <span className="text-gray-400">→</span>
-                              <span className={`px-1.5 py-0.5 rounded font-semibold ${c.toStatus === 'Insured' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>{policyBadge(c.toStatus, c.toPolicyName)}</span>
-                              {c.changedByName && <span className="text-gray-400">· {c.changedByName}</span>}
+                            <div className="divide-y divide-[#eef2f0] dark:divide-gray-700/60">
+                              {g.periods.map(p => (
+                                <div key={p.id} className="px-3 py-2 flex items-center gap-2 flex-wrap text-xs">
+                                  <span className={`px-2 py-0.5 rounded font-semibold flex-shrink-0 ${p.insured ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>{p.label}</span>
+                                  <span className="text-[#4a5e54] dark:text-gray-300 font-medium tabular-nums">
+                                    {euDate(p.start)} – {p.end ? euDate(p.end) : <span className="text-[#025940] dark:text-[#b3f243] font-bold">Present</span>}
+                                  </span>
+                                  {p.by && <span className="text-gray-400">· changed by {p.by} on {euDate(p.start)}</span>}
+                                </div>
+                              ))}
                             </div>
                           </div>
                         ))}

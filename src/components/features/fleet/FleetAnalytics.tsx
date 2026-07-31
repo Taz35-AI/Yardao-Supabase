@@ -182,26 +182,27 @@ export function FleetAnalytics({
         </span>
       </button>
 
-      {/* ── Not insured & not in branch — the ones to chase up ──── */}
-      {notInBranchCount > 0 && (
-        <button
-          onClick={onNotInBranchClick}
-          title="Not insured and not in a branch (out on hire or not checked in)"
-          className={`${pillBase} flex-shrink-0 ${
-            notInBranchActive
-              ? 'bg-amber-100 border-amber-400 text-amber-800'
-              : 'bg-white border-[#c8d5ce] text-amber-700 hover:bg-amber-50 hover:border-amber-300'
-          }`}
-        >
-          <ShieldAlert className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-          <span className="hidden sm:inline">Not insured &amp; not in branch</span>
-          <span className={`min-w-[1.2rem] h-5 sm:h-6 flex items-center justify-center rounded-full text-[10px] sm:text-xs font-bold px-1.5 sm:px-2 ${
-            notInBranchActive ? 'bg-amber-200 text-amber-800' : 'bg-amber-50 text-amber-700'
-          }`}>
-            {notInBranchCount}
-          </span>
-        </button>
-      )}
+      {/* ── Not insured & not in branch — the ones to chase up. Always shown
+             so it sits on the strip; muted when the count is 0. ──── */}
+      <button
+        onClick={onNotInBranchClick}
+        title="Not insured and not in a branch (out on hire or not checked in)"
+        className={`${pillBase} flex-shrink-0 ${
+          notInBranchActive
+            ? 'bg-amber-100 border-amber-400 text-amber-800'
+            : notInBranchCount > 0
+            ? 'bg-white border-[#c8d5ce] text-amber-700 hover:bg-amber-50 hover:border-amber-300'
+            : 'bg-white border-[#e2e8e5] text-[#8a9e94] hover:border-[#c8d5ce]'
+        }`}
+      >
+        <ShieldAlert className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+        <span className="hidden sm:inline">Not insured &amp; not in branch</span>
+        <span className={`min-w-[1.2rem] h-5 sm:h-6 flex items-center justify-center rounded-full text-[10px] sm:text-xs font-bold px-1.5 sm:px-2 ${
+          notInBranchActive ? 'bg-amber-200 text-amber-800' : notInBranchCount > 0 ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-500'
+        }`}>
+          {notInBranchCount}
+        </span>
+      </button>
 
       {/* ── Defleet due — toggles the inline upcoming-defleets panel ── */}
       {defleetCount > 0 && (
