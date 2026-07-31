@@ -200,8 +200,14 @@ export function useVehicleForm({ conditions, existingVehicles, onAdd, prefillDat
   }
 
   // Insurance toggle — mirrors FleetVehicleEditModal (status only)
-  const handleInsuranceToggle = (status: InsuranceStatus) => {
-    setFormData(prev => ({ ...prev, insuranceStatus: status }))
+  const handleInsuranceToggle = (status: InsuranceStatus, policy?: any) => {
+    setFormData(prev => ({
+      ...prev,
+      insuranceStatus: status,
+      insurancePolicyId:     status === 'Insured' ? (policy?.id ?? null) : null,
+      insurancePolicyName:   status === 'Insured' ? (policy?.name ?? null) : null,
+      insurancePolicyExpiry: status === 'Insured' ? (policy?.expiryDate ?? null) : null,
+    }))
   }
 
   // Handle form submission

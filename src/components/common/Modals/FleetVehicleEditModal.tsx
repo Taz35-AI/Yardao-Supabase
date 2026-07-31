@@ -241,6 +241,9 @@ export function FleetVehicleEditModal({
     contractColor:      '',
     contractId:         '',
     insuranceStatus:    null as InsuranceStatus | null,
+    insurancePolicyId:     null as string | null,
+    insurancePolicyName:   null as string | null,
+    insurancePolicyExpiry: null as string | null,
     vehicleDiagramType: '' as VehicleDiagramType | '',
     damagePins:         [] as DamagePin[],
     walkaroundPhotos:   [] as WalkaroundPhoto[],
@@ -299,6 +302,9 @@ export function FleetVehicleEditModal({
         contractColor:      safeString(vehicle.contractColor) || '',
         contractId:         safeString((vehicle as any).contractId) || '',
         insuranceStatus:    vehicle.insuranceStatus || null,
+        insurancePolicyId:     (vehicle as any).insurancePolicyId     || null,
+        insurancePolicyName:   (vehicle as any).insurancePolicyName   || null,
+        insurancePolicyExpiry: (vehicle as any).insurancePolicyExpiry || null,
         vehicleDiagramType: (vehicle.vehicleDiagramType || '') as VehicleDiagramType | '',
         damagePins:         vehicle.damagePins || [],
         walkaroundPhotos:   (vehicle as any).walkaroundPhotos || [],
@@ -334,8 +340,14 @@ export function FleetVehicleEditModal({
     if (data.taxExpiry) handleInputChange('taxExpiry', data.taxExpiry)
   }
 
-  const handleInsuranceToggle = (status: InsuranceStatus) => {
-    setFormData(prev => ({ ...prev, insuranceStatus: status }))
+  const handleInsuranceToggle = (status: InsuranceStatus, policy?: any) => {
+    setFormData(prev => ({
+      ...prev,
+      insuranceStatus: status,
+      insurancePolicyId:     status === 'Insured' ? (policy?.id ?? null) : null,
+      insurancePolicyName:   status === 'Insured' ? (policy?.name ?? null) : null,
+      insurancePolicyExpiry: status === 'Insured' ? (policy?.expiryDate ?? null) : null,
+    }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -740,6 +752,10 @@ export function FleetVehicleEditModal({
                         disabled={loading}
                         size="md"
                         showLabel={true}
+                        currentPolicyId={formData.insurancePolicyId}
+                        currentPolicyName={formData.insurancePolicyName}
+                        currentPolicyExpiry={formData.insurancePolicyExpiry}
+                        vehicleRegistration={safeString(vehicle.registration)}
                       />
                       <p className="text-[10px] text-[#8a9e94] leading-relaxed">
                         {t('fleet.editModal.insuranceHint')}

@@ -6,10 +6,9 @@
 
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { Shield, ShieldAlert, Calendar, Building2, AlertTriangle } from 'lucide-react'
+import React, { useState, useEffect, useRef } from 'react'
+import { Shield, ShieldAlert, Calendar, AlertTriangle, ChevronDown, Check } from 'lucide-react'
 import { InsuranceStatus, getInsuranceStatusConfig } from '@/types'
-import { PolicyPickerModal } from '@/components/common/Modals/PolicyPickerModal'
 import { settingsService, InsurancePolicy } from '@/lib/services/settingsService'
 import { userProfileService } from '@/lib/firestore'
 import { useAuth } from '@/contexts/AuthContext'
@@ -76,10 +75,21 @@ export function InsuranceToggle({
   const config = getInsuranceStatusConfig(insuranceStatus)
   const sizes = SIZE[size]
 
-  // Policy picker state
-  const [pickerOpen, setPickerOpen] = useState(false)
+  // Dropdown state
+  const [open, setOpen] = useState(false)
   const [policies, setPolicies] = useState<InsurancePolicy[]>([])
   const [policiesLoaded, setPoliciesLoaded] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  // Close on outside click / Escape
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => { if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey) }
+  }, [open])
 
   // Load policies lazily — only when first opened
   const loadPolicies = async () => {
@@ -91,37 +101,22 @@ export function InsuranceToggle({
       const data = await settingsService.getInsurancePolicies(profile.organizationId)
       setPolicies(data)
       setPoliciesLoaded(true)
-      logger.log('🛡️ Insurance policies loaded for picker:', data.length)
+      logger.log('🛡️ Insurance policies loaded for dropdown:', data.length)
     } catch (err) {
-      logger.error('Failed to load policies for picker:', err)
+      logger.error('Failed to load policies for dropdown:', err)
       setPolicies([])
       setPoliciesLoaded(true)
     }
   }
 
-  const handleToggleClick = async () => {
+  const openMenu = async () => {
     if (disabled) return
-
-    if (isInsured) {
-      // Toggling OFF — instant, no picker
-      onToggle('Not Insured', null)
-    } else {
-      // Toggling ON — load policies then open picker
-      await loadPolicies()
-      setPickerOpen(true)
-    }
+    if (!open) await loadPolicies()
+    setOpen(o => !o)
   }
-
-  const handlePolicySelect = (policy: InsurancePolicy) => {
-    setPickerOpen(false)
-    onToggle('Insured', policy)
-    logger.log('🛡️ Policy selected:', policy.name)
-  }
-
-  const handlePickerCancel = () => {
-    setPickerOpen(false)
-    // Don't change status — user cancelled
-  }
+  // onToggle is unchanged, so the existing fleet↔yard insurance sync is preserved.
+  const chooseNotInsured = () => { setOpen(false); onToggle('Not Insured', null) }
+  const choosePolicy = (policy: InsurancePolicy) => { setOpen(false); onToggle('Insured', policy); logger.log('🛡️ Policy selected:', policy.name) }
 
   // Expiry badge for the current policy (shown below toggle)
   const policyExpiryBadge = (() => {
@@ -132,86 +127,84 @@ export function InsuranceToggle({
     return           { label: `Exp. ${formatDisplayDate(currentPolicyExpiry)}`, cls: 'text-green-600 dark:text-green-400', icon: Calendar }
   })()
 
+  const triggerLabel = isInsured ? (currentPolicyName || 'Insured — choose policy') : 'Not Insured'
+
   return (
-    <>
-      <div className={`flex flex-col gap-2 ${className}`}>
-        {/* Toggle row */}
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={handleToggleClick}
-            disabled={disabled}
-            className={`
-              relative inline-flex ${sizes.toggle} items-center flex-shrink-0 cursor-pointer rounded-full
-              transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2
-              ${isInsured
-                ? 'bg-green-500 hover:bg-green-600 focus:ring-green-400 shadow-lg shadow-green-500/25'
-                : 'bg-red-500 hover:bg-red-600 focus:ring-red-400 shadow-lg shadow-red-500/25'
-              }
-              ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-xl active:scale-95'}
-            `}
-            role="switch"
-            aria-checked={isInsured}
-            aria-label={`Insurance status: ${config.label}`}
-          >
-            <span
-              className={`
-                ${isInsured ? sizes.translate : 'translate-x-0.5'}
-                inline-block ${sizes.circle} transform rounded-full
-                bg-white shadow-lg transition-all duration-300 ease-in-out
-              `}
-            />
-          </button>
+    <div className={`flex flex-col gap-2 ${className}`} ref={rootRef}>
+      {/* Dropdown trigger */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={openMenu}
+          disabled={disabled}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          className={`inline-flex items-center gap-2 ${sizes.text} font-semibold rounded-xl border px-3 py-2 transition-colors max-w-full ${
+            disabled ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-sm'
+          } ${
+            isInsured
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-800/50'
+              : 'bg-red-50 border-red-300 text-red-700 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800/50'
+          }`}
+        >
+          {isInsured ? <Shield className="w-4 h-4 flex-shrink-0" /> : <ShieldAlert className="w-4 h-4 flex-shrink-0" />}
+          <span className="truncate">{triggerLabel}</span>
+          {!disabled && <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />}
+        </button>
 
-          {showLabel && (
-            <div className="flex flex-col">
-              <span className={`font-medium ${config.color} ${sizes.text}`}>
-                {config.label}
-              </span>
-              {!insuranceStatus && (
-                <span className="text-xs text-gray-500 dark:text-gray-400">Not Set</span>
-              )}
+        {/* Dropdown menu: Not Insured + every policy */}
+        {open && (
+          <div className="absolute left-0 z-50 mt-1 w-72 max-w-[85vw] rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl overflow-hidden" role="listbox">
+            <div className="max-h-72 overflow-y-auto py-1">
+              {/* Not Insured */}
+              <button
+                type="button"
+                onClick={chooseNotInsured}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-red-50 dark:hover:bg-red-900/20"
+              >
+                <ShieldAlert className="w-4 h-4 text-red-600 flex-shrink-0" />
+                <span className="flex-1 font-semibold text-red-700 dark:text-red-300">Not Insured</span>
+                {!isInsured && <Check className="w-4 h-4 text-red-600" />}
+              </button>
+
+              <div className="my-1 border-t border-[#eef2f0] dark:border-gray-700" />
+
+              {policies.length === 0 ? (
+                <p className="px-3 py-2 text-xs text-gray-400">No policies set up. Add them in Settings → Insurance.</p>
+              ) : policies.map(p => {
+                const selected = isInsured && (currentPolicyId ? currentPolicyId === p.id : currentPolicyName === p.name)
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => choosePolicy(p)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                  >
+                    <Shield className="w-4 h-4 text-[#025940] flex-shrink-0" />
+                    <span className="flex-1 min-w-0">
+                      <span className="block font-semibold text-[#012619] dark:text-white truncate">{p.name}</span>
+                      {(p as any).expiryDate && <span className="block text-[10px] text-gray-400">Exp. {formatDisplayDate((p as any).expiryDate)}</span>}
+                    </span>
+                    {selected && <Check className="w-4 h-4 text-[#025940] flex-shrink-0" />}
+                  </button>
+                )
+              })}
             </div>
-          )}
-        </div>
-
-        {/* Policy badge — shown when insured + policy assigned */}
-        {isInsured && currentPolicyName && (
-          <div className="flex flex-wrap items-center gap-1.5 pl-1">
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#025940] dark:text-[#72A68E] bg-[#f0faf4] dark:bg-[#025940]/20 px-2.5 py-1 rounded-full border border-[#c3e6d0] dark:border-[#025940]">
-              <Shield className="w-3 h-3 flex-shrink-0" />
-              <span className="truncate max-w-[150px]">{currentPolicyName}</span>
-            </span>
-            {policyExpiryBadge && (() => {
-              const BadgeIcon = policyExpiryBadge.icon
-              return (
-                <span className={`inline-flex items-center gap-1 text-xs ${policyExpiryBadge.cls}`}>
-                  <BadgeIcon className="w-3 h-3" />
-                  {policyExpiryBadge.label}
-                </span>
-              )
-            })()}
           </div>
-        )}
-
-        {/* Hint when insured but no policy assigned */}
-        {isInsured && !currentPolicyName && (
-          <p className="text-xs text-gray-400 dark:text-gray-500 pl-1">
-            Tap toggle to assign a policy
-          </p>
         )}
       </div>
 
-      {/* Policy picker modal */}
-      <PolicyPickerModal
-        isOpen={pickerOpen}
-        vehicleRegistration={vehicleRegistration}
-        policies={policies}
-        onSelect={handlePolicySelect}
-        onCancel={handlePickerCancel}
-        currentPolicyId={currentPolicyId}
-      />
-    </>
+      {/* Expiry badge for the currently-assigned policy */}
+      {isInsured && currentPolicyName && policyExpiryBadge && (() => {
+        const BadgeIcon = policyExpiryBadge.icon
+        return (
+          <span className={`inline-flex items-center gap-1 text-xs pl-1 ${policyExpiryBadge.cls}`}>
+            <BadgeIcon className="w-3 h-3" />
+            {policyExpiryBadge.label}
+          </span>
+        )
+      })()}
+    </div>
   )
 }
 

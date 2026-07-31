@@ -425,6 +425,11 @@ export function useFleetActions(fleetData: FleetDataHook | any) {
       // Check for other changes (contract, insurance, condition)
       const contractChanged = 'contract' in updates && updates.contract !== currentVehicle.contract
       const insuranceChanged = 'insuranceStatus' in updates && updates.insuranceStatus !== currentVehicle.insuranceStatus
+      // Policy-only change (status stays Insured but the policy changes) must
+      // also sync to the yard — otherwise picking a different policy on the
+      // fleet page wouldn't reach the dashboard.
+      const insurancePolicyChanged = 'insurancePolicyName' in updates &&
+        ((updates as any).insurancePolicyName ?? null) !== ((currentVehicle as any).insurancePolicyName ?? null)
       const conditionChanged = 'condition' in updates && updates.condition !== currentVehicle.condition
       // MOT / road-tax expiry changes must cascade to the yard too ("fleet page
       // is the bible") so staff don't re-enter them on the Yard page.
@@ -569,12 +574,17 @@ export function useFleetActions(fleetData: FleetDataHook | any) {
         }
       }
 
-      // Sync insurance to yard if changed
-      if (insuranceChanged) {
+      // Sync insurance (status AND policy) to yard if either changed
+      if (insuranceChanged || insurancePolicyChanged) {
         try {
           const insuranceSyncResult = await InsuranceSyncService.syncInsuranceFromFleetToYard(
             vehicleId,
-            { insuranceStatus: processedUpdates.insuranceStatus },
+            {
+              insuranceStatus:       processedUpdates.insuranceStatus ?? currentVehicle.insuranceStatus,
+              insurancePolicyId:     (processedUpdates as any).insurancePolicyId ?? null,
+              insurancePolicyName:   (processedUpdates as any).insurancePolicyName ?? null,
+              insurancePolicyExpiry: (processedUpdates as any).insurancePolicyExpiry ?? null,
+            },
             userProfile.organizationId,
             user.uid,
             userDisplayName,

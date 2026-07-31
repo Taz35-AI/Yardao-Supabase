@@ -407,9 +407,12 @@ export function VehicleCheckInForm({
     })
   }
 
-  const handleInsuranceToggle = (status: InsuranceStatus) => {
-    logger.log(`🛡️ Insurance status toggled to: ${status}`)
+  const handleInsuranceToggle = (status: InsuranceStatus, policy?: any) => {
+    logger.log(`🛡️ Insurance status set to: ${status}${policy ? ' · ' + policy.name : ''}`)
     handleChange('insuranceStatus', status)
+    handleChange('insurancePolicyId',     status === 'Insured' ? (policy?.id ?? null) : null)
+    handleChange('insurancePolicyName',   status === 'Insured' ? (policy?.name ?? null) : null)
+    handleChange('insurancePolicyExpiry', status === 'Insured' ? (policy?.expiryDate ?? null) : null)
   }
 
   // Look the registration up against DVLA and auto-fill make / model / colour /
