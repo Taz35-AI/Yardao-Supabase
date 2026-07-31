@@ -887,6 +887,55 @@ export const hireAgreementService = {
       if (!existing?.actual_out_at) patch.actual_out_at = nowIso()
     }
     await this.updateLine(params.lineId, patch)
+
+    // Capture a temp-return credit BEFORE flipping the yard row back to Out on
+    // Hire. If the vehicle is resuming after a temporary return (currently In
+    // Yard, still linked to this line), the days it sat in the yard are
+    // downtime the customer shouldn't pay for. The live credit scan only sees a
+    // vehicle while it's In Yard, so without capturing it here the window is
+    // lost the moment it goes back out (this is what happened to HK72XPA).
+    if (params.checkedInVehicleId) {
+      try {
+        const { data: yardRow } = await supabase
+          .from('checked_in_vehicles')
+          .select('hire_status, check_in_time, current_agreement_line_id')
+          .eq('id', params.checkedInVehicleId)
+          .maybeSingle()
+        const onTempReturn =
+          yardRow?.hire_status === 'In Yard' &&
+          !!yardRow.check_in_time &&
+          (yardRow.current_agreement_line_id === params.lineId || !yardRow.current_agreement_line_id)
+        if (onTempReturn) {
+          const line = toCamel<HireAgreementVehicle & { agreementId?: string | null }>(
+            (await supabase.from(LINES).select('*').eq('id', params.lineId).maybeSingle()).data,
+          )
+          const ag = line?.agreementId
+            ? toCamel<HireAgreement>(
+                (await supabase.from(AGREEMENTS).select('*').eq('id', line.agreementId).maybeSingle()).data,
+              )
+            : null
+          const periodStart = String(yardRow!.check_in_time).slice(0, 10)
+          const t0 = new Date(); t0.setHours(0, 0, 0, 0)
+          const periodEnd = `${t0.getFullYear()}-${String(t0.getMonth() + 1).padStart(2, '0')}-${String(t0.getDate()).padStart(2, '0')}`
+          await hireCreditService.suggestCredit({
+            organizationId: params.organizationId,
+            agreementId: (line?.agreementId || ag?.id) as string,
+            lineId: params.lineId,
+            vehicleId: line?.vehicleId ?? null,
+            registration: params.registration ?? line?.registration ?? null,
+            reason: 'downtime',
+            periodStart,
+            periodEnd, // exclusive: [check-in, resume day) = the days it sat in the yard
+            rateType: (line?.lineRateType || ag?.rateType || 'weekly') as HireRateType,
+            rateAmount: line?.lineRateAmount ?? ag?.rateAmount ?? 0,
+            note: 'Temporary return (in yard)',
+          })
+        }
+      } catch (creditErr) {
+        logger.error('setLineOnHire temp-return credit capture failed (non-fatal):', creditErr)
+      }
+    }
+
     if (params.checkedInVehicleId) {
       try {
         await supabase
