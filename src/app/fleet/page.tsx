@@ -9,6 +9,7 @@ import { logger } from '@/lib/logger'
 
 // Feature Components
 import { FleetHeader } from '@/components/features/fleet/FleetHeader'
+import { FleetInsurancePanel } from '@/components/features/fleet/FleetInsurancePanel'
 import { FleetActions } from '@/components/features/fleet/FleetActions'
 import { FleetAnalytics } from '@/components/features/fleet/FleetAnalytics'
 import { BulkRoadTaxToolbar } from '@/components/features/fleet/BulkRoadTaxToolbar'
@@ -486,6 +487,12 @@ export default function FleetInventoryPage() {
         )
       } else if (filters.insurance === 'insured') {
         filtered = filtered.filter(vehicle => vehicle.insuranceStatus === 'Insured')
+      } else if (filters.insurance.startsWith('policy:')) {
+        // Filter to a specific policy (from the Insurance Status panel chips).
+        const wanted = filters.insurance.slice('policy:'.length)
+        filtered = filtered.filter(vehicle =>
+          vehicle.insuranceStatus === 'Insured' && ((vehicle as any).insurancePolicyName || '') === wanted
+        )
       }
     }
 
@@ -1111,6 +1118,14 @@ export default function FleetInventoryPage() {
               </div>
 
             </div>
+
+            {/* Insurance Status — at-a-glance counts per policy + change history */}
+            <FleetInsurancePanel
+              vehicles={fleetVehicles.filter(v => !v.isDefleeted)}
+              organizationId={fleetVehicles[0]?.organizationId}
+              activeFilter={filters.insurance}
+              onSelectInsurance={(value) => setFilters(prev => ({ ...prev, insurance: value }))}
+            />
 
             {filteredAndSortedVehicles.length > 0 && (
               <div className="mt-3 mb-2 flex items-center justify-between gap-2 px-1">
