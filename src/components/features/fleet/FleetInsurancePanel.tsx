@@ -18,7 +18,8 @@ interface FleetInsurancePanelProps {
   vehicles: VehicleLike[]            // active (non-defleeted) fleet vehicles
   organizationId?: string | null
   activeFilter: string              // current filters.insurance value
-  onSelectInsurance: (value: string) => void  // 'all' | 'not-insured' | 'policy:<name>'
+  onSelectInsurance: (value: string) => void  // 'all' | 'not-insured' | 'policy:<name>' | 'not-insured-not-branch'
+  notInBranchCount?: number         // not insured AND out on hire / not in any branch
 }
 
 const euDateTime = (iso?: string | null) => {
@@ -32,7 +33,7 @@ const euDateTime = (iso?: string | null) => {
 const policyBadge = (status?: string | null, policy?: string | null) =>
   status === 'Insured' ? (policy || 'Insured') : 'Not Insured'
 
-export function FleetInsurancePanel({ vehicles, organizationId, activeFilter, onSelectInsurance }: FleetInsurancePanelProps) {
+export function FleetInsurancePanel({ vehicles, organizationId, activeFilter, onSelectInsurance, notInBranchCount = 0 }: FleetInsurancePanelProps) {
   const [expanded, setExpanded] = useState(false)
   const [showLog, setShowLog] = useState(false)
   const [log, setLog] = useState<InsuranceChange[]>([])
@@ -66,10 +67,12 @@ export function FleetInsurancePanel({ vehicles, organizationId, activeFilter, on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showLog, organizationId])
 
-  const chip = (label: string, count: number, value: string, tone: 'policy' | 'uninsured') => {
+  const chip = (label: string, count: number, value: string, tone: 'policy' | 'uninsured' | 'alert') => {
     const active = activeFilter === value
     const base = tone === 'uninsured'
       ? (active ? 'bg-red-600 text-white border-red-600' : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800/40')
+      : tone === 'alert'
+      ? (active ? 'bg-amber-600 text-white border-amber-600' : 'bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800/40')
       : (active ? 'bg-[#025940] text-white border-[#025940]' : 'bg-white dark:bg-gray-800 text-[#012619] dark:text-gray-200 border-[#e2e8e5] dark:border-gray-700')
     return (
       <button
@@ -79,9 +82,9 @@ export function FleetInsurancePanel({ vehicles, organizationId, activeFilter, on
         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-colors hover:shadow-sm ${base}`}
         title={active ? 'Clear filter' : `Show only ${label}`}
       >
-        {tone === 'uninsured' ? <ShieldOff className="w-3.5 h-3.5" /> : <Shield className="w-3.5 h-3.5" />}
-        <span className="truncate max-w-[220px]">{label}</span>
-        <span className={`ml-0.5 tabular-nums font-bold ${active ? '' : tone === 'uninsured' ? 'text-red-700 dark:text-red-300' : 'text-[#025940] dark:text-[#b3f243]'}`}>{count}</span>
+        {tone === 'policy' ? <Shield className="w-3.5 h-3.5" /> : <ShieldOff className="w-3.5 h-3.5" />}
+        <span className="truncate max-w-[240px]">{label}</span>
+        <span className={`ml-0.5 tabular-nums font-bold ${active ? '' : tone === 'uninsured' ? 'text-red-700 dark:text-red-300' : tone === 'alert' ? 'text-amber-800 dark:text-amber-300' : 'text-[#025940] dark:text-[#b3f243]'}`}>{count}</span>
       </button>
     )
   }
@@ -109,6 +112,7 @@ export function FleetInsurancePanel({ vehicles, organizationId, activeFilter, on
           <div className="flex flex-wrap gap-2">
             {policyCounts.map(([name, count]) => chip(name, count, `policy:${name}`, 'policy'))}
             {chip('Not Insured', uninsured, 'not-insured', 'uninsured')}
+            {chip('Not insured & not in branch', notInBranchCount, 'not-insured-not-branch', 'alert')}
           </div>
 
           {/* Change log toggle */}

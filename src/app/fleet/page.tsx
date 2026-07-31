@@ -47,6 +47,7 @@ import { InsuranceStatus, FleetVehicle, DefleetReason } from '@/types'
 // Services
 import { BulkRoadTaxService } from '@/lib/services/bulkRoadTaxService'
 import { userProfileService } from '@/lib/firestore'
+import { supabase } from '@/lib/supabaseClient'
 import { useT } from '@/lib/i18n'
 import { buildFleetVocab, parseFleetQuery, matchesFleetQuery } from '@/lib/search/smartFleetSearch'
 import { computeDefleetDue, computeDefleetItems } from '@/lib/utils/defleetDue'
@@ -312,6 +313,44 @@ export default function FleetInventoryPage() {
     return () => window.removeEventListener('zao:vehicle-updated', handler)
   }, [fleetData.refreshData])
 
+  // Which vehicles are physically IN a branch right now — from the yard table
+  // (checked_in_vehicles with hire_status 'In Yard'). current_status on the
+  // fleet row is always 'in_fleet', so branch presence can only come from here.
+  // Used by the "Not insured & not in branch" filter (= out on hire OR never
+  // checked into any branch).
+  const [inBranchKeys, setInBranchKeys] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    if (!user?.uid) return
+    let cancelled = false
+    ;(async () => {
+      const profile = await userProfileService.getProfile(user.uid)
+      if (!profile?.organizationId || cancelled) return
+      const { data } = await supabase
+        .from('checked_in_vehicles')
+        .select('vehicle_id, registration, hire_status')
+        .eq('organization_id', profile.organizationId)
+        .eq('hire_status', 'In Yard')
+      if (cancelled) return
+      const keys = new Set<string>()
+      for (const r of data ?? []) {
+        if (r.vehicle_id) keys.add('id:' + r.vehicle_id)
+        keys.add('reg:' + (r.registration || '').toUpperCase().replace(/\s+/g, ''))
+      }
+      setInBranchKeys(keys)
+    })()
+    return () => { cancelled = true }
+  }, [user?.uid])
+  const isInBranch = (v: FleetVehicle) =>
+    inBranchKeys.has('id:' + v.id) || inBranchKeys.has('reg:' + (v.registration || '').toUpperCase().replace(/\s+/g, ''))
+  const notInsuredNotInBranchCount = useMemo(
+    () => (fleetData?.vehicles || []).filter((v: any) =>
+      !v.isDefleeted && v.insuranceStatus !== 'Insured' &&
+      !(inBranchKeys.has('id:' + v.id) || inBranchKeys.has('reg:' + (v.registration || '').toUpperCase().replace(/\s+/g, '')))
+    ).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [fleetData?.vehicles, inBranchKeys]
+  )
+
   // Vehicle Selection State
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<string>>(new Set())
 
@@ -493,6 +532,12 @@ export default function FleetInventoryPage() {
         filtered = filtered.filter(vehicle =>
           vehicle.insuranceStatus === 'Insured' && ((vehicle as any).insurancePolicyName || '') === wanted
         )
+      } else if (filters.insurance === 'not-insured-not-branch') {
+        // Not insured AND not physically in a branch (out on hire, or never
+        // checked into any branch) — the ones to chase up.
+        filtered = filtered.filter(vehicle =>
+          vehicle.insuranceStatus !== 'Insured' && !isInBranch(vehicle)
+        )
       }
     }
 
@@ -578,7 +623,7 @@ export default function FleetInventoryPage() {
       if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1
       return 0
     })
-  }, [fleetVehicles, filters, sortConfig, fleetVocab])
+  }, [fleetVehicles, filters, sortConfig, fleetVocab, inBranchKeys])
 
   const hasActiveFilters = Object.entries(filters).some(([key, value]) => {
     if (key === 'search' || key === 'excludeKeywords' || key === 'dateFrom' || key === 'dateTo') {
@@ -1125,6 +1170,7 @@ export default function FleetInventoryPage() {
               organizationId={fleetVehicles[0]?.organizationId}
               activeFilter={filters.insurance}
               onSelectInsurance={(value) => setFilters(prev => ({ ...prev, insurance: value }))}
+              notInBranchCount={notInsuredNotInBranchCount}
             />
 
             {filteredAndSortedVehicles.length > 0 && (
