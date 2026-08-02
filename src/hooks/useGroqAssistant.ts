@@ -580,7 +580,17 @@ export function useGroqAssistant(): UseGroqAssistantReturn {
       const msgLower = userMessage.toLowerCase()
 
       // ── 1. WEATHER ──────────────────────────────────────────────────────────
-      if (/weather|forecast|rain|temperature|temp|sunny|cloudy|wind|snow|cold|warm|hot/i.test(userMessage)) {
+      // Two guards so a real request never gets hijacked (a colleague's
+      // "book HK72XPA for WINDscreen tomorrow" used to hit the bare "wind"
+      // keyword and return the forecast instead of reaching the model):
+      //   • weather words are word-bounded, so "wind" won't match "windscreen",
+      //     "rain" won't match "brain", "snow" won't match "snowboard", etc.
+      //   • if the message shows ANY fleet/booking intent (or names a vehicle),
+      //     skip weather entirely and let the model handle it.
+      const WEATHER_RE = /\b(weather|forecast|temperature|sunny|cloudy|overcast|snowing|snowy|snow|raining|rainy|rain|drizzle|frosty|frost|humidity|humid|windy|breezy|gale|foggy|fog|storm(?:y)?|heat\s?wave|how (?:cold|warm|hot))\b/i
+      const FLEET_INTENT_RE = /\b(book|booking|schedule|appointment|service|mot|tax|repair|windscreen|window|glass|tyre|tire|brake|clutch|check\s*-?\s*in|check\s*-?\s*out|checkin|checkout|hire|de-?hire|return|swap|park|unpark|transfer|insur\w*|policy|defleet|damage|mileage|status|vehicle|van|car|lorry|truck|minibus|reg\b)\b/i
+      const looksLikeReg = /\b[A-Z]{2}\d{2}\s?[A-Z]{3}\b|\b[A-Z0-9]{2,4}\s?\([A-Z0-9\s]+\)/i.test(userMessage)
+      if (WEATHER_RE.test(userMessage) && !FLEET_INTENT_RE.test(userMessage) && !looksLikeReg) {
         const loc = userMessage.match(/(?:in|for|at)\s+([A-Za-z\s]+?)(?:\?|$|today|tomorrow|this week)/i)?.[1]?.trim() || 'London'
         return ok(await fetchWeather(loc), 'query')
       }
