@@ -69,6 +69,13 @@ interface OrganizationSettings {
 }
 
 // ✅ NEW: Check-in / service preferences (jsonb column service_settings, migration 0043)
+/** One daily-report recipient. externalBookings toggles the instant
+ *  external-booking alert; the 6AM daily report always goes to everyone. */
+export interface DailyReportRecipient {
+  email: string
+  externalBookings: boolean
+}
+
 export interface ServiceSettings {
   // Require a mileage reading to check a vehicle into the yard.
   captureMileageOnCheckIn: boolean
@@ -273,23 +280,34 @@ export const settingsService = {
   // Recipients of the 6AM daily email report (external garage bookings, MOT/tax
   // expired + expiring). Editable by owner/admin/garage-manager in Settings.
   // Empty list = report off for the org.
+  //
+  // Entries are { email, externalBookings } objects; externalBookings toggles
+  // the INSTANT external-booking alert per recipient (everyone still gets the
+  // daily report). Legacy plain-string entries are normalised on read.
 
-  async getDailyReportEmails(organizationId: string): Promise<string[]> {
+  async getDailyReportEmails(organizationId: string): Promise<DailyReportRecipient[]> {
     try {
       const row = await getSettingsRow(organizationId)
-      return ((row?.daily_report_emails as string[]) || []).filter(e => typeof e === 'string')
+      const raw = (row?.daily_report_emails as any[]) || []
+      return raw
+        .map((e): DailyReportRecipient | null => {
+          if (typeof e === 'string') return { email: e, externalBookings: true }
+          if (e && typeof e.email === 'string') return { email: e.email, externalBookings: e.externalBookings !== false }
+          return null
+        })
+        .filter((e): e is DailyReportRecipient => !!e)
     } catch (error) {
       logger.error('Error getting daily report emails:', error)
       return []
     }
   },
 
-  async saveDailyReportEmails(organizationId: string, emails: string[]): Promise<void> {
+  async saveDailyReportEmails(organizationId: string, recipients: DailyReportRecipient[]): Promise<void> {
     try {
       await ensureSettingsDoc(organizationId)
       const { error } = await supabase
         .from(TABLE)
-        .update({ daily_report_emails: emails, updated_at: new Date().toISOString() })
+        .update({ daily_report_emails: recipients, updated_at: new Date().toISOString() })
         .eq('organization_id', organizationId)
       if (error) throw error
     } catch (error) {

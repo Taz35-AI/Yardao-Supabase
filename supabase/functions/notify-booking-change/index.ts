@@ -122,16 +122,26 @@ async function sendExternalBookingEmail(admin: Admin, organizationId: string, b:
       .select('daily_report_emails')
       .eq('organization_id', organizationId)
       .maybeSingle()
-    const emails: string[] = Array.isArray((settings as any)?.daily_report_emails)
-      ? ((settings as any).daily_report_emails as string[]).filter((e) => typeof e === 'string' && e.includes('@'))
+    // Entries are strings (legacy) or { email, externalBookings } objects — the
+    // per-recipient toggle lets someone stay on the daily report but opt OUT of
+    // these instant external-booking alerts.
+    const entries = Array.isArray((settings as any)?.daily_report_emails)
+      ? ((settings as any).daily_report_emails as any[])
       : []
+    const emails: string[] = entries
+      .filter((e) => (typeof e === 'string' ? true : e?.externalBookings !== false))
+      .map((e) => (typeof e === 'string' ? e : e?.email))
+      .filter((e) => typeof e === 'string' && e.includes('@'))
     if (emails.length === 0) return 0
 
     const reg = String(b?.registration || 'Vehicle').toUpperCase()
     const garage =
       (b?.external_provider && (b.external_provider.garageName || b.external_provider.address)) || 'external garage'
     const date = euDate(b?.date)
-    const time = b?.time_slot ? String(b.time_slot) : ''
+    // External bookings store the literal 'EXTERNAL' in time_slot; the real
+    // typed time lives in external_provider.customTime — use exactly that.
+    const rawTime = b?.external_provider?.customTime || b?.time_slot || ''
+    const time = String(rawTime).toUpperCase() === 'EXTERNAL' ? '' : String(rawTime)
     const who = String(b?.created_by_name || b?.last_modified_by_name || 'A Yardao user')
     const whenSubject = `${date ? ` on ${date}` : ''}${time ? ` at ${time}` : ''}`
 

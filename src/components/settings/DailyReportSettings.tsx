@@ -1,17 +1,18 @@
 // src/components/settings/DailyReportSettings.tsx
-// Recipients of the 6AM daily email report: external garage bookings (today +
-// next 5 days), expired MOT / road tax, and MOT/tax expiring within 14 days.
-// Owner / admin / garage-manager only (the Settings page already gates the
-// Organization tab to admin roles; this component re-checks for safety).
+// Recipients of the daily 6AM email report + instant external-booking alerts.
+// Each recipient has a toggle for the INSTANT external-booking emails —
+// everyone on the list always gets the 6AM daily report. Owner / admin /
+// garage-manager only (the Settings page already gates the Organization tab;
+// this component re-checks for safety).
 
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Mail, Plus, Trash2, Clock, ShieldAlert, Loader2 } from 'lucide-react'
+import { Mail, Plus, Trash2, Clock, ShieldAlert, Loader2, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
-import { settingsService } from '@/lib/services/settingsService'
+import { settingsService, type DailyReportRecipient } from '@/lib/services/settingsService'
 import { isAdminRole } from '@/lib/permissions'
 import { logger } from '@/lib/logger'
 
@@ -23,7 +24,7 @@ export function DailyReportSettings() {
   const [allowed, setAllowed] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [emails, setEmails] = useState<string[]>([])
+  const [recipients, setRecipients] = useState<DailyReportRecipient[]>([])
   const [newEmail, setNewEmail] = useState('')
 
   useEffect(() => {
@@ -36,7 +37,7 @@ export function DailyReportSettings() {
         setAllowed(isAdminRole(profile?.role))
         if (profile?.organizationId) {
           setOrgId(profile.organizationId)
-          setEmails(await settingsService.getDailyReportEmails(profile.organizationId))
+          setRecipients(await settingsService.getDailyReportEmails(profile.organizationId))
         }
       } catch (err) {
         logger.error('DailyReportSettings load failed:', err)
@@ -47,13 +48,13 @@ export function DailyReportSettings() {
     return () => { cancelled = true }
   }, [user?.uid])
 
-  const persist = async (next: string[]) => {
+  const persist = async (next: DailyReportRecipient[], okMsg = 'Saved') => {
     if (!orgId) return
     setSaving(true)
     try {
       await settingsService.saveDailyReportEmails(orgId, next)
-      setEmails(next)
-      toast.success('Daily report recipients saved')
+      setRecipients(next)
+      toast.success(okMsg)
     } catch {
       toast.error('Could not save — please try again')
     } finally {
@@ -64,13 +65,19 @@ export function DailyReportSettings() {
   const addEmail = async () => {
     const e = newEmail.trim().toLowerCase()
     if (!EMAIL_RE.test(e)) { toast.error('Enter a valid email address'); return }
-    if (emails.includes(e)) { toast.error('That address is already on the list'); return }
+    if (recipients.some(r => r.email === e)) { toast.error('That address is already on the list'); return }
     setNewEmail('')
-    await persist([...emails, e])
+    await persist([...recipients, { email: e, externalBookings: true }], 'Recipient added')
   }
 
-  const removeEmail = async (e: string) => {
-    await persist(emails.filter(x => x !== e))
+  const removeEmail = async (email: string) => {
+    await persist(recipients.filter(r => r.email !== email), 'Recipient removed')
+  }
+
+  const toggleExternal = async (email: string) => {
+    const next = recipients.map(r => r.email === email ? { ...r, externalBookings: !r.externalBookings } : r)
+    const target = next.find(r => r.email === email)
+    await persist(next, target?.externalBookings ? 'External booking alerts ON' : 'External booking alerts OFF')
   }
 
   if (loading) {
@@ -88,17 +95,18 @@ export function DailyReportSettings() {
 
   return (
     <div className="space-y-4">
-      {/* What the report contains */}
+      {/* What the emails are */}
       <div className="rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-gradient-to-br from-white to-[#025940]/[0.04] dark:from-gray-800 dark:to-[#025940]/10 p-4">
         <div className="flex items-center gap-2 mb-1.5">
           <Clock className="w-4 h-4 text-[#025940] dark:text-[#b3f243]" />
-          <h3 className="text-sm font-bold text-[#012619] dark:text-white">Daily report — every morning at 6AM</h3>
+          <h3 className="text-sm font-bold text-[#012619] dark:text-white">Email reports &amp; alerts</h3>
         </div>
         <p className="text-xs text-[#4a5e54] dark:text-gray-300 leading-relaxed">
-          Everyone on this list receives one email each morning with: today&apos;s external garage
-          bookings, vehicles with expired MOT, vehicles with expired road tax, MOT/tax expiring in
-          the next 14 days, and upcoming external garage bookings for the next 5 days.
-          Remove all addresses to switch the report off.
+          Everyone on this list receives the <strong>daily report at 6AM</strong> (garage bookings,
+          MOT &amp; tax expiries, uninsured not in yard). The <strong>⚡ External bookings</strong>{' '}
+          toggle controls the <em>instant</em> email sent when a vehicle is booked at an external
+          garage — switch it off for anyone who only wants the morning digest.
+          Remove all addresses to switch emails off entirely.
         </p>
       </div>
 
@@ -127,22 +135,50 @@ export function DailyReportSettings() {
       </div>
 
       {/* List */}
-      {emails.length === 0 ? (
+      {recipients.length === 0 ? (
         <p className="text-sm text-gray-400 text-center py-6">
-          No recipients yet — the daily report is currently <span className="font-semibold">off</span>.
+          No recipients yet — email reports are currently <span className="font-semibold">off</span>.
         </p>
       ) : (
         <div className="rounded-xl border border-[#e2e8e5] dark:border-gray-700 divide-y divide-[#eef2f0] dark:divide-gray-700/60 overflow-hidden">
-          {emails.map(e => (
-            <div key={e} className="flex items-center gap-3 px-4 py-2.5 bg-white dark:bg-gray-800">
+          {recipients.map(r => (
+            <div key={r.email} className="flex items-center gap-3 px-4 py-2.5 bg-white dark:bg-gray-800">
               <Mail className="w-4 h-4 text-[#72A68E] flex-shrink-0" />
-              <span className="flex-1 text-sm text-[#012619] dark:text-white truncate">{e}</span>
+              <span className="flex-1 text-sm text-[#012619] dark:text-white truncate">{r.email}</span>
+
+              {/* External-booking alerts toggle */}
               <button
                 type="button"
-                onClick={() => removeEmail(e)}
+                onClick={() => toggleExternal(r.email)}
                 disabled={saving}
-                title="Remove"
-                className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                title={r.externalBookings ? 'Receiving instant external-booking alerts — click to turn OFF' : 'Not receiving external-booking alerts — click to turn ON'}
+                className={`inline-flex items-center gap-1.5 flex-shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                  r.externalBookings
+                    ? 'bg-[#e9f8ef] border-[#a9dcbc] text-[#0a6b4d] dark:bg-emerald-900/20 dark:border-emerald-800/50 dark:text-emerald-300'
+                    : 'bg-gray-100 border-gray-200 text-gray-400 dark:bg-gray-700/50 dark:border-gray-600 dark:text-gray-400'
+                }`}
+              >
+                <Zap className="w-3 h-3" />
+                External bookings
+                <span
+                  className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+                    r.externalBookings ? 'bg-[#0a6b4d]' : 'bg-gray-300 dark:bg-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
+                      r.externalBookings ? 'translate-x-3.5' : 'translate-x-0.5'
+                    }`}
+                  />
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => removeEmail(r.email)}
+                disabled={saving}
+                title="Remove recipient"
+                className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0"
               >
                 <Trash2 className="w-4 h-4" />
               </button>

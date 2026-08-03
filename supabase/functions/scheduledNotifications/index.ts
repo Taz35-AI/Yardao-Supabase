@@ -377,9 +377,15 @@ async function runDailyReport(admin: Admin, force = false): Promise<Record<strin
       .select('daily_report_emails')
       .eq('organization_id', orgId)
       .maybeSingle()
-    const emails: string[] = Array.isArray((settings as any)?.daily_report_emails)
-      ? ((settings as any).daily_report_emails as string[]).filter(e => typeof e === 'string' && e.includes('@'))
+    // Entries are strings (legacy) or { email, externalBookings } objects.
+    // The toggle only affects the instant external-booking alerts — everyone on
+    // the list still gets this daily report.
+    const entries = Array.isArray((settings as any)?.daily_report_emails)
+      ? ((settings as any).daily_report_emails as any[])
       : []
+    const emails: string[] = entries
+      .map((e) => (typeof e === 'string' ? e : e?.email))
+      .filter((e) => typeof e === 'string' && e.includes('@'))
     if (emails.length === 0) continue
 
     // ── Garage bookings: external today, INTERNAL today, external next 5 days ──
@@ -394,6 +400,12 @@ async function runDailyReport(admin: Admin, force = false): Promise<Record<strin
     const garageOf = (b: any) =>
       (b.external_provider && (b.external_provider.garageName || b.external_provider.address)) || 'External garage'
     const isExt = (b: any) => b.is_external_provider === true
+    // External bookings store the literal 'EXTERNAL' in time_slot; the real
+    // typed time lives in external_provider.customTime — show exactly that.
+    const timeOf = (b: any) => {
+      const raw = b?.external_provider?.customTime || b?.time_slot || ''
+      return String(raw).toUpperCase() === 'EXTERNAL' ? '—' : (String(raw) || '—')
+    }
     const todaysExt = (allBookings ?? []).filter((b: any) => isExt(b) && String(b.date).slice(0, 10) === today)
     const todaysInt = (allBookings ?? []).filter((b: any) => !isExt(b) && String(b.date).slice(0, 10) === today)
     const upcomingExt = (allBookings ?? []).filter((b: any) => isExt(b) && String(b.date).slice(0, 10) > today)
@@ -458,13 +470,13 @@ async function runDailyReport(admin: Admin, force = false): Promise<Record<strin
           <span style="color:#b3f243;font-size:14px;margin-left:10px;">Daily Report — ${euDate(today)} · ${orgName}</span>
         </div>
         ${htmlTable('🔧 External garage bookings today', ['Reg', 'Contract', 'Garage', 'Time', 'Status'],
-          todaysExt.map((b: any) => [b.registration ?? '—', contractOf(b.registration), garageOf(b), b.time_slot ?? '—', b.status ?? '—']),
+          todaysExt.map((b: any) => [b.registration ?? '—', contractOf(b.registration), garageOf(b), timeOf(b), b.status ?? '—']),
           'No external garage bookings today 🎉')}
         ${htmlTable('🔧 Internal garage bookings today', ['Reg', 'Contract', 'Time', 'Status'],
-          todaysInt.map((b: any) => [b.registration ?? '—', contractOf(b.registration), b.time_slot ?? '—', b.status ?? '—']),
+          todaysInt.map((b: any) => [b.registration ?? '—', contractOf(b.registration), timeOf(b), b.status ?? '—']),
           'No internal garage bookings today 🎉')}
         ${htmlTable('🗓️ Upcoming external garage bookings (next 5 days)', ['Date', 'Reg', 'Contract', 'Garage', 'Time', 'Status'],
-          upcomingExt.map((b: any) => [euDate(b.date), b.registration ?? '—', contractOf(b.registration), garageOf(b), b.time_slot ?? '—', b.status ?? '—']),
+          upcomingExt.map((b: any) => [euDate(b.date), b.registration ?? '—', contractOf(b.registration), garageOf(b), timeOf(b), b.status ?? '—']),
           'No upcoming external bookings in the next 5 days')}
         ${htmlTable('🚨 MOT expired', ['Reg', 'Vehicle', 'Contract', 'MOT expired', 'Days overdue'],
           motExpired.map((v: any) => [v.registration, mm(v), v.contract || '—', euDate(v.mot_expiry), String(-daysTo(v.mot_expiry))]),
