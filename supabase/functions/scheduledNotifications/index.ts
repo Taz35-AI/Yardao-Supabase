@@ -401,7 +401,7 @@ async function runDailyReport(admin: Admin, force = false): Promise<Record<strin
     // ── 2/3/4. MOT + tax: expired and expiring within 14 days ───────────
     const { data: vehicles } = await admin
       .from('vehicles')
-      .select('registration, make, model, contract, mot_expiry, tax_expiry, current_status, is_defleeted')
+      .select('id, registration, make, model, contract, insurance_status, mot_expiry, tax_expiry, current_status, is_defleeted')
       .eq('organization_id', orgId)
       .eq('is_defleeted', false)
     const active = (vehicles ?? []).filter((v: any) => !v.current_status || ACTIVE_STATUSES.has(v.current_status))
@@ -415,6 +415,28 @@ async function runDailyReport(admin: Admin, force = false): Promise<Record<strin
     const contractOf = (reg: unknown) => contractByReg.get(normRegKey(reg)) || '—'
     const daysTo = (iso: string) =>
       Math.ceil((new Date(String(iso).slice(0, 10) + 'T00:00:00Z').getTime() - new Date(today + 'T00:00:00Z').getTime()) / 86_400_000)
+
+    // ── Not insured & not checked into any yard ─────────────────────────
+    // Same rule as the Fleet page chip: uninsured active-fleet vehicles with no
+    // 'In Yard' checked_in row (matched by vehicle_id, then normalised reg —
+    // check-in strips reg whitespace). Hire rows tell us if it's out on hire.
+    const { data: yardRows } = await admin
+      .from('checked_in_vehicles')
+      .select('vehicle_id, registration, hire_status')
+      .eq('organization_id', orgId)
+    const inYardKeys = new Set<string>()
+    const onHireKeys = new Set<string>()
+    for (const y of yardRows ?? []) {
+      const yy = y as any
+      const keys = [yy.vehicle_id ? 'id:' + yy.vehicle_id : '', 'reg:' + normRegKey(yy.registration)].filter(Boolean)
+      const target = yy.hire_status === 'In Yard' ? inYardKeys : yy.hire_status === 'Out on Hire' ? onHireKeys : null
+      if (target) for (const k of keys) target.add(k)
+    }
+    const hasKey = (set: Set<string>, v: any) => set.has('id:' + v.id) || set.has('reg:' + normRegKey(v.registration))
+    const uninsuredNotInYard = active
+      .filter((v: any) => v.insurance_status !== 'Insured' && !hasKey(inYardKeys, v))
+      .map((v: any) => ({ ...v, where: hasKey(onHireKeys, v) ? 'Out on hire' : 'Not checked in' }))
+      .sort((a: any, b: any) => String(a.registration).localeCompare(String(b.registration)))
 
     const motExpired = active.filter((v: any) => v.mot_expiry && daysTo(v.mot_expiry) < 0)
       .sort((a: any, b: any) => String(a.mot_expiry).localeCompare(String(b.mot_expiry)))
@@ -450,6 +472,9 @@ async function runDailyReport(admin: Admin, force = false): Promise<Record<strin
         ${htmlTable('🚨 Road tax expired', ['Reg', 'Vehicle', 'Contract', 'Tax expired', 'Days overdue'],
           taxExpired.map((v: any) => [v.registration, mm(v), v.contract || '—', euDate(v.tax_expiry), String(-daysTo(v.tax_expiry))]),
           'No expired road tax 🎉')}
+        ${htmlTable('🛡️ Not insured & not in any yard', ['Reg', 'Vehicle', 'Contract', 'Where'],
+          uninsuredNotInYard.map((v: any) => [v.registration, mm(v), v.contract || '—', v.where]),
+          'None — every uninsured vehicle is safely in a yard 🎉')}
         ${htmlTable('📅 MOT / tax expiring in the next 14 days', ['Reg', 'Vehicle', 'Contract', 'Type', 'Expires', 'Days left'],
           expiringSoon.map(e => [e.v.registration, mm(e.v), e.v.contract || '—', e.type, euDate(e.expiry), String(e.days)]),
           'Nothing expiring in the next 14 days 🎉')}
@@ -474,7 +499,8 @@ async function runDailyReport(admin: Admin, force = false): Promise<Record<strin
     results.push({
       org: orgName, recipients: emails.length, sent: ok,
       todaysExt: todaysExt.length, todaysInt: todaysInt.length, upcomingExt: upcomingExt.length,
-      motExpired: motExpired.length, taxExpired: taxExpired.length, expiringSoon: expiringSoon.length,
+      motExpired: motExpired.length, taxExpired: taxExpired.length,
+      uninsuredNotInYard: uninsuredNotInYard.length, expiringSoon: expiringSoon.length,
     })
   }
 
