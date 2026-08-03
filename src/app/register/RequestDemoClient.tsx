@@ -95,7 +95,9 @@ export default function RequestDemoPage() {
       try {
         await supabase.functions.invoke('send-email', {
           body: {
-            to: 'support@yardao.com',
+            // Support inbox + owner's personal address — support@ is rarely
+            // checked, so demo requests must land somewhere seen daily too.
+            to: ['support@yardao.com', 'leescu.paul@googlemail.com'],
             // Explicit, valid sender — the deployed function's own default `from`
             // is malformed (Resend returns 422), so pass a good one here.
             from: 'Yardao <noreply@yardao.com>',
