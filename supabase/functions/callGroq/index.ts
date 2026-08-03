@@ -63,6 +63,17 @@ Deno.serve(async (req) => {
     // ── 1. PRIMARY: OpenRouter (Qwen) ──────────────────────────────────────
     if (openRouterKey) {
       try {
+        // Qwen3 thinking OFF, belt and braces: the OpenRouter reasoning flag
+        // alone didn't stop it, so also inject Qwen3's own '/no_think' soft
+        // switch into the system message — otherwise thinking consumes the
+        // whole 300-token budget and Zao gets an empty reply.
+        let orMessages = messages
+        if (/qwen3/i.test(openRouterModel)) {
+          const hasSystem = messages[0]?.role === 'system'
+          orMessages = hasSystem
+            ? [{ ...messages[0], content: `${messages[0].content}\n/no_think` }, ...messages.slice(1)]
+            : [{ role: 'system', content: '/no_think' }, ...messages]
+        }
         const resp = await fetch(OPENROUTER_URL, {
           method: 'POST',
           headers: {
@@ -72,7 +83,11 @@ Deno.serve(async (req) => {
             'HTTP-Referer': 'https://yardao.app',
             'X-Title': 'Yardao Zao',
           },
-          body: JSON.stringify({ model: openRouterModel, ...bodyBase }),
+          // reasoning disabled: Qwen3's thinking mode burns the whole token
+          // budget on internal reasoning before any visible output (observed:
+          // finish_reason 'length' with empty content at max_tokens 100–300).
+          // Zao needs fast, direct answers, so thinking is off.
+          body: JSON.stringify({ model: openRouterModel, ...bodyBase, messages: orMessages, reasoning: { enabled: false } }),
         })
 
         if (resp.ok) {
