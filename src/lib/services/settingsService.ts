@@ -269,6 +269,35 @@ export const settingsService = {
     }
   },
 
+  // ==================== DAILY REPORT EMAILS ====================
+  // Recipients of the 6AM daily email report (external garage bookings, MOT/tax
+  // expired + expiring). Editable by owner/admin/garage-manager in Settings.
+  // Empty list = report off for the org.
+
+  async getDailyReportEmails(organizationId: string): Promise<string[]> {
+    try {
+      const row = await getSettingsRow(organizationId)
+      return ((row?.daily_report_emails as string[]) || []).filter(e => typeof e === 'string')
+    } catch (error) {
+      logger.error('Error getting daily report emails:', error)
+      return []
+    }
+  },
+
+  async saveDailyReportEmails(organizationId: string, emails: string[]): Promise<void> {
+    try {
+      await ensureSettingsDoc(organizationId)
+      const { error } = await supabase
+        .from(TABLE)
+        .update({ daily_report_emails: emails, updated_at: new Date().toISOString() })
+        .eq('organization_id', organizationId)
+      if (error) throw error
+    } catch (error) {
+      logger.error('Error saving daily report emails:', error)
+      throw error
+    }
+  },
+
   // ==================== CONTRACT DEFAULT STATUSES ====================
 
   async getContractDefaultStatuses(organizationId: string): Promise<ContractDefaultStatuses> {

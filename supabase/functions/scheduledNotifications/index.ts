@@ -306,6 +306,169 @@ async function runNoteReminders(admin: Admin): Promise<Record<string, unknown>> 
   return { job: 'note_reminders', due: (notes ?? []).length, notificationsWritten: sent }
 }
 
+// ── job: daily 6AM email report ──────────────────────────────────────────────
+// Sends each org's configured recipients (organization_settings.
+// daily_report_emails, editable by owner/admin/garage-manager in Settings) a
+// morning digest via Resend: today's external-garage bookings, expired MOT,
+// expired road tax, MOT/tax expiring within 14 days, and external bookings in
+// the next 5 days.
+//
+// TIMEZONE: pg_cron runs in UTC and the UK flips GMT/BST, so the cron fires at
+// BOTH 05:00 and 06:00 UTC and this job only sends when it's actually 6AM in
+// London — exactly one of the two runs matches, year-round. Pass {force:true}
+// to bypass the hour gate for manual testing.
+
+function londonHour(): number {
+  return parseInt(
+    new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hour12: false }).format(new Date()),
+    10,
+  )
+}
+function londonToday(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date()) // YYYY-MM-DD
+}
+function addDaysIso(iso: string, n: number): string {
+  const d = new Date(iso + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+const euDate = (iso?: string | null) => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '—')
+
+/** Render one report section as an inline-styled HTML table (email-safe). */
+function htmlTable(title: string, headers: string[], rows: string[][], emptyText: string): string {
+  const th = headers.map(h =>
+    `<th style="text-align:left;padding:8px 10px;background:#012619;color:#b3f243;font-size:12px;letter-spacing:.04em;">${h}</th>`
+  ).join('')
+  const body = rows.length === 0
+    ? `<tr><td colspan="${headers.length}" style="padding:10px;color:#6b7a70;font-size:13px;">${emptyText}</td></tr>`
+    : rows.map((r, i) =>
+        `<tr style="background:${i % 2 ? '#f4f8f6' : '#ffffff'};">${r.map(c =>
+          `<td style="padding:7px 10px;border-bottom:1px solid #e2e8e5;font-size:13px;color:#1a2c24;">${c}</td>`
+        ).join('')}</tr>`
+      ).join('')
+  return `
+    <h3 style="margin:22px 0 8px;font-size:15px;color:#012619;">${title}</h3>
+    <table style="border-collapse:collapse;width:100%;border:1px solid #e2e8e5;border-radius:6px;">
+      <thead><tr>${th}</tr></thead><tbody>${body}</tbody>
+    </table>`
+}
+
+async function runDailyReport(admin: Admin, force = false): Promise<Record<string, unknown>> {
+  if (!force && londonHour() !== 6) {
+    return { job: 'daily_report', skipped: true, reason: `London hour is ${londonHour()}, not 6` }
+  }
+
+  const resendKey = Deno.env.get('RESEND_API_KEY')
+  if (!resendKey) return { job: 'daily_report', error: 'RESEND_API_KEY not configured' }
+
+  const today = londonToday()
+  const in5 = addDaysIso(today, 5)
+  const { data: orgs } = await admin.from('organizations').select('id, name')
+  let emailsSent = 0
+  const results: Record<string, unknown>[] = []
+
+  for (const org of orgs ?? []) {
+    const orgId = (org as any).id as string
+    const orgName = (org as any).name as string
+
+    // Recipients — configured in Settings; skip orgs with none.
+    const { data: settings } = await admin
+      .from('organization_settings')
+      .select('daily_report_emails')
+      .eq('organization_id', orgId)
+      .maybeSingle()
+    const emails: string[] = Array.isArray((settings as any)?.daily_report_emails)
+      ? ((settings as any).daily_report_emails as string[]).filter(e => typeof e === 'string' && e.includes('@'))
+      : []
+    if (emails.length === 0) continue
+
+    // ── 1+5. External garage bookings: today + next 5 days ──────────────
+    const { data: extBookings } = await admin
+      .from('service_bookings')
+      .select('registration, date, time_slot, status, external_provider')
+      .eq('organization_id', orgId)
+      .eq('is_external_provider', true)
+      .gte('date', today)
+      .lte('date', in5)
+      .neq('status', 'cancelled')
+      .order('date', { ascending: true })
+    const garageOf = (b: any) =>
+      (b.external_provider && (b.external_provider.garageName || b.external_provider.address)) || 'External garage'
+    const todaysExt = (extBookings ?? []).filter((b: any) => String(b.date).slice(0, 10) === today)
+    const upcomingExt = (extBookings ?? []).filter((b: any) => String(b.date).slice(0, 10) > today)
+
+    // ── 2/3/4. MOT + tax: expired and expiring within 14 days ───────────
+    const { data: vehicles } = await admin
+      .from('vehicles')
+      .select('registration, make, model, mot_expiry, tax_expiry, current_status, is_defleeted')
+      .eq('organization_id', orgId)
+      .eq('is_defleeted', false)
+    const active = (vehicles ?? []).filter((v: any) => !v.current_status || ACTIVE_STATUSES.has(v.current_status))
+    const daysTo = (iso: string) =>
+      Math.ceil((new Date(String(iso).slice(0, 10) + 'T00:00:00Z').getTime() - new Date(today + 'T00:00:00Z').getTime()) / 86_400_000)
+
+    const motExpired = active.filter((v: any) => v.mot_expiry && daysTo(v.mot_expiry) < 0)
+      .sort((a: any, b: any) => String(a.mot_expiry).localeCompare(String(b.mot_expiry)))
+    const taxExpired = active.filter((v: any) => v.tax_expiry && daysTo(v.tax_expiry) < 0)
+      .sort((a: any, b: any) => String(a.tax_expiry).localeCompare(String(b.tax_expiry)))
+    const expiringSoon: { v: any; type: 'MOT' | 'Road Tax'; expiry: string; days: number }[] = []
+    for (const v of active) {
+      if (v.mot_expiry) { const d = daysTo(v.mot_expiry); if (d >= 0 && d <= 14) expiringSoon.push({ v, type: 'MOT', expiry: v.mot_expiry, days: d }) }
+      if (v.tax_expiry) { const d = daysTo(v.tax_expiry); if (d >= 0 && d <= 14) expiringSoon.push({ v, type: 'Road Tax', expiry: v.tax_expiry, days: d }) }
+    }
+    expiringSoon.sort((a, b) => a.days - b.days)
+
+    // ── Compose the email ───────────────────────────────────────────────
+    const mm = (v: any) => [v.make, v.model].filter(Boolean).join(' ') || '—'
+    const html = `
+      <div style="font-family:Segoe UI,Arial,sans-serif;max-width:720px;margin:0 auto;padding:16px;">
+        <div style="background:#012619;border-radius:10px;padding:18px 20px;">
+          <span style="color:#ffffff;font-size:18px;font-weight:700;">Yardao</span>
+          <span style="color:#b3f243;font-size:14px;margin-left:10px;">Daily Report — ${euDate(today)} · ${orgName}</span>
+        </div>
+        ${htmlTable('🔧 External garage bookings today', ['Reg', 'Garage', 'Time', 'Status'],
+          todaysExt.map((b: any) => [b.registration ?? '—', garageOf(b), b.time_slot ?? '—', b.status ?? '—']),
+          'No external garage bookings today 🎉')}
+        ${htmlTable('🚨 MOT expired', ['Reg', 'Vehicle', 'MOT expired', 'Days overdue'],
+          motExpired.map((v: any) => [v.registration, mm(v), euDate(v.mot_expiry), String(-daysTo(v.mot_expiry))]),
+          'No expired MOTs 🎉')}
+        ${htmlTable('🚨 Road tax expired', ['Reg', 'Vehicle', 'Tax expired', 'Days overdue'],
+          taxExpired.map((v: any) => [v.registration, mm(v), euDate(v.tax_expiry), String(-daysTo(v.tax_expiry))]),
+          'No expired road tax 🎉')}
+        ${htmlTable('📅 MOT / tax expiring in the next 14 days', ['Reg', 'Vehicle', 'Type', 'Expires', 'Days left'],
+          expiringSoon.map(e => [e.v.registration, mm(e.v), e.type, euDate(e.expiry), String(e.days)]),
+          'Nothing expiring in the next 14 days 🎉')}
+        ${htmlTable('🗓️ Upcoming external garage bookings (next 5 days)', ['Date', 'Reg', 'Garage', 'Time', 'Status'],
+          upcomingExt.map((b: any) => [euDate(b.date), b.registration ?? '—', garageOf(b), b.time_slot ?? '—', b.status ?? '—']),
+          'No upcoming external bookings in the next 5 days')}
+        <p style="color:#8a9e94;font-size:11px;margin-top:20px;">
+          Sent automatically at 6AM by Yardao. Recipients are managed in Settings → Daily report.
+        </p>
+      </div>`
+
+    const resp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Yardao <noreply@yardao.com>',
+        to: emails,
+        subject: `Yardao Daily Report — ${euDate(today)} · ${orgName}`,
+        html,
+      }),
+    })
+    const ok = resp.ok
+    if (ok) emailsSent++
+    else console.error('daily_report Resend error:', resp.status, (await resp.text()).slice(0, 300))
+    results.push({
+      org: orgName, recipients: emails.length, sent: ok,
+      todaysExt: todaysExt.length, motExpired: motExpired.length, taxExpired: taxExpired.length,
+      expiringSoon: expiringSoon.length, upcomingExt: upcomingExt.length,
+    })
+  }
+
+  return { job: 'daily_report', date: today, emailsSent, orgs: results }
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const pre = handlePreflight(req)
   if (pre) return pre
@@ -333,8 +496,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
         return json(await runTodaysServices(admin))
       case 'note_reminders':
         return json(await runNoteReminders(admin))
+      case 'daily_report':
+        return json(await runDailyReport(admin, body?.force === true))
       default:
-        return json({ error: `Unknown job '${jobName}'. Expected mot_expirations | todays_services | note_reminders.` }, 400)
+        return json({ error: `Unknown job '${jobName}'. Expected mot_expirations | todays_services | note_reminders | daily_report.` }, 400)
     }
   } catch (e) {
     console.error('scheduledNotifications failed:', e)

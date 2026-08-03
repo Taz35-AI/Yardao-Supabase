@@ -32,7 +32,8 @@ import {
   User as UserIcon,
   Receipt,
   Gauge,
-  Truck
+  Truck,
+  Mail
 } from 'lucide-react'
 import dynamic from 'next/dynamic'
 
@@ -110,6 +111,15 @@ const InsurancePoliciesManagement = dynamic(
   }
 )
 
+// Lazy load Daily Report settings (6AM email recipients)
+const DailyReportSettings = dynamic(
+  () => import('@/components/settings/DailyReportSettings').then(mod => ({ default: mod.DailyReportSettings })),
+  {
+    ssr: false,
+    loading: () => <LoadingLabel labelKey="settings.page.loadingData" />
+  }
+)
+
 // Lazy load User Management
 const UserManagement = dynamic(
   () => import('@/components/admin/UserManagement'),
@@ -157,7 +167,7 @@ const CheckInServiceSettings = dynamic(
 
 type SettingsTab = 'user' | 'organization' | 'data'
 // ✅ UPDATED: Added 'companies' and 'insurance-policies' to OrganizationSubTab
-type OrganizationSubTab = 'branches' | 'conditions' | 'contracts' | 'suppliers' | 'vehicle-suppliers' | 'companies' | 'insurance-policies' | 'external-garages' | 'check-in' | 'users' | 'general'
+type OrganizationSubTab = 'branches' | 'conditions' | 'contracts' | 'suppliers' | 'vehicle-suppliers' | 'companies' | 'insurance-policies' | 'external-garages' | 'daily-report' | 'check-in' | 'users' | 'general'
 
 export default function SettingsPage() {
   const t = useT()
@@ -281,6 +291,13 @@ export default function SettingsPage() {
       description: t('settings.page.orgExtGaragesDesc'),
       icon: Wrench,
       component: ExternalGarageManagement
+    },
+    {
+      id: 'daily-report' as const,
+      label: 'Daily report',
+      description: '6AM email digest — garage bookings, MOT & tax',
+      icon: Mail,
+      component: DailyReportSettings
     },
     {
       id: 'check-in' as const,
