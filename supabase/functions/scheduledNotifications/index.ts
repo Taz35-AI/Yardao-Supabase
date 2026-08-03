@@ -400,10 +400,18 @@ async function runDailyReport(admin: Admin, force = false): Promise<Record<strin
     // ── 2/3/4. MOT + tax: expired and expiring within 14 days ───────────
     const { data: vehicles } = await admin
       .from('vehicles')
-      .select('registration, make, model, mot_expiry, tax_expiry, current_status, is_defleeted')
+      .select('registration, make, model, contract, mot_expiry, tax_expiry, current_status, is_defleeted')
       .eq('organization_id', orgId)
       .eq('is_defleeted', false)
     const active = (vehicles ?? []).filter((v: any) => !v.current_status || ACTIVE_STATUSES.has(v.current_status))
+    // reg → contract map so the booking tables can show the contract too
+    // (check-in strips reg whitespace, so match on a normalised reg).
+    const normRegKey = (r: unknown) => String(r ?? '').toUpperCase().replace(/\s+/g, '')
+    const contractByReg = new Map<string, string>()
+    for (const v of vehicles ?? []) {
+      if ((v as any).contract) contractByReg.set(normRegKey((v as any).registration), (v as any).contract)
+    }
+    const contractOf = (reg: unknown) => contractByReg.get(normRegKey(reg)) || '—'
     const daysTo = (iso: string) =>
       Math.ceil((new Date(String(iso).slice(0, 10) + 'T00:00:00Z').getTime() - new Date(today + 'T00:00:00Z').getTime()) / 86_400_000)
 
@@ -426,20 +434,20 @@ async function runDailyReport(admin: Admin, force = false): Promise<Record<strin
           <span style="color:#ffffff;font-size:18px;font-weight:700;">Yardao</span>
           <span style="color:#b3f243;font-size:14px;margin-left:10px;">Daily Report — ${euDate(today)} · ${orgName}</span>
         </div>
-        ${htmlTable('🔧 External garage bookings today', ['Reg', 'Garage', 'Time', 'Status'],
-          todaysExt.map((b: any) => [b.registration ?? '—', garageOf(b), b.time_slot ?? '—', b.status ?? '—']),
+        ${htmlTable('🔧 External garage bookings today', ['Reg', 'Contract', 'Garage', 'Time', 'Status'],
+          todaysExt.map((b: any) => [b.registration ?? '—', contractOf(b.registration), garageOf(b), b.time_slot ?? '—', b.status ?? '—']),
           'No external garage bookings today 🎉')}
-        ${htmlTable('🚨 MOT expired', ['Reg', 'Vehicle', 'MOT expired', 'Days overdue'],
-          motExpired.map((v: any) => [v.registration, mm(v), euDate(v.mot_expiry), String(-daysTo(v.mot_expiry))]),
+        ${htmlTable('🚨 MOT expired', ['Reg', 'Vehicle', 'Contract', 'MOT expired', 'Days overdue'],
+          motExpired.map((v: any) => [v.registration, mm(v), v.contract || '—', euDate(v.mot_expiry), String(-daysTo(v.mot_expiry))]),
           'No expired MOTs 🎉')}
-        ${htmlTable('🚨 Road tax expired', ['Reg', 'Vehicle', 'Tax expired', 'Days overdue'],
-          taxExpired.map((v: any) => [v.registration, mm(v), euDate(v.tax_expiry), String(-daysTo(v.tax_expiry))]),
+        ${htmlTable('🚨 Road tax expired', ['Reg', 'Vehicle', 'Contract', 'Tax expired', 'Days overdue'],
+          taxExpired.map((v: any) => [v.registration, mm(v), v.contract || '—', euDate(v.tax_expiry), String(-daysTo(v.tax_expiry))]),
           'No expired road tax 🎉')}
-        ${htmlTable('📅 MOT / tax expiring in the next 14 days', ['Reg', 'Vehicle', 'Type', 'Expires', 'Days left'],
-          expiringSoon.map(e => [e.v.registration, mm(e.v), e.type, euDate(e.expiry), String(e.days)]),
+        ${htmlTable('📅 MOT / tax expiring in the next 14 days', ['Reg', 'Vehicle', 'Contract', 'Type', 'Expires', 'Days left'],
+          expiringSoon.map(e => [e.v.registration, mm(e.v), e.v.contract || '—', e.type, euDate(e.expiry), String(e.days)]),
           'Nothing expiring in the next 14 days 🎉')}
-        ${htmlTable('🗓️ Upcoming external garage bookings (next 5 days)', ['Date', 'Reg', 'Garage', 'Time', 'Status'],
-          upcomingExt.map((b: any) => [euDate(b.date), b.registration ?? '—', garageOf(b), b.time_slot ?? '—', b.status ?? '—']),
+        ${htmlTable('🗓️ Upcoming external garage bookings (next 5 days)', ['Date', 'Reg', 'Contract', 'Garage', 'Time', 'Status'],
+          upcomingExt.map((b: any) => [euDate(b.date), b.registration ?? '—', contractOf(b.registration), garageOf(b), b.time_slot ?? '—', b.status ?? '—']),
           'No upcoming external bookings in the next 5 days')}
         <p style="color:#8a9e94;font-size:11px;margin-top:20px;">
           Sent automatically at 6AM by Yardao. Recipients are managed in Settings → Daily report.
