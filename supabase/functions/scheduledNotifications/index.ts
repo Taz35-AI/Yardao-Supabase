@@ -382,20 +382,21 @@ async function runDailyReport(admin: Admin, force = false): Promise<Record<strin
       : []
     if (emails.length === 0) continue
 
-    // ── 1+5. External garage bookings: today + next 5 days ──────────────
-    const { data: extBookings } = await admin
+    // ── Garage bookings: external today, INTERNAL today, external next 5 days ──
+    const { data: allBookings } = await admin
       .from('service_bookings')
-      .select('registration, date, time_slot, status, external_provider')
+      .select('registration, date, time_slot, status, is_external_provider, external_provider')
       .eq('organization_id', orgId)
-      .eq('is_external_provider', true)
       .gte('date', today)
       .lte('date', in5)
       .neq('status', 'cancelled')
       .order('date', { ascending: true })
     const garageOf = (b: any) =>
       (b.external_provider && (b.external_provider.garageName || b.external_provider.address)) || 'External garage'
-    const todaysExt = (extBookings ?? []).filter((b: any) => String(b.date).slice(0, 10) === today)
-    const upcomingExt = (extBookings ?? []).filter((b: any) => String(b.date).slice(0, 10) > today)
+    const isExt = (b: any) => b.is_external_provider === true
+    const todaysExt = (allBookings ?? []).filter((b: any) => isExt(b) && String(b.date).slice(0, 10) === today)
+    const todaysInt = (allBookings ?? []).filter((b: any) => !isExt(b) && String(b.date).slice(0, 10) === today)
+    const upcomingExt = (allBookings ?? []).filter((b: any) => isExt(b) && String(b.date).slice(0, 10) > today)
 
     // ── 2/3/4. MOT + tax: expired and expiring within 14 days ───────────
     const { data: vehicles } = await admin
@@ -437,6 +438,12 @@ async function runDailyReport(admin: Admin, force = false): Promise<Record<strin
         ${htmlTable('🔧 External garage bookings today', ['Reg', 'Contract', 'Garage', 'Time', 'Status'],
           todaysExt.map((b: any) => [b.registration ?? '—', contractOf(b.registration), garageOf(b), b.time_slot ?? '—', b.status ?? '—']),
           'No external garage bookings today 🎉')}
+        ${htmlTable('🔧 Internal garage bookings today', ['Reg', 'Contract', 'Time', 'Status'],
+          todaysInt.map((b: any) => [b.registration ?? '—', contractOf(b.registration), b.time_slot ?? '—', b.status ?? '—']),
+          'No internal garage bookings today 🎉')}
+        ${htmlTable('🗓️ Upcoming external garage bookings (next 5 days)', ['Date', 'Reg', 'Contract', 'Garage', 'Time', 'Status'],
+          upcomingExt.map((b: any) => [euDate(b.date), b.registration ?? '—', contractOf(b.registration), garageOf(b), b.time_slot ?? '—', b.status ?? '—']),
+          'No upcoming external bookings in the next 5 days')}
         ${htmlTable('🚨 MOT expired', ['Reg', 'Vehicle', 'Contract', 'MOT expired', 'Days overdue'],
           motExpired.map((v: any) => [v.registration, mm(v), v.contract || '—', euDate(v.mot_expiry), String(-daysTo(v.mot_expiry))]),
           'No expired MOTs 🎉')}
@@ -446,9 +453,6 @@ async function runDailyReport(admin: Admin, force = false): Promise<Record<strin
         ${htmlTable('📅 MOT / tax expiring in the next 14 days', ['Reg', 'Vehicle', 'Contract', 'Type', 'Expires', 'Days left'],
           expiringSoon.map(e => [e.v.registration, mm(e.v), e.v.contract || '—', e.type, euDate(e.expiry), String(e.days)]),
           'Nothing expiring in the next 14 days 🎉')}
-        ${htmlTable('🗓️ Upcoming external garage bookings (next 5 days)', ['Date', 'Reg', 'Contract', 'Garage', 'Time', 'Status'],
-          upcomingExt.map((b: any) => [euDate(b.date), b.registration ?? '—', contractOf(b.registration), garageOf(b), b.time_slot ?? '—', b.status ?? '—']),
-          'No upcoming external bookings in the next 5 days')}
         <p style="color:#8a9e94;font-size:11px;margin-top:20px;">
           Sent automatically at 6AM by Yardao. Recipients are managed in Settings → Daily report.
         </p>
@@ -469,8 +473,8 @@ async function runDailyReport(admin: Admin, force = false): Promise<Record<strin
     else console.error('daily_report Resend error:', resp.status, (await resp.text()).slice(0, 300))
     results.push({
       org: orgName, recipients: emails.length, sent: ok,
-      todaysExt: todaysExt.length, motExpired: motExpired.length, taxExpired: taxExpired.length,
-      expiringSoon: expiringSoon.length, upcomingExt: upcomingExt.length,
+      todaysExt: todaysExt.length, todaysInt: todaysInt.length, upcomingExt: upcomingExt.length,
+      motExpired: motExpired.length, taxExpired: taxExpired.length, expiringSoon: expiringSoon.length,
     })
   }
 
