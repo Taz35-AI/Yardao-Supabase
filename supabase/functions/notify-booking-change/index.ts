@@ -106,6 +106,74 @@ function whenText(b: any): string {
   return `${date}${time}`
 }
 
+// ── External-booking email ────────────────────────────────────────────────────
+// When a booking is placed at an EXTERNAL garage, email the org's configured
+// recipients (organization_settings.daily_report_emails — the same list as the
+// 6AM daily report) immediately:
+//   Subject: [REG] booked at [GARAGE] on [DD/MM/YYYY] at [TIME]
+// Best-effort: a failure here never blocks the in-app notification path.
+async function sendExternalBookingEmail(admin: Admin, organizationId: string, b: any): Promise<number> {
+  try {
+    const resendKey = Deno.env.get('RESEND_API_KEY')
+    if (!resendKey) return 0
+
+    const { data: settings } = await admin
+      .from('organization_settings')
+      .select('daily_report_emails')
+      .eq('organization_id', organizationId)
+      .maybeSingle()
+    const emails: string[] = Array.isArray((settings as any)?.daily_report_emails)
+      ? ((settings as any).daily_report_emails as string[]).filter((e) => typeof e === 'string' && e.includes('@'))
+      : []
+    if (emails.length === 0) return 0
+
+    const reg = String(b?.registration || 'Vehicle').toUpperCase()
+    const garage =
+      (b?.external_provider && (b.external_provider.garageName || b.external_provider.address)) || 'external garage'
+    const date = euDate(b?.date)
+    const time = b?.time_slot ? String(b.time_slot) : ''
+    const who = String(b?.created_by_name || b?.last_modified_by_name || 'A Yardao user')
+    const whenSubject = `${date ? ` on ${date}` : ''}${time ? ` at ${time}` : ''}`
+
+    const html = `
+      <div style="font-family:Segoe UI,Arial,sans-serif;max-width:640px;margin:0 auto;padding:16px;">
+        <div style="background:#012619;border-radius:10px;padding:14px 18px;margin-bottom:18px;">
+          <span style="color:#ffffff;font-size:16px;font-weight:700;">Yardao</span>
+          <span style="color:#b3f243;font-size:13px;margin-left:10px;">External garage booking</span>
+        </div>
+        <p style="font-size:14px;color:#1a2c24;">Hi,</p>
+        <p style="font-size:14px;color:#1a2c24;line-height:1.6;">
+          User <strong>${who}</strong> has booked <strong>${reg}</strong> at
+          <strong>${garage}</strong>${date ? ` on <strong>${date}</strong>` : ''}${time ? ` at <strong>${time}</strong>` : ''}.
+        </p>
+        <p style="font-size:14px;color:#1a2c24;line-height:1.6;">
+          The booking is now visible in the garage scheduler in Yardao. You will receive a
+          notification at 6am on the day of the booking as a reminder.
+        </p>
+        <p style="font-size:14px;color:#1a2c24;margin-top:20px;">Kind regards,<br/>Yardao</p>
+      </div>`
+
+    const resp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'Yardao <noreply@yardao.com>',
+        to: emails,
+        subject: `${reg} booked at ${garage}${whenSubject}`,
+        html,
+      }),
+    })
+    if (!resp.ok) {
+      console.error('external booking email failed:', resp.status, (await resp.text()).slice(0, 300))
+      return 0
+    }
+    return emails.length
+  } catch (e) {
+    console.error('external booking email threw (non-fatal):', e)
+    return 0
+  }
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const pre = handlePreflight(req)
   if (pre) return pre
@@ -174,15 +242,33 @@ Deno.serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    if (!payload) {
-      console.log('notify-booking-change: skipped — no meaningful change for', event)
-      return json({ ok: true, skipped: 'no meaningful change' })
+    const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+
+    // ── External-booking email (in addition to the in-app notification) ──
+    // Sent when a booking is CREATED at an external garage, or an existing
+    // booking is SWITCHED to an external garage. Skipped on cancellation.
+    let emailed = 0
+    const becameExternal =
+      (event === 'INSERT' && rec?.is_external_provider === true) ||
+      (event === 'UPDATE' && rec?.is_external_provider === true && old?.is_external_provider !== true)
+    if (becameExternal && rec?.status !== 'cancelled') {
+      emailed = await sendExternalBookingEmail(admin, organizationId, rec)
     }
 
-    const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+    // Test hook: {test_email_only:true} exercises ONLY the email path without
+    // fanning in-app notifications out to the whole org.
+    if (body?.test_email_only === true) {
+      return json({ ok: true, test: true, emailed })
+    }
+
+    if (!payload) {
+      console.log('notify-booking-change: skipped — no meaningful change for', event)
+      return json({ ok: true, skipped: 'no meaningful change', emailed })
+    }
+
     const notified = await notifyOrgUsers(admin, organizationId, payload)
-    console.log(`notify-booking-change: ${event} for ${reg} → notified ${notified} user(s)`)
-    return json({ ok: true, event, notified })
+    console.log(`notify-booking-change: ${event} for ${reg} → notified ${notified} user(s), emailed ${emailed}`)
+    return json({ ok: true, event, notified, emailed })
   } catch (e) {
     console.error('notify-booking-change failed:', e)
     return json({ error: e instanceof Error ? e.message : 'notify-booking-change failed' }, 400)
