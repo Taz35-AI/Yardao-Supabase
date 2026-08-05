@@ -434,7 +434,7 @@ async function runDailyReport(admin: Admin, force = false): Promise<Record<strin
     // check-in strips reg whitespace). Hire rows tell us if it's out on hire.
     const { data: yardRows } = await admin
       .from('checked_in_vehicles')
-      .select('vehicle_id, registration, hire_status')
+      .select('vehicle_id, registration, make, model, hire_status, transfer_status, external_garage_name, checked_out_to_garage_at')
       .eq('organization_id', orgId)
     const inYardKeys = new Set<string>()
     const onHireKeys = new Set<string>()
@@ -445,6 +445,20 @@ async function runDailyReport(admin: Admin, force = false): Promise<Record<strin
       if (target) for (const k of keys) target.add(k)
     }
     const hasKey = (set: Set<string>, v: any) => set.has('id:' + v.id) || set.has('reg:' + normRegKey(v.registration))
+
+    // ── Vehicles currently checked out at external garages ──────────────
+    // Same rule as the app's downtime view: at_external_garage transfer status
+    // OR a checked-out-to-garage timestamp still set on the yard row.
+    const atExternalGarage = (yardRows ?? [])
+      .filter((y: any) => y.transfer_status === 'at_external_garage' || y.checked_out_to_garage_at)
+      .map((y: any) => {
+        const sinceIso = y.checked_out_to_garage_at ? String(y.checked_out_to_garage_at).slice(0, 10) : null
+        const days = sinceIso
+          ? Math.max(0, Math.round((new Date(today + 'T00:00:00Z').getTime() - new Date(sinceIso + 'T00:00:00Z').getTime()) / 86_400_000))
+          : null
+        return { ...y, sinceIso, days }
+      })
+      .sort((a: any, b: any) => (b.days ?? -1) - (a.days ?? -1))
     const uninsuredNotInYard = active
       .filter((v: any) => v.insurance_status !== 'Insured' && !hasKey(inYardKeys, v))
       .map((v: any) => ({ ...v, where: hasKey(onHireKeys, v) ? 'Out on hire' : 'Not checked in' }))
@@ -478,6 +492,16 @@ async function runDailyReport(admin: Admin, force = false): Promise<Record<strin
         ${htmlTable('🗓️ Upcoming external garage bookings (next 5 days)', ['Date', 'Reg', 'Contract', 'Garage', 'Time', 'Status'],
           upcomingExt.map((b: any) => [euDate(b.date), b.registration ?? '—', contractOf(b.registration), garageOf(b), timeOf(b), b.status ?? '—']),
           'No upcoming external bookings in the next 5 days')}
+        ${htmlTable('🏭 Vehicles checked out at external garages', ['Reg', 'Vehicle', 'Contract', 'Garage', 'Since', 'Days there'],
+          atExternalGarage.map((y: any) => [
+            y.registration ?? '—',
+            [y.make, y.model].filter(Boolean).join(' ') || '—',
+            contractOf(y.registration),
+            y.external_garage_name || 'External garage',
+            euDate(y.sinceIso),
+            y.days === null ? '—' : String(y.days),
+          ]),
+          'No vehicles at external garages 🎉')}
         ${htmlTable('🚨 MOT expired', ['Reg', 'Vehicle', 'Contract', 'MOT expired', 'Days overdue'],
           motExpired.map((v: any) => [v.registration, mm(v), v.contract || '—', euDate(v.mot_expiry), String(-daysTo(v.mot_expiry))]),
           'No expired MOTs 🎉')}
@@ -511,6 +535,7 @@ async function runDailyReport(admin: Admin, force = false): Promise<Record<strin
     results.push({
       org: orgName, recipients: emails.length, sent: ok,
       todaysExt: todaysExt.length, todaysInt: todaysInt.length, upcomingExt: upcomingExt.length,
+      atExternalGarage: atExternalGarage.length,
       motExpired: motExpired.length, taxExpired: taxExpired.length,
       uninsuredNotInYard: uninsuredNotInYard.length, expiringSoon: expiringSoon.length,
     })
