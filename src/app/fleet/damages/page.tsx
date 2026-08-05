@@ -196,10 +196,9 @@ export default function DamagesPage() {
           ) : (
             <div className="space-y-4">
               {/* Stats */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 {[
                   { label: 'Damaged vehicles', value: totals.vehicles, tone: '#025940' },
-                  { label: 'Damage pins', value: totals.pins, tone: '#d97706' },
                   { label: 'With severe damage', value: totals.severe, tone: '#dc2626' },
                 ].map(s => (
                   <div key={s.label} className="rounded-2xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
@@ -230,7 +229,18 @@ export default function DamagesPage() {
                     <span className="text-xs text-[#72A68E]">{g.list.length} vehicle{g.list.length === 1 ? '' : 's'}</span>
                   </div>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm border-collapse">
+                    {/* table-fixed + shared colgroup → identical column widths in
+                        every branch table, so the page reads as one structure */}
+                    <table className="w-full min-w-[900px] table-fixed text-sm border-collapse">
+                      <colgroup>
+                        <col className="w-[16%]" />
+                        <col className="w-[11%]" />
+                        <col className="w-[17%]" />
+                        <col className="w-[10%]" />
+                        <col className="w-[10%]" />
+                        <col className="w-[14%]" />
+                        <col className="w-[22%]" />
+                      </colgroup>
                       <thead>
                         <tr className="bg-[#f0f4f2] dark:bg-gray-900/60">
                           {['Reg', 'Make', 'Model', 'MOT', 'Road Tax', 'Contract', 'Damages'].map(h => (
@@ -242,17 +252,17 @@ export default function DamagesPage() {
                         {g.list.map(v => (
                           <tr key={v.key} onClick={() => setViewing(v)}
                             className="cursor-pointer hover:bg-[#f7faf8] dark:hover:bg-gray-700/40 transition-colors">
-                            <td className="px-3 py-2 border border-[#e2e8e5] dark:border-gray-700 whitespace-nowrap">
-                              <span className="inline-flex items-center gap-1.5">
+                            <td className="px-3 py-2 border border-[#e2e8e5] dark:border-gray-700 whitespace-nowrap overflow-hidden">
+                              <span className="inline-flex items-center gap-1.5 max-w-full">
                                 <MapPin className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                                <span className="font-mono font-bold text-[#012619] dark:text-white">{v.registration}</span>
+                                <span className="font-mono font-bold text-[#012619] dark:text-white truncate">{v.registration}</span>
                                 {v.hireStatus === 'Out on Hire' && (
-                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">on hire</span>
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300 flex-shrink-0">on hire</span>
                                 )}
                               </span>
                             </td>
-                            <td className="px-3 py-2 border border-[#e2e8e5] dark:border-gray-700 text-[#4a5e54] dark:text-gray-300 whitespace-nowrap">{v.make || '—'}</td>
-                            <td className="px-3 py-2 border border-[#e2e8e5] dark:border-gray-700 text-[#4a5e54] dark:text-gray-300">{v.model || '—'}</td>
+                            <td className="px-3 py-2 border border-[#e2e8e5] dark:border-gray-700 text-[#4a5e54] dark:text-gray-300 truncate">{v.make || '—'}</td>
+                            <td className="px-3 py-2 border border-[#e2e8e5] dark:border-gray-700 text-[#4a5e54] dark:text-gray-300 truncate">{v.model || '—'}</td>
                             <td className={`px-3 py-2 border border-[#e2e8e5] dark:border-gray-700 tabular-nums whitespace-nowrap ${isPast(v.motExpiry) ? 'text-red-600 font-bold' : 'text-[#4a5e54] dark:text-gray-300'}`}>{euDate(v.motExpiry)}</td>
                             <td className={`px-3 py-2 border border-[#e2e8e5] dark:border-gray-700 tabular-nums whitespace-nowrap ${isPast(v.taxExpiry) ? 'text-red-600 font-bold' : 'text-[#4a5e54] dark:text-gray-300'}`}>{euDate(v.taxExpiry)}</td>
                             <td className="px-3 py-2 border border-[#e2e8e5] dark:border-gray-700 whitespace-nowrap">
