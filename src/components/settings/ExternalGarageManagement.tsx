@@ -9,7 +9,7 @@ import { useExternalGarages } from '@/hooks/useExternalGarages'
 import { userProfileService } from '@/lib/firestore'
 import { useT } from '@/lib/i18n'
 import {
-  Plus, Edit2, Trash2, MapPin, Wrench,
+  Plus, Edit2, Trash2, MapPin, Wrench, Phone,
   Eye, EyeOff, Check, X, AlertCircle, RefreshCw, Loader2,
 } from 'lucide-react'
 import type { ExternalGarage, ExternalGarageFormData } from '@/types'
@@ -131,7 +131,7 @@ export function ExternalGarageManagement({ className = '' }: ExternalGarageManag
   }
 
   const handleStartEdit = (garage: ExternalGarage) => {
-    setEditingGarage({ id: garage.id, data: { name: garage.name, address: garage.address } })
+    setEditingGarage({ id: garage.id, data: { name: garage.name, address: garage.address, phone: garage.phone || '' } })
     clearError()
   }
 
@@ -300,6 +300,16 @@ export function ExternalGarageManagement({ className = '' }: ExternalGarageManag
             />
             {formErrors.address && <p className="text-[11px] text-red-600 mt-1">{formErrors.address}</p>}
           </div>
+          <div>
+            <label className={labelCls}>Phone (optional)</label>
+            <input
+              value={newGarageForm.phone || ''}
+              onChange={(e) => handleInputChange('phone', e.target.value)}
+              placeholder="e.g. 01628 000000"
+              className={inputCls}
+              disabled={saving}
+            />
+          </div>
           <div className="flex items-center gap-1.5 pt-1">
             <button
               onClick={handleAddGarage}
@@ -375,6 +385,16 @@ export function ExternalGarageManagement({ className = '' }: ExternalGarageManag
                       />
                       {formErrors.address && <p className="text-[11px] text-red-600 mt-1">{formErrors.address}</p>}
                     </div>
+                    <div>
+                      <label className={labelCls}>Phone (optional)</label>
+                      <input
+                        value={editingGarage.data.phone || ''}
+                        onChange={(e) => handleInputChange('phone', e.target.value)}
+                        placeholder="e.g. 01628 000000"
+                        className={inputCls}
+                        disabled={saving}
+                      />
+                    </div>
                     <div className="flex items-center gap-1.5">
                       <button
                         onClick={handleSaveEdit}
@@ -412,6 +432,13 @@ export function ExternalGarageManagement({ className = '' }: ExternalGarageManag
                       <div className="text-[12px] text-[#5a6c64] dark:text-gray-400 truncate inline-flex items-center gap-1">
                         <MapPin className="w-3 h-3 flex-shrink-0" />
                         <span className="truncate">{garage.address}</span>
+                        {garage.phone && (
+                          <>
+                            <span className="text-[#c8d5ce] mx-1">·</span>
+                            <Phone className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">{garage.phone}</span>
+                          </>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-0.5 flex-shrink-0">

@@ -91,6 +91,7 @@ class ExternalGarageService {
         ...garageData,
         name: garageData.name.trim(),
         address: garageData.address.trim(),
+        phone: garageData.phone?.trim() || null,
         organization_id: organizationId,
         created_by: createdBy,
         is_active: true,
@@ -147,6 +148,10 @@ class ExternalGarageService {
       }
       if (garageData.address !== undefined) {
         updateData.address = garageData.address.trim()
+      }
+      // Optional phone — an empty string clears it back to null.
+      if (garageData.phone !== undefined) {
+        updateData.phone = garageData.phone.trim() || null
       }
 
       const { error } = await supabase.from(COLLECTION_NAME).update(updateData).eq('id', id)

@@ -41,6 +41,7 @@ export interface ExternalGarage {
   id: string
   name: string
   address: string
+  phone?: string | null
   organizationId: string
   createdBy: string
   createdAt: Date | string
@@ -52,6 +53,7 @@ export interface ExternalGarage {
 export interface ExternalGarageFormData {
   name: string
   address: string
+  phone?: string
 }
 
 // API response for external garage operations

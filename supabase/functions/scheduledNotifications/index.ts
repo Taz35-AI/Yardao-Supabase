@@ -434,8 +434,26 @@ async function runDailyReport(admin: Admin, force = false): Promise<Record<strin
     // check-in strips reg whitespace). Hire rows tell us if it's out on hire.
     const { data: yardRows } = await admin
       .from('checked_in_vehicles')
-      .select('vehicle_id, registration, make, model, hire_status, transfer_status, external_garage_name, checked_out_to_garage_at')
+      .select('vehicle_id, registration, make, model, hire_status, transfer_status, external_garage_id, external_garage_name, checked_out_to_garage_at')
       .eq('organization_id', orgId)
+    // Garage phone numbers (optional, Settings → External Garages) — matched by
+    // id first, then by name for older rows without the id link.
+    const { data: garages } = await admin
+      .from('external_garages')
+      .select('id, name, phone')
+      .eq('organization_id', orgId)
+    const garagePhoneById = new Map<string, string>()
+    const garagePhoneByName = new Map<string, string>()
+    for (const g of garages ?? []) {
+      const gg = g as any
+      if (gg.phone) {
+        garagePhoneById.set(gg.id, gg.phone)
+        garagePhoneByName.set(String(gg.name || '').trim().toLowerCase(), gg.phone)
+      }
+    }
+    const garagePhoneOf = (y: any) =>
+      (y.external_garage_id && garagePhoneById.get(y.external_garage_id)) ||
+      garagePhoneByName.get(String(y.external_garage_name || '').trim().toLowerCase()) || '—'
     const inYardKeys = new Set<string>()
     const onHireKeys = new Set<string>()
     for (const y of yardRows ?? []) {
@@ -492,7 +510,7 @@ async function runDailyReport(admin: Admin, force = false): Promise<Record<strin
         ${htmlTable('🗓️ Upcoming external garage bookings (next 5 days)', ['Date', 'Reg', 'Contract', 'Garage', 'Time', 'Status'],
           upcomingExt.map((b: any) => [euDate(b.date), b.registration ?? '—', contractOf(b.registration), garageOf(b), timeOf(b), b.status ?? '—']),
           'No upcoming external bookings in the next 5 days')}
-        ${htmlTable('🏭 Vehicles checked out at external garages', ['Reg', 'Vehicle', 'Contract', 'Garage', 'Since', 'Days there'],
+        ${htmlTable('🏭 Vehicles checked out at external garages', ['Reg', 'Vehicle', 'Contract', 'Garage', 'Since', 'Days there', 'Phone'],
           atExternalGarage.map((y: any) => [
             y.registration ?? '—',
             [y.make, y.model].filter(Boolean).join(' ') || '—',
@@ -500,6 +518,7 @@ async function runDailyReport(admin: Admin, force = false): Promise<Record<strin
             y.external_garage_name || 'External garage',
             euDate(y.sinceIso),
             y.days === null ? '—' : String(y.days),
+            garagePhoneOf(y),
           ]),
           'No vehicles at external garages 🎉')}
         ${htmlTable('🚨 MOT expired', ['Reg', 'Vehicle', 'Contract', 'MOT expired', 'Days overdue'],
