@@ -11,7 +11,7 @@ export default function FleetKeysPage() {
     <ProtectedRoute>
       <div className="min-h-screen bg-[#f6f8f7] dark:bg-gray-900">
         <Navigation />
-        <div className="w-full max-w-6xl mx-auto px-2 sm:px-4 lg:px-8 py-2 pb-24">
+        <div className="w-full px-2 sm:px-4 lg:px-6 py-2 pb-24">
           <KeyBoxLog />
         </div>
       </div>

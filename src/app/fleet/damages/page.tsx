@@ -17,6 +17,12 @@ import { DamageMapView } from '@/components/common/DamageMapper/DamageMapView'
 import type { DamagePin } from '@/components/common/DamageMapper/DamageMapper'
 
 const normReg = (r?: string | null) => (r || '').toUpperCase().replace(/\s+/g, '')
+const euDate = (iso?: string | null) => {
+  if (!iso) return '—'
+  const s = String(iso).slice(0, 10).split('-')
+  return s.length === 3 ? `${s[2]}/${s[1]}/${s[0]}` : '—'
+}
+const isPast = (iso?: string | null) => !!iso && String(iso).slice(0, 10) < new Date().toISOString().slice(0, 10)
 
 interface DamagedVehicle {
   key: string
@@ -26,6 +32,8 @@ interface DamagedVehicle {
   contract?: string | null
   contractColor?: string | null
   diagramType?: string | null
+  motExpiry?: string | null
+  taxExpiry?: string | null
   pins: DamagePin[]
   branchKey: string      // branch id/slug, or '' when not in any branch
   hireStatus?: string | null
@@ -58,10 +66,10 @@ export default function DamagesPage() {
 
     const [{ data: fleet }, { data: yard }, { data: branches }] = await Promise.all([
       supabase.from('vehicles')
-        .select('id, registration, make, model, contract, contract_color, vehicle_diagram_type, damage_pins')
+        .select('id, registration, make, model, contract, contract_color, vehicle_diagram_type, damage_pins, mot_expiry, tax_expiry')
         .eq('organization_id', org).eq('is_defleeted', false),
       supabase.from('checked_in_vehicles')
-        .select('vehicle_id, registration, make, model, contract, contract_color, vehicle_diagram_type, damage_pins, branch_id, hire_status')
+        .select('vehicle_id, registration, make, model, contract, contract_color, vehicle_diagram_type, damage_pins, branch_id, hire_status, mot_expiry, tax_expiry')
         .eq('organization_id', org),
       supabase.from('branches').select('id, name, slug').eq('organization_id', org),
     ])
@@ -93,6 +101,7 @@ export default function DamagesPage() {
         make: y?.make ?? vv.make, model: y?.model ?? vv.model,
         contract: y?.contract ?? vv.contract, contractColor: y?.contract_color ?? vv.contract_color,
         diagramType: y?.vehicle_diagram_type ?? vv.vehicle_diagram_type,
+        motExpiry: vv.mot_expiry ?? y?.mot_expiry, taxExpiry: vv.tax_expiry ?? y?.tax_expiry,
         pins,
         branchKey: y && y.hire_status !== 'Out on Hire' ? String(y.branch_id || '') : '',
         hireStatus: y?.hire_status ?? null,
@@ -108,7 +117,9 @@ export default function DamagesPage() {
         key: 'yard:' + normReg(yy.registration),
         registration: yy.registration, make: yy.make, model: yy.model,
         contract: yy.contract, contractColor: yy.contract_color,
-        diagramType: yy.vehicle_diagram_type, pins,
+        diagramType: yy.vehicle_diagram_type,
+        motExpiry: yy.mot_expiry, taxExpiry: yy.tax_expiry,
+        pins,
         branchKey: yy.hire_status !== 'Out on Hire' ? String(yy.branch_id || '') : '',
         hireStatus: yy.hire_status ?? null,
       })
@@ -165,7 +176,7 @@ export default function DamagesPage() {
     <ProtectedRoute>
       <div className="min-h-screen bg-[#edf1ee] dark:bg-gray-900">
         <Navigation />
-        <div className="w-full max-w-[1200px] mx-auto px-3 sm:px-4 lg:px-8 py-5">
+        <div className="w-full px-2 sm:px-4 lg:px-6 py-5">
           {/* Header */}
           <div className="flex items-center gap-3 mb-4">
             <button onClick={() => router.push('/fleet')} className="p-2 rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 text-[#72A68E] hover:text-[#025940]" title="Back to Fleet">
@@ -218,25 +229,45 @@ export default function DamagesPage() {
                     <span className="text-sm font-bold text-[#012619] dark:text-white">{g.name}</span>
                     <span className="text-xs text-[#72A68E]">{g.list.length} vehicle{g.list.length === 1 ? '' : 's'}</span>
                   </div>
-                  <div className="divide-y divide-[#eef2f0] dark:divide-gray-700/60">
-                    {g.list.map(v => (
-                      <button key={v.key} type="button" onClick={() => setViewing(v)}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-[#f7faf8] dark:hover:bg-gray-700/40 transition-colors">
-                        <MapPin className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                        <span className="font-mono font-bold text-sm text-[#012619] dark:text-white w-24 sm:w-28 flex-shrink-0">{v.registration}</span>
-                        <span className="text-xs text-[#4a5e54] dark:text-gray-300 flex-1 min-w-0 truncate">{[v.make, v.model].filter(Boolean).join(' ')}</span>
-                        {v.contract && (
-                          <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 max-w-[130px]"
-                            style={{ backgroundColor: v.contractColor ? `${v.contractColor}15` : '#f0f4f2', borderColor: v.contractColor ? `${v.contractColor}40` : '#d8d6cd', color: v.contractColor || '#4a5e54' }}>
-                            <span className="truncate">{v.contract}</span>
-                          </span>
-                        )}
-                        {v.hireStatus === 'Out on Hire' && (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300 flex-shrink-0">on hire</span>
-                        )}
-                        <SevChips pins={v.pins} />
-                      </button>
-                    ))}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="bg-[#f0f4f2] dark:bg-gray-900/60">
+                          {['Reg', 'Make', 'Model', 'MOT', 'Road Tax', 'Contract', 'Damages'].map(h => (
+                            <th key={h} className="text-left px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-[#4a5e54] dark:text-gray-300 border border-[#e2e8e5] dark:border-gray-700 whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {g.list.map(v => (
+                          <tr key={v.key} onClick={() => setViewing(v)}
+                            className="cursor-pointer hover:bg-[#f7faf8] dark:hover:bg-gray-700/40 transition-colors">
+                            <td className="px-3 py-2 border border-[#e2e8e5] dark:border-gray-700 whitespace-nowrap">
+                              <span className="inline-flex items-center gap-1.5">
+                                <MapPin className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                                <span className="font-mono font-bold text-[#012619] dark:text-white">{v.registration}</span>
+                                {v.hireStatus === 'Out on Hire' && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">on hire</span>
+                                )}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 border border-[#e2e8e5] dark:border-gray-700 text-[#4a5e54] dark:text-gray-300 whitespace-nowrap">{v.make || '—'}</td>
+                            <td className="px-3 py-2 border border-[#e2e8e5] dark:border-gray-700 text-[#4a5e54] dark:text-gray-300">{v.model || '—'}</td>
+                            <td className={`px-3 py-2 border border-[#e2e8e5] dark:border-gray-700 tabular-nums whitespace-nowrap ${isPast(v.motExpiry) ? 'text-red-600 font-bold' : 'text-[#4a5e54] dark:text-gray-300'}`}>{euDate(v.motExpiry)}</td>
+                            <td className={`px-3 py-2 border border-[#e2e8e5] dark:border-gray-700 tabular-nums whitespace-nowrap ${isPast(v.taxExpiry) ? 'text-red-600 font-bold' : 'text-[#4a5e54] dark:text-gray-300'}`}>{euDate(v.taxExpiry)}</td>
+                            <td className="px-3 py-2 border border-[#e2e8e5] dark:border-gray-700 whitespace-nowrap">
+                              {v.contract ? (
+                                <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border max-w-[140px]"
+                                  style={{ backgroundColor: v.contractColor ? `${v.contractColor}15` : '#f0f4f2', borderColor: v.contractColor ? `${v.contractColor}40` : '#d8d6cd', color: v.contractColor || '#4a5e54' }}>
+                                  <span className="truncate">{v.contract}</span>
+                                </span>
+                              ) : <span className="text-gray-300">—</span>}
+                            </td>
+                            <td className="px-3 py-2 border border-[#e2e8e5] dark:border-gray-700 whitespace-nowrap"><SevChips pins={v.pins} /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               ))}

@@ -165,7 +165,7 @@ export default function InsuranceStatusPage() {
     <ProtectedRoute>
       <div className="min-h-screen bg-[#edf1ee] dark:bg-gray-900">
         <Navigation />
-        <div className="w-full max-w-[1400px] mx-auto px-3 sm:px-4 lg:px-8 py-5">
+        <div className="w-full px-2 sm:px-4 lg:px-6 py-5">
           {/* Header */}
           <div className="flex items-center gap-3 mb-4">
             <button onClick={() => router.push('/fleet')} className="p-2 rounded-xl border border-[#e2e8e5] dark:border-gray-700 bg-white dark:bg-gray-800 text-[#72A68E] hover:text-[#025940]" title="Back to Fleet">
