@@ -53,7 +53,7 @@ import { computeDefleetDue, computeDefleetItems } from '@/lib/utils/defleetDue'
 
 // Icons
 import Link from 'next/link'
-import { Plus, X, Download, Share2, Upload, FileSpreadsheet, Loader2, RefreshCw, Car, Search, KeyRound, Shield } from 'lucide-react'
+import { Plus, X, Download, Share2, Upload, FileSpreadsheet, Loader2, RefreshCw, Car, Search, KeyRound, Shield, AlertTriangle } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 // ─── FleetHeaderExcelItems ────────────────────────────────────────────────────
@@ -1079,6 +1079,10 @@ export default function FleetInventoryPage() {
                   <Link href="/fleet/insurance"
                     className="inline-flex items-center gap-1.5 text-[12px] font-extrabold rounded-full px-3.5 py-2 bg-white/12 hover:bg-white/20 text-white transition-colors">
                     <Shield className="w-4 h-4 text-[#b3f243]" /> Insurance Status
+                  </Link>
+                  <Link href="/fleet/damages"
+                    className="inline-flex items-center gap-1.5 text-[12px] font-extrabold rounded-full px-3.5 py-2 bg-white/12 hover:bg-white/20 text-white transition-colors">
+                    <AlertTriangle className="w-4 h-4 text-[#b3f243]" /> Damages
                   </Link>
                   {filters.search.trim() && (
                     <span className="inline-flex items-center gap-1.5 text-[12px] font-extrabold rounded-full px-3 py-2 bg-white/10 text-[#cce0d8]">
