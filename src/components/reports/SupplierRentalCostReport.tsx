@@ -58,7 +58,11 @@ export function SupplierRentalCostReport({ organizationId }: { organizationId: s
         for (const v of vehicles ?? []) {
           // Active fleet only — a defleeted van no longer costs anything.
           if (v.is_defleeted || v.current_status === 'defleeted') continue
-          const name = (v.supplier as string | null)?.trim() || NO_SUPPLIER
+          // Group case-insensitively and ignore stray spaces so "Fleet assist"
+          // and "Fleet Assist " land in one row. Display name = first seen.
+          const rawName = (v.supplier as string | null)?.replace(/\s+/g, ' ').trim() || NO_SUPPLIER
+          const key = rawName.toLowerCase()
+          const name = map.get(key)?.name ?? rawName
           const rate = rates.get(v.id as string)
           const row: VehicleRow = {
             id: v.id as string,
@@ -68,14 +72,14 @@ export function SupplierRentalCostReport({ organizationId }: { organizationId: s
             monthly: rate ? toMonthly(rate) : null,
             quoted: rate?.period ?? null,
           }
-          const g = map.get(name) ?? { name, vehicles: [], priced: 0, weekly: 0, monthly: 0 }
+          const g = map.get(key) ?? { name, vehicles: [], priced: 0, weekly: 0, monthly: 0 }
           g.vehicles.push(row)
           if (rate) {
             g.priced += 1
             g.weekly += row.weekly ?? 0
             g.monthly += row.monthly ?? 0
           }
-          map.set(name, g)
+          map.set(key, g)
         }
         const list = Array.from(map.values())
           .map((g) => ({ ...g, vehicles: g.vehicles.sort((a, b) => a.reg.localeCompare(b.reg)) }))
