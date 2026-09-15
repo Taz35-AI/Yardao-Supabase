@@ -45,6 +45,7 @@ import { useRegLookup } from '@/hooks/useRegLookup'
 import { logger } from '@/lib/logger'
 import { vehicleRentalRateService } from '@/lib/services/vehicleRentalRateService'
 import { toWeekly, toMonthly, formatGbp, type RentalRatePeriod } from '@/lib/utils/rentalRate'
+import { useSupplierCostAccess } from '@/hooks/useSupplierCostAccess'
 import { VehicleDiagramSelector } from '@/components/common/DamageMapper/VehicleDiagramSelector'
 import { DamageMapView } from '@/components/common/DamageMapper/DamageMapView'
 import { VehicleDiagramType, DamagePin } from '@/components/common/DamageMapper/DamageMapper'
@@ -225,9 +226,11 @@ export function FleetVehicleEditModal({
   const [activeTab, setActiveTab]               = useState<'details' | 'damage'>('details')
   // Rental term entered as weeks (defleet date derived) or an explicit date.
   const [termMode, setTermMode]                 = useState<'weeks' | 'date'>('weeks')
-  // 💷 Supplier rental rate — ADMIN ONLY. Lives in its own RLS-guarded table
-  // (vehicle_rental_rates), so it is loaded/saved separately from the vehicle.
-  const isAdmin = profile?.role === 'admin'
+  // 💷 Supplier rental rate — owner + admins picked in Settings > Supplier
+  // costs only. Lives in its own RLS-guarded table (vehicle_rental_rates), so
+  // it is loaded/saved separately from the vehicle.
+  const costAccess = useSupplierCostAccess()
+  const isAdmin = costAccess.allowed
   const [rateAmount, setRateAmount]             = useState('')
   const [ratePeriod, setRatePeriod]             = useState<RentalRatePeriod>('weekly')
   const [rateExisted, setRateExisted]           = useState(false)

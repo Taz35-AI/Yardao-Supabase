@@ -3248,6 +3248,8 @@ export const en = {
       orgSuppliersDesc: 'Manage part suppliers for stock management',
       orgVehicleSuppliers: 'Vehicle Suppliers',
       orgVehicleSuppliersDesc: 'Leasing companies / dealers you acquire vehicles from',
+      orgSupplierCosts: 'Supplier costs',
+      orgSupplierCostsDesc: 'Choose which admins can see supplier rental rates',
       orgCompanies: 'Invoice Companies',
       orgCompaniesDesc: 'Manage From/To companies for invoices',
       orgInsurance: 'Insurance Policies',

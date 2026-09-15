@@ -10,7 +10,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import { Truck, Wallet, Loader2, ChevronDown, AlertTriangle, Car } from 'lucide-react'
-import { useAuth } from '@/contexts/AuthContext'
+import { useSupplierCostAccess } from '@/hooks/useSupplierCostAccess'
 import { supabase } from '@/lib/supabaseClient'
 import { vehicleRentalRateService } from '@/lib/services/vehicleRentalRateService'
 import { toWeekly, toMonthly, formatGbp, type RentalRatePeriod } from '@/lib/utils/rentalRate'
@@ -36,8 +36,9 @@ interface SupplierGroup {
 const NO_SUPPLIER = 'No supplier set'
 
 export function SupplierRentalCostReport({ organizationId }: { organizationId: string }) {
-  const { profile, profileLoading } = useAuth()
-  const isAdmin = profile?.role === 'admin'
+  // Owner + admins picked in Settings > Supplier costs (RLS enforces the same).
+  const access = useSupplierCostAccess()
+  const isAdmin = access.allowed
   const [groups, setGroups] = useState<SupplierGroup[] | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
 
@@ -113,7 +114,7 @@ export function SupplierRentalCostReport({ organizationId }: { organizationId: s
     }
   }, [groups])
 
-  if (profileLoading || !isAdmin) return null
+  if (access.loading || !isAdmin) return null
 
   return (
     <div className="mt-6 bg-white dark:bg-gray-800 rounded-xl border border-[#e2e8e5] dark:border-gray-700 shadow-sm overflow-hidden">

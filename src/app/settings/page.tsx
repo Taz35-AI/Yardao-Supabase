@@ -33,7 +33,8 @@ import {
   Receipt,
   Gauge,
   Truck,
-  Mail
+  Mail,
+  Wallet
 } from 'lucide-react'
 import dynamic from 'next/dynamic'
 
@@ -78,6 +79,15 @@ const ContractManagement = dynamic(
 // Lazy load Supplier Management
 const SupplierManagement = dynamic(
   () => import('@/components/admin/SupplierManagement').then(mod => ({ default: mod.SupplierManagement })),
+  {
+    ssr: false,
+    loading: () => <LoadingLabel />
+  }
+)
+
+// Lazy load Supplier cost access (owner picks which admins see supplier rates)
+const SupplierCostAccessSettings = dynamic(
+  () => import('@/components/settings/SupplierCostAccessSettings').then(mod => ({ default: mod.SupplierCostAccessSettings })),
   {
     ssr: false,
     loading: () => <LoadingLabel />
@@ -167,7 +177,7 @@ const CheckInServiceSettings = dynamic(
 
 type SettingsTab = 'user' | 'organization' | 'data'
 // ✅ UPDATED: Added 'companies' and 'insurance-policies' to OrganizationSubTab
-type OrganizationSubTab = 'branches' | 'conditions' | 'contracts' | 'suppliers' | 'vehicle-suppliers' | 'companies' | 'insurance-policies' | 'external-garages' | 'daily-report' | 'check-in' | 'users' | 'general'
+type OrganizationSubTab = 'branches' | 'conditions' | 'contracts' | 'suppliers' | 'vehicle-suppliers' | 'supplier-costs' | 'companies' | 'insurance-policies' | 'external-garages' | 'daily-report' | 'check-in' | 'users' | 'general'
 
 export default function SettingsPage() {
   const t = useT()
@@ -191,6 +201,9 @@ export default function SettingsPage() {
     } else if (tab === 'vehicle-suppliers') {
       setActiveTab('organization')
       setActiveOrgTab('vehicle-suppliers')
+    } else if (tab === 'supplier-costs') {
+      setActiveTab('organization')
+      setActiveOrgTab('supplier-costs')
     } else if (tab === 'user') {
       setActiveTab('user')
     }
@@ -269,6 +282,13 @@ export default function SettingsPage() {
       description: t('settings.page.orgVehicleSuppliersDesc'),
       icon: Truck,
       component: VehicleSupplierManagement
+    },
+    {
+      id: 'supplier-costs' as const,
+      label: t('settings.page.orgSupplierCosts'),
+      description: t('settings.page.orgSupplierCostsDesc'),
+      icon: Wallet,
+      component: SupplierCostAccessSettings
     },
     {
       id: 'companies' as const,
