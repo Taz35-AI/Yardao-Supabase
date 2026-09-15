@@ -16,6 +16,7 @@ import { Navigation } from '@/components/Navigation'
 import VehicleHireLookup from '@/components/dashboard/VehicleHireLookup'
 import FleetUtilizationSnapshot from '@/components/dashboard/FleetUtilizationSnapshot'
 import { HireB2BReport } from '@/components/reports/HireB2BReport'
+import { SupplierRentalCostReport } from '@/components/reports/SupplierRentalCostReport'
 import ProtectedRoute from '@/components/ProtectedRoute' // ✅ ADDED
 import { BarChart3, TrendingUp, Activity, Search, Calendar, Car } from 'lucide-react'
 import { logger } from '@/lib/logger'
@@ -383,6 +384,10 @@ function AnalyticsDashboardContent() {
           {/* B2B Hire analytics — pie + per-customer van breakdown. Self-hides
               for users without hire access. */}
           {organizationId && <HireB2BReport organizationId={organizationId} />}
+
+          {/* Supplier rental costs — what WE pay per vehicle, weekly + monthly.
+              Admin-only: self-hides for every other role. */}
+          {organizationId && <SupplierRentalCostReport organizationId={organizationId} />}
 
           {/* Bottom Info Card - Full Width */}
           <div className="mt-6 bg-gradient-to-r from-[#012619] to-[#025940] rounded-xl p-4 sm:p-6 border border-[#b3f243]/20 shadow-lg">

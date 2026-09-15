@@ -39,9 +39,12 @@ import {
   Check,
   Truck,
   CalendarClock,
+  Wallet,
 } from 'lucide-react'
 import { useRegLookup } from '@/hooks/useRegLookup'
 import { logger } from '@/lib/logger'
+import { vehicleRentalRateService } from '@/lib/services/vehicleRentalRateService'
+import { toWeekly, toMonthly, formatGbp, type RentalRatePeriod } from '@/lib/utils/rentalRate'
 import { VehicleDiagramSelector } from '@/components/common/DamageMapper/VehicleDiagramSelector'
 import { DamageMapView } from '@/components/common/DamageMapper/DamageMapView'
 import { VehicleDiagramType, DamagePin } from '@/components/common/DamageMapper/DamageMapper'
@@ -212,7 +215,7 @@ export function FleetVehicleEditModal({
   onCancel,
   onDelete
 }: FleetVehicleEditModalProps) {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const t = useT()
   const vehicleSuppliers = useVehicleSuppliers()
   const router = useRouter()
@@ -222,6 +225,12 @@ export function FleetVehicleEditModal({
   const [activeTab, setActiveTab]               = useState<'details' | 'damage'>('details')
   // Rental term entered as weeks (defleet date derived) or an explicit date.
   const [termMode, setTermMode]                 = useState<'weeks' | 'date'>('weeks')
+  // 💷 Supplier rental rate — ADMIN ONLY. Lives in its own RLS-guarded table
+  // (vehicle_rental_rates), so it is loaded/saved separately from the vehicle.
+  const isAdmin = profile?.role === 'admin'
+  const [rateAmount, setRateAmount]             = useState('')
+  const [ratePeriod, setRatePeriod]             = useState<RentalRatePeriod>('weekly')
+  const [rateExisted, setRateExisted]           = useState(false)
 
   const [formData, setFormData] = useState({
     dateAcquired:       '',
@@ -314,6 +323,25 @@ export function FleetVehicleEditModal({
     }
   }, [vehicle])
 
+  // ── Load the admin-only supplier rate (separate table, RLS-guarded) ───────
+  useEffect(() => {
+    const orgIdForRate = profile?.organizationId
+    if (!vehicle?.id || !isAdmin || !orgIdForRate) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const rate = await vehicleRentalRateService.getRate(orgIdForRate, vehicle.id)
+        if (cancelled) return
+        setRateAmount(rate ? String(rate.amount) : '')
+        setRatePeriod(rate?.period ?? 'weekly')
+        setRateExisted(!!rate)
+      } catch (error) {
+        logger.error('Failed to load supplier rental rate:', error)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [vehicle?.id, isAdmin, profile?.organizationId])
+
   // ── Handlers (all unchanged) ──────────────────────────────────────────────
 
   const handleInputChange = (field: string, value: any) => {
@@ -367,6 +395,20 @@ export function FleetVehicleEditModal({
         vehicleDiagramType: formData.vehicleDiagramType || null,
         damagePins:         formData.damagePins || [],
         walkaroundPhotos:   formData.walkaroundPhotos || [],
+      }
+      // Supplier rate first (admin only): it is a separate table, so a failure
+      // here must not silently vanish behind the vehicle save — surface it.
+      const orgIdForRate = profile?.organizationId || orgId
+      if (isAdmin && orgIdForRate) {
+        const amount = rateAmount.trim() === '' ? null : Number(rateAmount)
+        if (amount !== null && (!Number.isFinite(amount) || amount < 0)) {
+          throw new Error('Supplier rental rate must be a positive number')
+        }
+        if (amount !== null) {
+          await vehicleRentalRateService.upsertRate(orgIdForRate, vehicle.id, { amount, period: ratePeriod }, user?.uid)
+        } else if (rateExisted) {
+          await vehicleRentalRateService.deleteRate(orgIdForRate, vehicle.id)
+        }
       }
       await onSave(vehicle.id, updateData)
     } catch (error) {
@@ -583,6 +625,48 @@ export function FleetVehicleEditModal({
                       ) : null
                     })()}
                   </FieldWrap>
+
+                  {/* 💷 Supplier rental rate — admins only (RLS-guarded table). */}
+                  {isAdmin && (
+                    <FieldWrap icon={Wallet} label={t('fleet.editModal.rentalRateLabel')}>
+                      <div className="inline-flex mb-1.5 rounded-md overflow-hidden border border-[#d6e3dc] dark:border-gray-600 text-[10px] font-semibold">
+                        {(['weekly', 'monthly'] as RentalRatePeriod[]).map(p => (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => setRatePeriod(p)}
+                            className={ratePeriod === p
+                              ? 'px-2.5 py-1 bg-[#025940] text-white'
+                              : 'px-2.5 py-1 text-[#5a6e64] dark:text-gray-300'}
+                          >
+                            {t(p === 'weekly' ? 'fleet.editModal.rentalRateWeekly' : 'fleet.editModal.rentalRateMonthly')}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#5a6e64] dark:text-gray-400">£</span>
+                        <input
+                          type="number" min="0" step="0.01" inputMode="decimal"
+                          value={rateAmount}
+                          onChange={e => setRateAmount(e.target.value)}
+                          className={`${inputCls} pl-7`}
+                          placeholder={t('fleet.editModal.rentalRateAmountPlaceholder')}
+                        />
+                      </div>
+                      {(() => {
+                        const amount = Number(rateAmount)
+                        if (rateAmount.trim() === '' || !Number.isFinite(amount) || amount < 0) return null
+                        const rate = { amount, period: ratePeriod }
+                        return (
+                          <p className="text-[11px] font-medium text-[#025940] dark:text-[#72A68E] mt-1">
+                            {ratePeriod === 'weekly'
+                              ? t('fleet.editModal.rentalRateHintMonthly', { amount: formatGbp(toMonthly(rate), 2) })
+                              : t('fleet.editModal.rentalRateHintWeekly', { amount: formatGbp(toWeekly(rate), 2) })}
+                          </p>
+                        )
+                      })()}
+                    </FieldWrap>
+                  )}
 
                   <FieldWrap icon={Car} label={t('fleet.editModal.registrationLabel')}>
                     <div className="flex items-center gap-2">
