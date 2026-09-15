@@ -2,7 +2,7 @@
 // Bay × Time grid that visualises the workshop day. Reuses bookingCoversSlot
 // + TIME_SLOTS from the existing slotHelpers + ServiceBookingsContent.
 //
-// - Rows: TIME_SLOTS (24 rows of 30 min, 08:30 → 20:30)
+// - Rows: TIME_SLOTS (25 rows of 30 min, 08:00 → 20:30)
 // - Columns: bays 1..bayCount (or filtered to a single bay)
 // - Booking blocks span `getEffectiveSlotCount(b)` rows — handles both
 //   30-min-native bookings and legacy 90-min bookings transparently.
@@ -805,12 +805,12 @@ export function WorkshopScheduleGrid({
           touchAction: interaction ? 'pan-y' : undefined,
         }}
       >
-        {/* Time labels column — major 90-min marks (08:30, 10:00, 11:30,
-            13:00, 14:30, 16:00, 17:30, 19:00, 20:30) render heavy with a
+        {/* Time labels column — major 90-min marks (08:00, 09:30, 11:00,
+            12:30, 14:00, 15:30, 17:00, 18:30, 20:00) render heavy with a
             stronger ruler line. The in-between 30-min ticks stay light so
             the eye still sees the rhythm at a glance. */}
         {TIME_SLOTS.map((slot, rIdx) => {
-          // 30-min slots starting at 08:30 → indices 0,3,6,9... are the
+          // 30-min slots starting at 08:00 → indices 0,3,6,9... are the
           // 90-min major marks the user wants emphasised.
           const isMajor = rIdx % 3 === 0
           return (
@@ -844,7 +844,7 @@ export function WorkshopScheduleGrid({
               pendingHighlight.bay === bay &&
               pendingSlotIds.includes(slot.id)
             // Major rule on every 90-min boundary so the cell grid lines
-            // up with the bold time labels (08:30, 10:00, 11:30, …).
+            // up with the bold time labels (08:00, 09:30, 11:00, …).
             const isMajor = rIdx % 3 === 0
             // Live drag-select highlight (local to the grid) — distinct from
             // `inPending` which reflects the form's committed selection.

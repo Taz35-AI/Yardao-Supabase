@@ -54,7 +54,7 @@ import { AlertModal } from '@/components/common/Modals/AlertModal'
 import type { ServiceBooking, TimeSlot } from '@/types/serviceBookings'
 
 // ─── Time Slots ───────────────────────────────────────────────────────────────
-// 30-min atomic granularity (24 slots, 08:30 → 20:30). Multi-slot bookings
+// 30-min atomic granularity (25 slots, 08:00 → 20:30). Multi-slot bookings
 // span N consecutive slots — a 90-min job = 3 slots, MOT 60-min = 2, etc.
 // Legacy bookings (created when slots were 90 min, e.g. timeSlot
 // "08:30-10:00") still render correctly because slotHelpers.getSlotIndex
@@ -62,7 +62,7 @@ import type { ServiceBooking, TimeSlot } from '@/types/serviceBookings'
 // from the id's duration.
 function buildTimeSlots(): TimeSlot[] {
   const slots: TimeSlot[] = []
-  const startMins = 8 * 60 + 30   // 08:30
+  const startMins = 8 * 60        // 08:00 (garage opens at 8am)
   const endMins   = 20 * 60 + 30  // 20:30
   const fmt = (m: number) =>
     `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
