@@ -12,15 +12,21 @@ interface InsuranceWarningModalProps {
   onClose: () => void
   vehicleRegistration: string
   action: 'checkout' | 'hire'
+  // When set, the block is for expired MOT / tax instead of insurance.
+  expiredDocs?: string[]
 }
 
 export function InsuranceWarningModal({
   isOpen,
   onClose,
   vehicleRegistration,
-  action
+  action,
+  expiredDocs = []
 }: InsuranceWarningModalProps) {
   if (!isOpen) return null
+
+  const docLabel = expiredDocs.join(' & ')
+  const isDocs = expiredDocs.length > 0
 
   const actionText = action === 'checkout' ? 'Check Out' : 'Set Out on Hire'
   const actionVerb = action === 'checkout' ? 'check out' : 'hire out'
@@ -36,9 +42,9 @@ export function InsuranceWarningModal({
               <Shield className="w-5 h-5 text-red-400" />
             </div>
             <div>
-              <p className="text-white font-bold text-sm">Insurance Required</p>
+              <p className="text-white font-bold text-sm">{isDocs ? `Valid ${docLabel} Required` : 'Insurance Required'}</p>
               <p className="text-[#72A68E] text-xs mt-0.5">
-                {vehicleRegistration} · Not Insured
+                {vehicleRegistration} · {isDocs ? `${docLabel} Expired` : 'Not Insured'}
               </p>
             </div>
           </div>
@@ -63,7 +69,7 @@ export function InsuranceWarningModal({
                 Cannot {actionText} Vehicle
               </p>
               <p className="text-xs text-[#4a5e54] dark:text-gray-400 leading-relaxed">
-                <span className="font-bold text-[#012619] dark:text-white">{vehicleRegistration}</span> cannot be {actionVerb} without active insurance.
+                <span className="font-bold text-[#012619] dark:text-white">{vehicleRegistration}</span> cannot be {actionVerb} {isDocs ? `with an expired ${docLabel}.` : 'without active insurance.'}
               </p>
             </div>
           </div>
@@ -73,7 +79,9 @@ export function InsuranceWarningModal({
             <div className="flex items-start gap-2.5">
               <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
               <p className="text-xs font-semibold text-red-700 dark:text-red-300 leading-relaxed">
-                This vehicle must be added back onto insurance before it can {actionVerb}.
+                {isDocs
+                  ? `The ${docLabel} must be renewed before this vehicle can ${actionVerb}.`
+                  : `This vehicle must be added back onto insurance before it can ${actionVerb}.`}
               </p>
             </div>
           </div>
@@ -84,11 +92,11 @@ export function InsuranceWarningModal({
             <ol className="space-y-1 text-xs text-[#4a5e54] dark:text-gray-400">
               <li className="flex items-start gap-1.5">
                 <span className="font-bold text-[#025940] flex-shrink-0">1.</span>
-                Update the vehicle's insurance status
+                {isDocs ? `Renew the ${docLabel} and update the date on the fleet record` : "Update the vehicle's insurance status"}
               </li>
               <li className="flex items-start gap-1.5">
                 <span className="font-bold text-[#025940] flex-shrink-0">2.</span>
-                Verify insurance is active before proceeding
+                {isDocs ? 'It can still be sent to an external garage for its MOT / repair' : 'Verify insurance is active before proceeding'}
               </li>
             </ol>
           </div>

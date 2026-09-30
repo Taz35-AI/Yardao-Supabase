@@ -24,6 +24,7 @@ import {
   createHireAuditLog
 } from '@/types'
 import { logger } from '@/lib/logger'
+import { getExpiredRoadDocs } from '@/lib/roadLegalUtils'
 
 export class VehicleHireService {
   private static readonly VEHICLES_TABLE = 'checked_in_vehicles'
@@ -79,6 +80,25 @@ export class VehicleHireService {
 
       if (vehicleData.hireStatus === 'Out on Hire') {
         throw new Error(`Vehicle ${vehicleData.registration} is already out on hire`)
+      }
+
+      // 🔒 Expired MOT / tax blocks hire. Dates read live from the fleet record
+      // (the yard row's copy can be stale). Every hire route ends here.
+      if (vehicleData.vehicleId) {
+        const { data: fleetRow } = await supabase
+          .from('vehicles')
+          .select('id, registration, mot_expiry, tax_expiry')
+          .eq('id', vehicleData.vehicleId)
+          .maybeSingle()
+        const expired = getExpiredRoadDocs(vehicleData, fleetRow ? [{
+          id: fleetRow.id,
+          registration: fleetRow.registration,
+          motExpiry: fleetRow.mot_expiry,
+          taxExpiry: fleetRow.tax_expiry,
+        }] : [])
+        if (expired.length > 0) {
+          throw new Error(`${vehicleData.registration} cannot be set out on hire — ${expired.join(' & ')} expired.`)
+        }
       }
 
       const nowIso = new Date().toISOString()

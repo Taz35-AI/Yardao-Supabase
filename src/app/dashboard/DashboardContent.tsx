@@ -205,6 +205,12 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
   }, [modalController, dataLayer.dashboardLogic])
 
   const handleSetOutOnHire = useCallback(async (vehicle: any) => {
+    // 🔒 Expired MOT / tax gate BEFORE the hire modal opens.
+    const expiredDocs = getExpiredRoadDocs(vehicle, dataLayer.fleetVehicles)
+    if (expiredDocs.length > 0) {
+      modalController.showError(`${vehicle.registration} cannot be set out on hire — ${expiredDocs.join(' & ')} expired.`)
+      return
+    }
     // 🔒 Reservation gate BEFORE the hire modal opens.
     const decision = await businessLogic.resolveReservedHire(vehicle)
     if (decision.action === 'block') {
@@ -216,7 +222,7 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
       return
     }
     openHireModal(vehicle)
-  }, [businessLogic, openHireModal])
+  }, [businessLogic, openHireModal, dataLayer.fleetVehicles, modalController])
 
   const handleQuickCheckIn = useCallback((vehicle: any) => {
     modalController.handleQuickCheckIn(vehicle, dataLayer.dashboardLogic)

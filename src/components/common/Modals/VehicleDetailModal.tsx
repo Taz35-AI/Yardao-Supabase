@@ -40,6 +40,7 @@ import {
 } from '@/types'
 import { InsuranceToggle } from '@/components/common/ui/InsuranceToggle'
 import { InsuranceWarningModal } from '@/components/common/Modals/InsuranceWarningModal'
+import { isDocExpired } from '@/lib/roadLegalUtils'
 import { logger } from '@/lib/logger'
 import { useT, useLang, formatDateLocale } from '@/lib/i18n'
 import { computeDefleetDue } from '@/lib/utils/defleetDue'
@@ -522,6 +523,7 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
   const [localPolicyName, setLocalPolicyName]     = useState<string | null>((vehicle as any).insurancePolicyName ?? null)
   const [localPolicyExpiry, setLocalPolicyExpiry] = useState<string | null>((vehicle as any).insurancePolicyExpiry ?? null)
   const [showInsuranceWarning, setShowInsuranceWarning] = useState(false)
+  const [blockedDocs, setBlockedDocs] = useState<string[]>([])
   const [blockedAction, setBlockedAction]               = useState<'checkout' | 'hire'>('checkout')
   const [updatingInsurance, setUpdatingInsurance]       = useState(false)
 
@@ -629,6 +631,7 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
     // so it can always be checked out. Fleet vehicles keep the gate.
     if (vehicle.vehicleId && !canPerformAction(localInsuranceStatus)) {
       setBlockedAction('checkout')
+      setBlockedDocs([])
       setShowInsuranceWarning(true)
       return
     }
@@ -638,6 +641,17 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
   const handleSetOutOnHire = () => {
     if (!canPerformAction(localInsuranceStatus)) {
       setBlockedAction('hire')
+      setBlockedDocs([])
+      setShowInsuranceWarning(true)
+      return
+    }
+    // Expired MOT / tax also blocks hire (dates from the live fleet record).
+    const expired: string[] = []
+    if (isDocExpired(effectiveMotExpiry)) expired.push('MOT')
+    if (isDocExpired(effectiveTaxExpiry)) expired.push('Tax')
+    if (expired.length > 0) {
+      setBlockedAction('hire')
+      setBlockedDocs(expired)
       setShowInsuranceWarning(true)
       return
     }
@@ -1081,6 +1095,7 @@ export const VehicleDetailModal = React.memo<VehicleDetailModalProps>(({
           onClose={() => setShowInsuranceWarning(false)}
           vehicleRegistration={vehicle.registration}
           action={blockedAction}
+          expiredDocs={blockedDocs}
         />
 
       </div>

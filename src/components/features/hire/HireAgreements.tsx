@@ -19,6 +19,7 @@ import { useHire } from '@/contexts/HireContext'
 import { useT } from '@/lib/i18n'
 import { toCamel } from '@/lib/dbMap'
 import { canPerformAction } from '@/lib/insuranceUtils'
+import { isDocExpired } from '@/lib/roadLegalUtils'
 import type { CheckedInVehicle } from '@/types'
 import type { HireAgreement, HireAgreementVehicle } from '@/types/hire'
 import { NewAgreementModal } from './NewAgreementModal'
@@ -291,6 +292,15 @@ function AgreementCard({
         toast.error(t('hire.insuranceBlockedSetOut', { reg: l.registration || '' }))
         return
       }
+      // Expired MOT / tax — block before the auto-check-in creates anything.
+      const expiredDocs = [
+        ...(isDocExpired(fleet.mot_expiry) ? ['MOT'] : []),
+        ...(isDocExpired(fleet.tax_expiry) ? ['Tax'] : []),
+      ]
+      if (expiredDocs.length > 0) {
+        toast.error(`${l.registration || ''} cannot be set out on hire — ${expiredDocs.join(' & ')} expired.`)
+        return
+      }
       const branches = await branchService.getBranches(organizationId)
       const main = branches.find((b) => b.isMain) || branches[0]
       if (!main) {
@@ -331,6 +341,14 @@ function AgreementCard({
     }
     setHireBusy(true)
     try {
+      // Expired MOT / tax (setOutOnHire re-checks against the live fleet record).
+      const expiredDocs = [
+        ...(isDocExpired(hireVehicle.motExpiry) ? ['MOT'] : []),
+        ...(isDocExpired(hireVehicle.taxExpiry) ? ['Tax'] : []),
+      ]
+      if (expiredDocs.length > 0) {
+        throw new Error(`${hireVehicle.registration || ''} cannot be set out on hire — ${expiredDocs.join(' & ')} expired.`)
+      }
       const a = await actor()
       let realVehicleId = vehicleId
 
@@ -399,6 +417,9 @@ function AgreementCard({
       setPendingCheckIn(null)
       loadLines()
       onChange()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('hire.actionFail'))
+      throw err
     } finally {
       setHireBusy(false)
     }
