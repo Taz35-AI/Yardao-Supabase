@@ -573,16 +573,24 @@ export const stockService = {
     // numbers and take the max rather than ordering by created_at — created_at
     // order doesn't track the numeric sequence (edits, deletions, same-second
     // timestamps), which produced duplicates and a 409 unique-constraint error
-    // on (organization_id, invoice_number).
-    const { data, error } = await supabase
-      .from(INVOICE_TABLE)
-      .select('invoice_number')
-      .eq('organization_id', organizationId)
-    if (error) throw error
+    // on (organization_id, invoice_number). Paged, because PostgREST caps a
+    // select at 1000 rows — past that the max was computed from a partial set
+    // and every "new" number already existed.
+    const PAGE = 1000
     let max = 0
-    for (const row of data ?? []) {
-      const n = parseInt(String((row as any).invoice_number || '').split('-')[1] || '', 10)
-      if (!Number.isNaN(n) && n > max) max = n
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabase
+        .from(INVOICE_TABLE)
+        .select('invoice_number')
+        .eq('organization_id', organizationId)
+        .order('id')
+        .range(from, from + PAGE - 1)
+      if (error) throw error
+      for (const row of data ?? []) {
+        const n = parseInt(String((row as any).invoice_number || '').split('-')[1] || '', 10)
+        if (!Number.isNaN(n) && n > max) max = n
+      }
+      if (!data || data.length < PAGE) break
     }
     return `INV-${String(max + 1).padStart(4, '0')}`
   },
@@ -610,7 +618,12 @@ export const stockService = {
         /duplicate key|unique constraint/i.test(error.message || '')
       if (!isDuplicate || !invoice.organizationId || attempt === 5) throw error
 
-      invoiceNumber = await this.generateInvoiceNumber(invoice.organizationId)
+      // Always move forward: never retry a number we already know is taken,
+      // even if the regenerated one comes back the same.
+      const regenerated = await this.generateInvoiceNumber(invoice.organizationId)
+      const seq = (s: string) => parseInt(s.split('-')[1] || '', 10) || 0
+      const next = Math.max(seq(regenerated), seq(invoiceNumber) + 1)
+      invoiceNumber = `INV-${String(next).padStart(4, '0')}`
     }
     // Unreachable — the loop either returns or throws.
     throw new Error('Could not allocate a unique invoice number')
