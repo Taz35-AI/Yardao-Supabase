@@ -7,7 +7,7 @@
 'use client'
 
 import React, { useState, useMemo } from 'react'
-import { X, Truck, Wrench, ArrowRight, LogOut } from 'lucide-react'
+import { X, Truck, Wrench, ArrowRight, LogOut, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Branch } from '@/types/branch'
 import { CheckoutDestination } from '@/types/transfer'
@@ -23,6 +23,9 @@ interface CheckoutDestinationModalProps {
   // When true, offer a "Remove from Yard" option (for non-fleet vehicles:
   // visitors / external garage customers that are simply leaving).
   allowRemove?: boolean
+  // Expired MOT / tax on a fleet vehicle → branch transfer is blocked (garage
+  // is still allowed so it can go for its MOT / repair).
+  expiredDocs?: string[]
 }
 
 export function CheckoutDestinationModal({
@@ -33,8 +36,11 @@ export function CheckoutDestinationModal({
   currentBranchId,
   availableBranches,
   loading = false,
-  allowRemove = false
+  allowRemove = false,
+  expiredDocs = []
 }: CheckoutDestinationModalProps) {
+  const transferBlocked = expiredDocs.length > 0
+  const expiredLabel = expiredDocs.join(' & ')
   const [selectedType, setSelectedType] = useState<'branch_transfer' | 'external_garage' | 'remove' | null>(null)
   const [selectedBranchId, setSelectedBranchId] = useState<string>('')
 
@@ -50,7 +56,7 @@ export function CheckoutDestinationModal({
   }, [availableBranches, currentBranchId])
 
   const handleConfirm = () => {
-    if (selectedType === 'branch_transfer' && selectedBranchId) {
+    if (selectedType === 'branch_transfer' && selectedBranchId && !transferBlocked) {
       const selectedBranch = transferableBranches.find(b => b.slug === selectedBranchId)
       if (selectedBranch) {
         // ✅ Branch transfer — call onConfirm to process the transfer
@@ -72,9 +78,9 @@ export function CheckoutDestinationModal({
   }
 
   const canConfirm = useMemo(() => {
-    if (selectedType === 'branch_transfer') return Boolean(selectedBranchId)
+    if (selectedType === 'branch_transfer') return Boolean(selectedBranchId) && !transferBlocked
     return selectedType === 'external_garage' || selectedType === 'remove'
-  }, [selectedType, selectedBranchId])
+  }, [selectedType, selectedBranchId, transferBlocked])
 
   if (!isOpen) return null
 
@@ -102,14 +108,32 @@ export function CheckoutDestinationModal({
         {/* ── Body ── */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
 
+          {/* MOT / tax block — same red treatment as the insurance warning */}
+          {transferBlocked && (
+            <div className="bg-red-50 dark:bg-red-900/10 rounded-xl px-4 py-3 border border-red-100 dark:border-red-900/30" style={{ borderLeft: '3px solid #ef4444' }}>
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold text-red-700 dark:text-red-300">
+                    {expiredLabel} Expired · Cannot Check Out
+                  </p>
+                  <p className="text-xs text-red-700/90 dark:text-red-300/90 leading-relaxed mt-0.5">
+                    <span className="font-bold">{vehicleRegistration}</span> cannot be transferred without a valid {expiredLabel}.
+                    Update the {expiredLabel} date on the fleet record first. It can still be sent to an external garage.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Branch Transfer card */}
           <div
-            onClick={() => !loading && setSelectedType('branch_transfer')}
-            className={`p-5 rounded-xl border-2 cursor-pointer transition-all ${
+            onClick={() => !loading && !transferBlocked && setSelectedType('branch_transfer')}
+            className={`p-5 rounded-xl border-2 transition-all ${
               selectedType === 'branch_transfer'
                 ? 'border-[#025940] bg-[#f0f4f2] dark:bg-[#025940]/10'
                 : 'border-[#e2e8e5] dark:border-gray-700 hover:border-[#72A68E]'
-            } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            } ${loading || transferBlocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
           >
             <div className="flex items-start gap-4">
               <div className={`p-2.5 rounded-lg flex-shrink-0 ${

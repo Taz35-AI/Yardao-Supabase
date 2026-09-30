@@ -24,6 +24,7 @@ import type {
 } from '@/types'
 import { logger } from '@/lib/logger'
 import { useT } from '@/lib/i18n'
+import { getExpiredRoadDocs } from '@/lib/roadLegalUtils'
 
 interface DashboardBusinessLogicProps {
   yardData: any
@@ -36,6 +37,7 @@ interface DashboardBusinessLogicProps {
   showSuccess: (message: string) => void
   modalController: any
   branchId: string
+  fleetVehicles?: { id?: string | null; registration?: string | null; motExpiry?: string | null; taxExpiry?: string | null }[]
 }
 
 export function useDashboardBusinessLogic({
@@ -48,7 +50,8 @@ export function useDashboardBusinessLogic({
   showError,
   showSuccess,
   modalController,
-  branchId
+  branchId,
+  fleetVehicles = []
 }: DashboardBusinessLogicProps) {
 
   // Get current user from auth context
@@ -381,6 +384,12 @@ showSuccess(t('dashboard.success.vehicleCheckedIn', { registration: cleanRegistr
 
       // ✅ Handle BRANCH transfers
       if (destination.type === 'branch_transfer') {
+        // Expired MOT / tax blocks a transfer (garage is still allowed).
+        const expiredDocs = getExpiredRoadDocs(vehicle, fleetVehicles)
+        if (expiredDocs.length > 0) {
+          showError(`${vehicle.registration} cannot be transferred — ${expiredDocs.join(' & ')} expired.`)
+          return false
+        }
         const result = await initiateCheckout(vehicleId, destination)
 
         if (result.success) {
@@ -430,7 +439,7 @@ showSuccess(t('dashboard.success.vehicleCheckedIn', { registration: cleanRegistr
       showError(error instanceof Error ? error.message : t('dashboard.errors.checkoutVehicleFailed'))
       return false
     }
-  }, [initiateCheckout, checkedInVehicles, dashboardLogic, modalController, showError, showSuccess, yardData])
+  }, [initiateCheckout, checkedInVehicles, dashboardLogic, modalController, showError, showSuccess, yardData, fleetVehicles])
 
   // ✅ FIXED: Handle cancel transfer - triggers confirmation modal
 const handleCancelTransfer = useCallback(async (vehicleId: string): Promise<boolean> => {
@@ -529,6 +538,16 @@ const executeReturnFromGarage = useCallback(async (vehicleId: string): Promise<b
       return false
     }
 
+    // 🔒 Block the batch if any fleet vehicle has an expired MOT / tax.
+    const expired = checkedInVehicles
+      .filter(v => vehicleIds.includes(v.id))
+      .map(v => ({ reg: v.registration, docs: getExpiredRoadDocs(v, fleetVehicles) }))
+      .filter(x => x.docs.length > 0)
+    if (expired.length > 0) {
+      showError(`Cannot check out — expired MOT/Tax: ${expired.map(x => `${x.reg} (${x.docs.join(' & ')})`).join(', ')}`)
+      return false
+    }
+
     try {
       await yardData.bulkCheckout(vehicleIds)
       showSuccess(t('dashboard.success.bulkCheckedOut', { count: vehicleIds.length }))
@@ -538,7 +557,7 @@ const executeReturnFromGarage = useCallback(async (vehicleId: string): Promise<b
       showError(t('dashboard.errors.bulkCheckoutFailed'))
       return false
     }
-  }, [yardData, checkedInVehicles, showError, showSuccess])
+  }, [yardData, checkedInVehicles, fleetVehicles, showError, showSuccess])
 
   // Handle detail modal actions
   const handleDetailModalEdit = useCallback(() => {

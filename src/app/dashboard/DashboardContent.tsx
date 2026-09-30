@@ -38,6 +38,7 @@ import { DashboardActionsMenu } from '@/components/features/dashboard/DashboardA
 
 // NEW: Transfer and checkout destination components
 import { CheckoutDestinationModal } from '@/components/yard/CheckoutDestinationModal'
+import { getExpiredRoadDocs } from '@/lib/roadLegalUtils'
 import { CheckedOutVehiclesSection } from '@/components/features/dashboard/CheckedOutVehiclesSection'
 import { IncomingTransfersSection } from '@/components/features/dashboard/IncomingTransfersSection'
 
@@ -127,7 +128,8 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
     showError: modalController.showError,
     showSuccess: modalController.showSuccess,
     modalController: modalController,
-    branchId: branchId
+    branchId: branchId,
+    fleetVehicles: dataLayer.fleetVehicles
   })
 
   // 🔒 Admin-only vehicle reservation
@@ -951,6 +953,7 @@ export default function DashboardContent({ branchId = 'main' }: DashboardContent
         availableBranches={branches}
         loading={businessLogic.transferLoading}
         allowRemove={!modalController.modalStates.checkoutDestinationVehicle?.vehicleId}
+        expiredDocs={getExpiredRoadDocs(modalController.modalStates.checkoutDestinationVehicle, dataLayer.fleetVehicles)}
       />
 
       <GarageCheckoutModal
