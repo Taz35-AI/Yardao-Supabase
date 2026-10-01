@@ -40,8 +40,9 @@ import { Badge } from '@/components/ui/Badge'
 import {
   Calendar, Clock, Car, Wrench, RefreshCw, BarChart3,
   CheckCircle, AlertCircle, Building, LogIn, ChevronRight,
-  Plus, Search, Building2, ChevronLeft, X, Package
+  Plus, Search, Building2, ChevronLeft, X, Package, Download
 } from 'lucide-react'
+import { exportNotInvoicedJobs, isNotInvoiced } from '@/utils/serviceBookings/exportNotInvoiced'
 import { logger } from '@/lib/logger'
 import { useT, localizeWorkRequired } from '@/lib/i18n'
 import { toast } from 'sonner'
@@ -1336,9 +1337,19 @@ export function ServiceBookingsContent() {
   // 🧾 Completed jobs awaiting an invoice (clean-slate: pre-existing completed
   // jobs were marked no_invoice_needed by migration 0040, so only jobs
   // completed from now on surface here).
-  const notInvoicedBookings = mergedBookings.filter(
-    b => b.status === 'completed' && !b.invoiceId && !b.noInvoiceNeeded,
-  ).length
+  const notInvoicedBookings = mergedBookings.filter(isNotInvoiced).length
+
+  // ⬇️ Excel download of every job still awaiting an invoice.
+  const handleDownloadNotInvoiced = async () => {
+    if (notInvoicedBookings === 0) { toast.info('No jobs awaiting an invoice'); return }
+    try {
+      const count = await exportNotInvoicedJobs(mergedBookings)
+      toast.success(`Downloaded ${count} not-invoiced job${count === 1 ? '' : 's'}`)
+    } catch (err) {
+      logger.error('Not-invoiced export failed:', err)
+      toast.error('Could not download the not-invoiced jobs')
+    }
+  }
   const externalBookings = mergedBookings.filter(b => b.isExternalProvider).length
 
   // Upcoming bookings (future, not completed/cancelled) for the right-panel mini list
@@ -1630,11 +1641,14 @@ export function ServiceBookingsContent() {
           { label: t('serviceBookings.content.statsScheduled'),  value: scheduledBookings,         bg: 'bg-[#72A68E]/15 dark:bg-[#72A68E]/10',  color: 'text-[#025940] dark:text-[#72A68E]', img: '/appointments.svg' },
           { label: t('serviceBookings.content.statsCompleted'),  value: completedBookings,         bg: 'bg-[#b3f243]/20 dark:bg-[#b3f243]/10',  color: 'text-[#012619] dark:text-[#b3f243]', img: '/completed.svg' },
           { label: t('serviceBookings.content.statsAtGarage'),  value: checkedInToGarageBookings, bg: 'bg-[#025940]/5 dark:bg-[#025940]/15',   color: 'text-[#025940] dark:text-[#72A68E]', img: '/external.svg'    },
-          { label: t('serviceBookings.invoice.notInvoiced'),   value: notInvoicedBookings,       bg: 'bg-amber-100/70 dark:bg-amber-900/20',  color: 'text-amber-700 dark:text-amber-300', img: ''                },
-        ].map(({ label, value, bg, color, img }) => (
+          { label: t('serviceBookings.invoice.notInvoiced'),   value: notInvoicedBookings,       bg: 'bg-amber-100/70 dark:bg-amber-900/20',  color: 'text-amber-700 dark:text-amber-300', img: '',               onDownload: handleDownloadNotInvoiced },
+        ].map(({ label, value, bg, color, img, onDownload }: { label: string; value: number; bg: string; color: string; img: string; onDownload?: () => void }) => (
           <div
             key={label}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl ${bg} border border-[#025940]/20 dark:border-[#025940]/40`}
+            onClick={onDownload}
+            role={onDownload ? 'button' : undefined}
+            title={onDownload ? 'Download all not-invoiced jobs (Excel)' : undefined}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl ${bg} border border-[#025940]/20 dark:border-[#025940]/40 ${onDownload ? 'cursor-pointer hover:brightness-95 transition' : ''}`}
           >
             {img && (
               <img
@@ -1649,6 +1663,9 @@ export function ServiceBookingsContent() {
                 {label}
               </div>
             </div>
+            {onDownload && (
+              <Download className={`w-4 h-4 ml-auto flex-shrink-0 ${color}`} />
+            )}
           </div>
         ))}
       </div>
