@@ -294,6 +294,31 @@ export function generateInvoicePDF({ invoice, fromCompanyDetails, toCompanyDetai
   }
 
   // ══════════════════════════════════════════
+  // NOTES (optional, for the customer)
+  // ══════════════════════════════════════════
+  const notes = (invoice.notes || '').trim()
+  if (notes) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    const lines: string[] = doc.splitTextToSize(notes, CONTENT_WIDTH)
+    // Keep the notes block + footer off the bottom accent bar.
+    if (y + 8 + lines.length * 4.5 + 10 > 285) {
+      doc.addPage()
+      y = 20
+    }
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    doc.setTextColor(...COLORS.textLight)
+    doc.text('NOTES', MARGIN_LEFT, y)
+    y += 5
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(...COLORS.text)
+    doc.text(lines, MARGIN_LEFT, y)
+    y += lines.length * 4.5 + 4
+  }
+
+  // ══════════════════════════════════════════
   // FOOTER
   // ══════════════════════════════════════════
   doc.setDrawColor(...COLORS.tableBorder)

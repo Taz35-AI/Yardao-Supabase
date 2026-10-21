@@ -116,6 +116,8 @@ export function CreateInvoiceModal({ isOpen, onClose, onSuccess, editInvoice }: 
   const [discountPercent, setDiscountPercent] = useState(0)
   // Odometer / mileage reading shown on the invoice as "ODO: ".
   const [mileage, setMileage] = useState('')
+  // Optional notes printed on the invoice for the customer.
+  const [notes, setNotes] = useState('')
   // 👥 Customer pulled from the vehicle's recent service bookings.
   // Used to populate a "Use customer from bookings" quick-pick alongside
   // the org-preset to-companies — the booking is the only source of
@@ -185,6 +187,7 @@ export function CreateInvoiceModal({ isOpen, onClose, onSuccess, editInvoice }: 
     setLabourRate(editInvoice.labour?.[0]?.rate || DEFAULT_LABOUR_RATE)
     setDiscountPercent(editInvoice.discountPercent || 0)
     setMileage(editInvoice.vehicleMileage || '')
+    setNotes(editInvoice.notes || '')
     setVehicleJobs([])
     setSelectedJobId(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -929,6 +932,9 @@ const loadServiceBookingHoursAndCustomer = async () => {
         vat: totals.vat,
         total: totals.total,
         fromLogo: selectedFromCompany.logo || '',
+        // Only sent when there's a note (or one is being cleared on edit), so
+        // saving never depends on the notes column unless notes are used.
+        ...(notes.trim() || editInvoice?.notes ? { notes: notes.trim() || null } : {}),
       }
 
       if (editInvoice) {
@@ -986,6 +992,7 @@ const loadServiceBookingHoursAndCustomer = async () => {
     setLabourRate(DEFAULT_LABOUR_RATE)
     setDiscountPercent(fromCompanies[0]?.discountPercent || 0)
     setMileage('')
+    setNotes('')
     setCustomerFromBookings(null)
     setVehicleJobs([])
     setSelectedJobId(null)
@@ -1558,6 +1565,19 @@ const loadServiceBookingHoursAndCustomer = async () => {
                       className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#025940]/30 focus:border-[#025940]"
                     />
                   </div>
+                </div>
+
+                {/* Notes for the customer (optional) */}
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{t('stock.createInvoice.notesLabel')}</label>
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={3}
+                    maxLength={1000}
+                    placeholder={t('stock.createInvoice.notesPlaceholder')}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#025940]/30 focus:border-[#025940] resize-y"
+                  />
                 </div>
 
                 {/* Totals */}

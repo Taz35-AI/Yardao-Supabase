@@ -327,6 +327,14 @@ export function ViewInvoiceModal({ isOpen, onClose, invoice, onStatusChange, onE
             </div>
           )}
 
+          {/* Notes for the customer */}
+          {invoice.notes?.trim() && (
+            <div className="mb-6 rounded-lg border border-[#e2e8e5] dark:border-gray-700 bg-[#f6f8f7] dark:bg-gray-900/40 px-3.5 py-2.5 text-sm">
+              <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#72A68E] mb-1">{t('stock.viewInvoice.notes')}</p>
+              <p className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{invoice.notes.trim()}</p>
+            </div>
+          )}
+
           {/* Totals (right) + payment details (bottom-left) */}
           <div className="flex justify-between items-end gap-6 mb-8 flex-wrap">
             {fromCompanyDetails && (fromCompanyDetails.bankName || fromCompanyDetails.sortCode || fromCompanyDetails.accountNumber) ? (

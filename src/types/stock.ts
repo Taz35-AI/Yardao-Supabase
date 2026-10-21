@@ -125,6 +125,7 @@ export interface Invoice {
   vat?: number
   total: number
   fromLogo?: string          // base64 logo of the invoicing business
+  notes?: string | null      // optional notes for the customer (migration 0073)
   createdAt: string
   createdBy: string
   createdByName: string
