@@ -21,11 +21,14 @@ import {
   Settings,
   MessageSquare,
   Gauge,
-  Shield
+  Shield,
+  Lock,
+  Unlock
 } from 'lucide-react'
 import { CheckedInVehicle, VehicleStatus, Contract } from '@/types'
 import { contractService } from '@/lib/contractService'
 import { mileageService } from '@/lib/services/mileageService'
+import { usePermissions } from '@/hooks/usePermissions'
 import { useAuth } from '@/contexts/AuthContext'
 import { userProfileService } from '@/lib/firestore'
 import { logger } from '@/lib/logger'
@@ -180,6 +183,12 @@ export function VehicleEditModal({
   // Anti-clocking floor (historical max, excludes this live value so a genuine
   // correction is still possible down to the true floor).
   const [mileageFloor, setMileageFloor]       = useState<number | null>(null)
+  // 🔓 Manager override (org owner / garage manager only — RLS enforces it,
+  // migration 0073): bypass the floor and mark the wrong higher readings.
+  const perms = usePermissions()
+  const canOverrideMileage = perms.isManager
+  const [mileageOverride, setMileageOverride] = useState(false)
+  const [overrideReason, setOverrideReason]   = useState('')
   const [contract, setContract]               = useState(safeString(vehicle.contract))
   const [contractColor, setContractColor]     = useState(safeString(vehicle.contractColor))
   const [additionalNotes, setAdditionalNotes] = useState(safeString(vehicle.notes))
@@ -312,10 +321,16 @@ export function VehicleEditModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Anti-clocking: a corrected reading still can't go below the historical floor.
+    // Anti-clocking: a corrected reading still can't go below the historical
+    // floor — unless a manager has switched the override on.
     const enteredMiles = parseInt((mileage || '').replace(/[,\s]/g, ''), 10)
-    if (mileage.trim() && mileageFloor !== null && Number.isFinite(enteredMiles) && enteredMiles < mileageFloor) {
+    const overriding = mileageOverride && canOverrideMileage
+    if (!overriding && mileage.trim() && mileageFloor !== null && Number.isFinite(enteredMiles) && enteredMiles < mileageFloor) {
       alert(t('vehEdit.mileageTooLow', { min: mileageFloor.toLocaleString('en-GB') }))
+      return
+    }
+    if (overriding && !overrideReason.trim()) {
+      alert(t('vehEdit.mileageOverrideReasonRequired'))
       return
     }
     setLoading(true)
@@ -351,6 +366,28 @@ export function VehicleEditModal({
 
       await onSave(vehicle.id, updates)
       logger.log('✅ Vehicle saved successfully')
+
+      // Override: the edit path above has appended the corrected reading; now
+      // mark every higher reading on record as wrong so the floor is right.
+      if (overriding && Number.isFinite(enteredMiles)) {
+        try {
+          const voided = await mileageService.voidReadingsAbove({
+            organizationId: (vehicle as any).organizationId || '',
+            registration: vehicle.registration || '',
+            correctMileage: enteredMiles,
+            reason: overrideReason.trim(),
+            vehicleId: (vehicle as any).vehicleId || null,
+            entityId: vehicle.id,
+            branchId: (vehicle as any).branchId || null,
+            actorId: user?.uid || null,
+            actorName: user?.displayName || user?.email || null,
+          })
+          logger.log(`🔓 Mileage override applied — ${voided} reading(s) voided`)
+        } catch (err) {
+          logger.error('❌ Mileage override failed:', err)
+          alert(t('vehEdit.mileageOverrideFail'))
+        }
+      }
     } catch (error) {
       logger.error('❌ Error saving vehicle:', error)
       alert(t('vehEdit.saveFail'))
@@ -447,8 +484,45 @@ export function VehicleEditModal({
                     value={mileage}
                     onChange={e => setMileage(e.target.value)}
                     placeholder={t('vehEdit.mileagePlaceholder')}
-                    className="border-[#e2e8e5] dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-[#012619] dark:text-white focus:ring-[#025940]/30 focus:border-[#025940]"
+                    className={`border-[#e2e8e5] dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-[#012619] dark:text-white focus:ring-[#025940]/30 focus:border-[#025940] ${
+                      mileageOverride && canOverrideMileage ? 'ring-2 ring-amber-400/60 border-amber-400' : ''
+                    }`}
                   />
+                  {!mileageOverride && mileageFloor !== null && (
+                    <p className="text-[10px] text-[#72A68E] mt-1.5 pl-1">
+                      {t('vehEdit.mileageFloorHint', { min: mileageFloor.toLocaleString('en-GB') })}
+                    </p>
+                  )}
+                  {/* 🔓 Manager-only override of a wrong mileage (owner / garage manager). */}
+                  {canOverrideMileage && (
+                    <div className="mt-1.5">
+                      <button
+                        type="button"
+                        onClick={() => { setMileageOverride(v => !v); setOverrideReason('') }}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
+                          mileageOverride
+                            ? 'bg-amber-500 text-white border-amber-500 hover:bg-amber-600'
+                            : 'bg-white dark:bg-gray-800 text-[#025940] dark:text-[#72A68E] border-[#d6e3dc] dark:border-gray-600 hover:bg-[#f6f8f7] dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        {mileageOverride ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                        {t(mileageOverride ? 'vehEdit.mileageOverrideOn' : 'vehEdit.mileageOverride')}
+                      </button>
+                      {mileageOverride && (
+                        <div className="mt-1.5 rounded-xl border border-amber-300/70 dark:border-amber-600/50 bg-amber-50 dark:bg-amber-900/20 p-2.5">
+                          <p className="text-[11px] text-amber-800 dark:text-amber-200">
+                            {t('vehEdit.mileageOverrideHint', { min: mileageFloor !== null ? mileageFloor.toLocaleString('en-GB') : '—' })}
+                          </p>
+                          <input
+                            value={overrideReason}
+                            onChange={e => setOverrideReason(e.target.value)}
+                            placeholder={t('vehEdit.mileageOverrideReasonPlaceholder')}
+                            className={`${inputCls} mt-1.5`}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </FieldWrap>
 
                 <FieldWrap icon={Calendar} label={t('vehEdit.checkInDate')}>

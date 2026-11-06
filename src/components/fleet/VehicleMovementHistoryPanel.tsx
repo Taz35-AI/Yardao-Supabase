@@ -67,6 +67,7 @@ const ACTION: Record<ActivityActionType | 'default', { icon: React.ElementType; 
   rental_renew:         { icon: Activity,       label: 'Renewed',        tone: 'purple' },
   rental_extend:        { icon: CalendarClock,  label: 'Extended',       tone: 'purple' },
   rental_split_renew:   { icon: Activity,       label: 'Renewed (split)', tone: 'purple' },
+  mileage_override:     { icon: Gauge,          label: 'Mileage override', tone: 'amber' },
   default:              { icon: Activity,       label: 'Event',          tone: 'slate' },
 }
 

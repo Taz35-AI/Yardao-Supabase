@@ -403,7 +403,7 @@ function MileageHistorySection({ registration, organizationId }: { registration:
         <SectionTitle>{t('vehDetail.mileageHistory')}</SectionTitle>
         <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#b3f243]/20 text-[#025940] border border-[#b3f243]/40 -mt-1">
           <Gauge className="w-2.5 h-2.5" />
-          {t('vehDetail.mileageCurrent', { miles: readings[0].mileage.toLocaleString(locale) })}
+          {t('vehDetail.mileageCurrent', { miles: (readings.find(r => !r.voidedAt) ?? readings[0]).mileage.toLocaleString(locale) })}
         </span>
       </div>
       <div className="space-y-1.5">
@@ -414,8 +414,13 @@ function MileageHistorySection({ registration, organizationId }: { registration:
           >
             <Gauge className="w-3.5 h-3.5 text-[#72A68E] flex-shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold text-[#012619] dark:text-white">
+              <p className={`text-xs font-bold ${r.voidedAt ? 'line-through text-[#8a9e94]' : 'text-[#012619] dark:text-white'}`}>
                 {r.mileage.toLocaleString(locale)} {t('vehDetail.mileageUnit')}
+                {r.voidedAt && (
+                  <span className="ml-1.5 inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                    {t('vehDetail.mileageVoided')}
+                  </span>
+                )}
               </p>
               <p className="text-[10px] text-[#8a9e94] truncate">
                 {formatDateLocale(r.recordedAt, locale, { day: 'numeric', month: 'short', year: 'numeric' })}

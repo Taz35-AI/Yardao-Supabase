@@ -13,10 +13,11 @@
 import { supabase } from '@/lib/supabaseClient'
 import { normalizeReg } from '@/lib/utils/registration'
 import { logger } from '@/lib/logger'
+import { activityLogService } from '@/lib/services/activityLogService'
 
 const TABLE = 'mileage_readings'
 
-export type MileageSource = 'check_in' | 'quick_check_in' | 'edit' | 'service' | 'manual'
+export type MileageSource = 'check_in' | 'quick_check_in' | 'edit' | 'service' | 'manual' | 'override'
 
 export interface MileageReading {
   id: string
@@ -25,6 +26,8 @@ export interface MileageReading {
   source: string
   recordedByName?: string | null
   notes?: string | null
+  /** Set when a manager marked this reading as wrong (migration 0073). */
+  voidedAt?: string | null
 }
 
 function parseMiles(v: any): number {
@@ -53,6 +56,7 @@ export const mileageService = {
         .select('mileage')
         .eq('organization_id', organizationId)
         .eq('registration_key', key)
+        .is('voided_at', null)            // readings a manager voided don't count
       if (beforeIso) q = q.lt('recorded_at', beforeIso)
       const { data, error } = await q
       if (error) throw error
@@ -92,6 +96,7 @@ export const mileageService = {
         source: r.source,
         recordedByName: r.recorded_by_name,
         notes: r.notes,
+        voidedAt: r.voided_at ?? null,
       }))
     } catch (err) {
       logger.error('getReadings failed:', err)
@@ -144,5 +149,76 @@ export const mileageService = {
     } catch (err) {
       logger.warn('recordReading skipped:', err)
     }
+  },
+
+  /**
+   * Manager override (org owner / garage manager — RLS enforces it, 0073).
+   * Marks every live reading ABOVE `correctMileage` for this registration as
+   * voided: those are the mis-keyed ones propping up the anti-clocking floor.
+   * The corrected value itself is appended by the normal edit path. Re-points
+   * the fleet cache and writes one activity-feed entry. THROWS on failure so
+   * the UI can tell the user. Returns how many readings were voided.
+   */
+  async voidReadingsAbove(params: {
+    organizationId: string
+    registration: string
+    correctMileage: number
+    reason: string
+    vehicleId?: string | null
+    entityId?: string | null
+    branchId?: string | null
+    actorId?: string | null
+    actorName?: string | null
+  }): Promise<number> {
+    const { organizationId, registration, correctMileage } = params
+    if (!organizationId || !registration || !Number.isFinite(correctMileage) || correctMileage < 0) return 0
+    const key = normalizeReg(registration)
+    const now = new Date().toISOString()
+
+    const { data, error } = await supabase
+      .from(TABLE)
+      .update({
+        voided_at: now,
+        voided_by: params.actorName || params.actorId || null,
+        void_reason: params.reason || null,
+      })
+      .eq('organization_id', organizationId)
+      .eq('registration_key', key)
+      .is('voided_at', null)
+      .gt('mileage', correctMileage)
+      .select('id, mileage')
+    if (error) throw error
+    const voided = (data ?? []) as Array<{ id: string; mileage: number }>
+
+    if (params.vehicleId) {
+      await supabase
+        .from('vehicles')
+        .update({ last_recorded_mileage: correctMileage, last_mileage_at: now })
+        .eq('id', params.vehicleId)
+    }
+
+    const highest = voided.reduce((m, r) => Math.max(m, Number(r.mileage) || 0), 0)
+    const who = params.actorName || 'manager'
+    const miles = correctMileage.toLocaleString('en-GB')
+    const tail = voided.length
+      ? `, ${voided.length} higher reading${voided.length === 1 ? '' : 's'} (up to ${highest.toLocaleString('en-GB')} mi) marked wrong`
+      : ''
+    void activityLogService.log({
+      organizationId,
+      actorId: params.actorId ?? null,
+      actorName: params.actorName ?? null,
+      actionType: 'mileage_override',
+      registration,
+      entityId: params.entityId ?? null,
+      branchId: params.branchId ?? null,
+      summary: `Mileage override by ${who}: set to ${miles} mi${tail}`,
+      details: {
+        correctMileage,
+        reason: params.reason,
+        voidedCount: voided.length,
+        voidedIds: voided.map((r) => r.id),
+      },
+    })
+    return voided.length
   },
 }
