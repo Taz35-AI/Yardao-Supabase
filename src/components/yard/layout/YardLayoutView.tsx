@@ -64,6 +64,7 @@ import {
   Undo2,
   Info,
   Lock,
+  FileSpreadsheet,
 } from 'lucide-react'
 import { VehicleFlags } from '@/components/common/DamageFlag'
 
@@ -178,12 +179,14 @@ export function YardLayoutView({
   // Hyphens/underscores are folded to spaces on both sides so "17 seater"
   // finds a size stored as "17-seater" (and vice versa); a space-stripped
   // copy of each field also lets "ab12cde" find reg "AB12 CDE".
-  const matchedSpaceIds = useMemo(() => {
+  // The matched VEHICLES are kept too (not just their space ids) so the
+  // highlighted set can be exported to Excel exactly as flagged on the map.
+  const matchedVehicles = useMemo(() => {
     const norm = (s: string) =>
       s.toLowerCase().replace(/[-_/]+/g, ' ').replace(/\s+/g, ' ').trim()
     const tokens = norm(search).split(' ').filter(Boolean)
-    if (tokens.length === 0) return new Set<string>()
-    const set = new Set<string>()
+    if (tokens.length === 0) return [] as CheckedInVehicle[]
+    const list: CheckedInVehicle[] = []
     vehicles.forEach(v => {
       if (!v.parkingSpaceId) return
       const fields = [
@@ -201,11 +204,77 @@ export function YardLayoutView({
       const haystack = norm(fields.join(' '))
       const compact = fields.map(f => norm(f).replace(/ /g, '')).join(' ')
       if (tokens.every(t => haystack.includes(t) || compact.includes(t))) {
-        set.add(v.parkingSpaceId)
+        list.push(v)
       }
     })
-    return set
+    return list
   }, [search, vehicles])
+
+  const matchedSpaceIds = useMemo(
+    () => new Set(matchedVehicles.map(v => v.parkingSpaceId as string)),
+    [matchedVehicles],
+  )
+
+  // ── Export the flagged vehicles to Excel ───────────────────────────────
+  // One row per highlighted vehicle, sorted by parking space so the sheet can
+  // be walked round the yard. xlsx is loaded on demand (it is a large library
+  // and most visits to the map never export).
+  const [exporting, setExporting] = useState(false)
+  const exportMatches = useCallback(async () => {
+    if (matchedVehicles.length === 0 || exporting) return
+    setExporting(true)
+    try {
+      const XLSX = await import('xlsx')
+      const labelById = new Map<string, string>()
+      Object.values(spaces).forEach(sp => labelById.set(sp.id, sp.label))
+      const fmtDate = (d: unknown): string => {
+        if (!d) return ''
+        const date = typeof (d as any)?.toDate === 'function' ? (d as any).toDate() : new Date(d as any)
+        return isNaN(date.getTime()) ? '' : date.toLocaleDateString('en-GB')
+      }
+      const rows = matchedVehicles
+        .map(v => ({ v, space: labelById.get(v.parkingSpaceId as string) || '' }))
+        .sort((a, b) => a.space.localeCompare(b.space, undefined, { numeric: true }))
+        .map(({ v, space }, i) => ({
+          'No.': i + 1,
+          'Space': space,
+          'Registration': v.registration || '',
+          'Make': v.make || '',
+          'Model': v.model || '',
+          'Colour': v.colour || '',
+          'Size': v.size || '',
+          'Contract': v.contract || '',
+          'Status': v.status || '',
+          'Hire status': v.hireStatus || '',
+          'Condition': v.condition || '',
+          'Mileage': v.mileage || '',
+          'Insurance': v.insuranceStatus || '',
+          'MOT expiry': fmtDate(v.motExpiry),
+          'Tax expiry': fmtDate(v.taxExpiry),
+          'Checked in': fmtDate(v.createdAt),
+          'Comments': v.comments || '',
+          'Notes': v.notes || '',
+        }))
+      const ws = XLSX.utils.json_to_sheet(rows)
+      ws['!cols'] = [
+        { wch: 5 }, { wch: 8 }, { wch: 13 }, { wch: 14 }, { wch: 22 }, { wch: 12 },
+        { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 13 }, { wch: 18 }, { wch: 10 },
+        { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 36 }, { wch: 36 },
+      ]
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Yard search')
+      const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
+      const today = new Date().toISOString().slice(0, 10)
+      const parts = ['yard', slug(branchName || ''), slug(search), today].filter(Boolean)
+      XLSX.writeFile(wb, `${parts.join('_')}.xlsx`)
+      showToast(`Exported ${rows.length} vehicle${rows.length === 1 ? '' : 's'} to Excel`)
+    } catch (err) {
+      console.error('Yard map export failed:', err)
+      showToast('Export failed. Please try again.', 'warn')
+    } finally {
+      setExporting(false)
+    }
+  }, [matchedVehicles, exporting, spaces, branchName, search, showToast])
 
   useEffect(() => {
     if (matchedSpaceIds.size === 0) return
@@ -539,6 +608,19 @@ export function YardLayoutView({
               ? 'No matches in parked vehicles'
               : `${matchedSpaceIds.size} match${matchedSpaceIds.size === 1 ? '' : 'es'} highlighted in yellow`}
           </span>
+          {matchedVehicles.length > 0 && (
+            <button
+              type="button"
+              onClick={exportMatches}
+              disabled={exporting}
+              className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold text-white disabled:opacity-60 transition-opacity hover:opacity-90"
+              style={{ background: BRAND.dark }}
+              title="Download the highlighted vehicles as an Excel file"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              {exporting ? 'Exporting…' : `Export ${matchedVehicles.length} to Excel`}
+            </button>
+          )}
         </div>
       )}
 
