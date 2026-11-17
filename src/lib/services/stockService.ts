@@ -632,14 +632,56 @@ export const stockService = {
   /**
    * Get invoices for organization
    */
-  async getInvoices(organizationId: string): Promise<Invoice[]> {
-    const { data, error } = await supabase
+  // List view: everything EXCEPT from_logo (a base64 image copied onto every
+  // invoice — it made the list several MB). The logo is only needed for the
+  // PDF, which loads the full row via getInvoice.
+  //   `since` (YYYY-MM-DD) limits to recent invoices; omit for all of them.
+  //   Paged, because PostgREST caps one select at 1000 rows.
+  async getInvoices(organizationId: string, opts: { since?: string } = {}): Promise<Invoice[]> {
+    const BASE_COLS =
+      'id, organization_id, invoice_number, invoice_date, vehicle_id, vehicle_registration, ' +
+      'vehicle_make, vehicle_model, vehicle_mileage, from_company, to_company, parts, labour, ' +
+      'subtotal, discount, discount_percent, markup_percent, vat, total, status, ' +
+      'created_by, created_by_name, created_at'
+    const PAGE = 1000
+
+    const fetchAll = async (cols: string) => {
+      const rows: any[] = []
+      for (let from = 0; ; from += PAGE) {
+        let q = supabase
+          .from(INVOICE_TABLE)
+          .select(cols)
+          .eq('organization_id', organizationId)
+        if (opts.since) q = q.gte('invoice_date', opts.since)
+        const { data, error } = await q
+          .order('created_at', { ascending: false })
+          .order('id')
+          .range(from, from + PAGE - 1)
+        if (error) return { rows, error }
+        rows.push(...(data ?? []))
+        if (!data || data.length < PAGE) return { rows, error: null }
+      }
+    }
+
+    // `notes` arrives with migration 0073 — fall back if it isn't applied yet.
+    let res = await fetchAll(`${BASE_COLS}, notes`)
+    if (res.error && (res.error as any).code === '42703') res = await fetchAll(BASE_COLS)
+    if (res.error) throw res.error
+    return toCamelList<Invoice>(res.rows)
+  },
+
+  /**
+   * How many invoices are dated before `before` (YYYY-MM-DD) — the archived
+   * ones not loaded by default. Count only, no rows transferred.
+   */
+  async countInvoicesBefore(organizationId: string, before: string): Promise<number> {
+    const { count, error } = await supabase
       .from(INVOICE_TABLE)
-      .select('*')
+      .select('id', { count: 'exact', head: true })
       .eq('organization_id', organizationId)
-      .order('created_at', { ascending: false })
+      .lt('invoice_date', before)
     if (error) throw error
-    return toCamelList<Invoice>(data)
+    return count ?? 0
   },
 
   /**

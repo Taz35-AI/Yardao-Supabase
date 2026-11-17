@@ -6,7 +6,7 @@
 'use client'
 
 import React, { useState, useEffect, useMemo } from 'react'
-import { FileText, Plus, Eye, Search, Trash2, Calendar, Building2, PoundSterling, X, Pencil, FileSpreadsheet } from 'lucide-react'
+import { FileText, Plus, Eye, Search, Trash2, Calendar, Building2, PoundSterling, X, Pencil, FileSpreadsheet, Archive } from 'lucide-react'
 import { stockService } from '@/lib/services/stockService'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -53,6 +53,17 @@ export function InvoicingTab() {
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null)
   const [showExportModal, setShowExportModal] = useState(false)
 
+  // 🗄️ Archive: only the last ARCHIVE_MONTHS of invoices load by default (fast).
+  // Older ones stay in the database and load on request ("Show older").
+  const ARCHIVE_MONTHS = 6
+  const archiveCutoff = useMemo(() => {
+    const d = new Date(); d.setMonth(d.getMonth() - ARCHIVE_MONTHS)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }, [])
+  const [showArchived, setShowArchived] = useState(false)
+  const [archivedCount, setArchivedCount] = useState(0)
+  const [loadingArchived, setLoadingArchived] = useState(false)
+
   const openCreate = () => {
     if (!canCreateInvoices) { toast.error(t('stock.invoicing.onlyManagerWrite')); return }
     setEditingInvoice(null)
@@ -89,19 +100,40 @@ export function InvoicingTab() {
     }
   }, [organizationId])
 
-  const loadInvoices = async () => {
+  // `includeArchived` forces a full load (used by "Show older" and export).
+  // Reloads after create/edit/delete keep whatever range is showing.
+  const loadInvoices = async (includeArchived: boolean = showArchived) => {
     if (!organizationId) return
-    
-    setLoading(true)
+
+    if (invoices.length === 0) setLoading(true)
     try {
-      const data = await stockService.getInvoices(organizationId)
+      const [data, olderCount] = await Promise.all([
+        stockService.getInvoices(organizationId, includeArchived ? {} : { since: archiveCutoff }),
+        includeArchived ? Promise.resolve(0) : stockService.countInvoicesBefore(organizationId, archiveCutoff).catch(() => 0),
+      ])
       setInvoices(data)
+      setArchivedCount(olderCount)
+      setShowArchived(includeArchived)
     } catch (error) {
       logger.error('Error loading invoices:', error)
       toast.error(t('stock.invoicing.loadInvoicesFail'))
     } finally {
       setLoading(false)
     }
+  }
+
+  const toggleArchived = async () => {
+    setLoadingArchived(true)
+    try { await loadInvoices(!showArchived) } finally { setLoadingArchived(false) }
+  }
+
+  // Export may cover any date range — make sure archived invoices are loaded.
+  const openExport = async () => {
+    if (!showArchived && archivedCount > 0) {
+      setLoadingArchived(true)
+      try { await loadInvoices(true) } finally { setLoadingArchived(false) }
+    }
+    setShowExportModal(true)
   }
 
   const handleViewInvoice = (invoice: Invoice) => {
@@ -306,7 +338,7 @@ export function InvoicingTab() {
 
           {/* Export to Excel */}
           <button
-            onClick={() => setShowExportModal(true)}
+            onClick={openExport}
             className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl text-[10px] sm:text-sm font-semibold bg-white dark:bg-gray-800 border border-[#025940]/40 dark:border-[#72A68E]/40 text-[#025940] dark:text-[#72A68E] hover:bg-[#025940]/8 dark:hover:bg-[#025940]/20 transition-colors whitespace-nowrap"
             title={t('stock.export.title')}
           >
@@ -331,6 +363,25 @@ export function InvoicingTab() {
           {t(filteredInvoices.length === 1 ? 'stock.invoicing.countOne' : 'stock.invoicing.countMany', { count: filteredInvoices.length })}
           {searchTerm && t('stock.invoicing.filteredFrom', { total: invoices.length })}
         </div>
+
+        {/* Archive toggle — older invoices load only when asked for */}
+        {(archivedCount > 0 || showArchived) && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+            <Archive className="w-4 h-4 flex-shrink-0" />
+            <span>
+              {showArchived
+                ? 'Showing all invoices, including archived.'
+                : `Showing the last ${ARCHIVE_MONTHS} months. ${archivedCount} older invoice${archivedCount === 1 ? ' is' : 's are'} archived.`}
+            </span>
+            <button
+              onClick={toggleArchived}
+              disabled={loadingArchived}
+              className="font-semibold text-[#025940] dark:text-[#72A68E] hover:underline disabled:opacity-50"
+            >
+              {loadingArchived ? 'Loading…' : showArchived ? 'Hide archived' : 'Show older invoices'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 🔥 PREMIUM INVOICES LIST - Card Layout */}
@@ -465,7 +516,7 @@ export function InvoicingTab() {
           setShowCreateModal(false)
           setEditingInvoice(null)
         }}
-        onSuccess={loadInvoices}
+        onSuccess={() => loadInvoices()}
       />
 
       <ViewInvoiceModal
@@ -475,7 +526,7 @@ export function InvoicingTab() {
           setSelectedInvoice(null)
         }}
         invoice={selectedInvoice}
-        onStatusChange={loadInvoices}
+        onStatusChange={() => loadInvoices()}
         onEdit={(inv) => {
           setShowViewModal(false)
           setSelectedInvoice(null)

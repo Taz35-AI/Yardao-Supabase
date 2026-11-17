@@ -76,13 +76,19 @@ export function ViewInvoiceModal({ isOpen, onClose, invoice, onStatusChange, onE
 
   if (!isOpen || !invoice) return null
 
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
     setDownloading(true)
     try {
+      // The list omits the stored logo (it's heavy) — load the full row for
+      // the PDF. Falls back to the list copy if that fetch fails.
+      let full: Invoice = invoice
+      if (invoice.id && invoice.fromLogo === undefined) {
+        try { full = (await stockService.getInvoice(invoice.id)) || invoice } catch { /* use list copy */ }
+      }
       generateInvoicePDF({
         // Use the live status so the PDF reflects a just-changed status
         // (the parent reloads the list, not this modal's invoice prop).
-        invoice: { ...invoice, status: statusValue },
+        invoice: { ...full, status: statusValue },
         fromCompanyDetails,
         toCompanyDetails,
       })
